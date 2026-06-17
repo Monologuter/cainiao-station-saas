@@ -1,5 +1,15 @@
-import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Headers,
+  Param,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
+import { ApiCode, BizError } from '../../core/http/api-code';
+import { PayService } from '../pay/pay.service';
 import { CurrentUser, RequirePermission } from '../identity/decorators';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
@@ -25,7 +35,10 @@ class ListShipOrdersQuery {
 
 @Controller('shipping')
 export class ShippingController {
-  constructor(private readonly shipping: ShippingService) {}
+  constructor(
+    private readonly shipping: ShippingService,
+    private readonly pay: PayService,
+  ) {}
 
   @RequirePermission('shipping:quote')
   @Post('quote')
@@ -49,5 +62,18 @@ export class ShippingController {
   @Get('orders/:id')
   getOrder(@Param('id') id: string, @CurrentUser() user: any) {
     return this.shipping.getOrder(id, user);
+  }
+
+  @RequirePermission('shipping:pay')
+  @Post('orders/:id/pay')
+  payOrder(
+    @Param('id') id: string,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @CurrentUser() user: any,
+  ) {
+    if (!idempotencyKey) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少支付幂等键');
+    }
+    return this.pay.payShipOrder(id, idempotencyKey, user);
   }
 }
