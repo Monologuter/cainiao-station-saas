@@ -130,6 +130,46 @@ export class ApplicationService {
     };
   }
 
+  async list(query: {
+    status?: string;
+    keyword?: string;
+    page?: string | number;
+    pageSize?: string | number;
+  }) {
+    const page = Math.max(Number(query.page ?? 1), 1);
+    const pageSize = Math.min(Math.max(Number(query.pageSize ?? 20), 1), 100);
+    const where: any = { deletedAt: null };
+    if (
+      query.status &&
+      ['PENDING', 'APPROVED', 'REJECTED'].includes(query.status)
+    ) {
+      where.status = query.status;
+    }
+    if (query.keyword) {
+      where.OR = [
+        { applicationNo: { contains: query.keyword, mode: 'insensitive' } },
+        { entityName: { contains: query.keyword, mode: 'insensitive' } },
+        { contactPhone: { contains: query.keyword } },
+      ];
+    }
+
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      const [total, items] = await Promise.all([
+        tx.tenantApplication.count({ where }),
+        tx.tenantApplication.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * pageSize,
+          take: pageSize,
+        }),
+      ]);
+      return { total, page, pageSize, items };
+    });
+  }
+
   async approve(
     id: string,
     reviewerId: string,
