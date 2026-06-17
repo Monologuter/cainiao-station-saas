@@ -1,0 +1,463 @@
+# 菜鸟驿站 SaaS · 全周期实现计划总表（Implementation Roadmap）
+
+> 版本 v1.0（2026-06-18）｜ 配套《设计方案（整合版）v2.0》
+> 本表把 P1–P4 全部实现计划按**周期**排好，给到 **plan 级 + 任务级**分解。
+> 每个 plan 执行时再展开为**逐步 TDD（红→绿→重构）**详细计划，参照已写好的
+> `docs/superpowers/plans/2026-06-18-p1-foundation.md`（P1-1 后端地基）的粒度与风格。
+
+---
+
+## A. 概述与方法论
+
+### A.1 总体策略
+
+- **演进式架构、边界先行**：从第一天按限界上下文（设计 §2.4）分 Nest 模块，模块间只走领域服务接口（同步）与领域事件总线（异步），不互相直连数据库。以模块化单体部署，哪个上下文先扛不住就先抽哪个。
+- **适配层可降级**：扫码 / 短信 / 支付 / 物流 / OCR / 存储一律「接口 + 现在降级实现 + 以后接真」（设计 §7），配置开关切换，核心业务不被资质/硬件卡住。P1–P3 全程跑降级实现，P4 接真。
+- **多租户安全是底线**：所有业务表带 `tenant_id` + Postgres RLS 强制隔离（设计 §3），由 P1-1 地基统一收口，后续每个新表照此追加 RLS Policy（这是每个 plan 的隐性验收项）。
+- **`parcel` 是心脏**：包裹聚合根 + 状态机（设计 §4.1）是系统唯一权威，所有状态流转都经它校验合法性，对外只暴露合法动作。
+
+### A.2 工程方法论（每个 plan 都遵守）
+
+1. **独立可跑可测**：每个 plan 交付后系统处于「可运行 + 测试全绿」状态，不留半成品。后端 plan 收尾必有 e2e 冒烟串起本期闭环；前端 plan 收尾必有可点通的页面流程。
+2. **TDD（红→绿→重构）**：先写失败测试 → 最小实现转绿 → 重构。领域服务/状态机/守卫/定价等纯逻辑单测优先；跨上下文链路用 e2e。
+3. **Bite-sized 任务**：每个 plan 切成有序 Task，每个 Task 内再切 Step（一句话可完成、可独立验证）。展开后单 Step 约对应一次「写测试/写实现/跑验证/提交」。
+4. **频繁提交**：每个 Task 结束即 commit，commit message 用约定式（`feat/fix/test/chore(scope): ...`）。
+5. **事件与幂等**：所有领域事件订阅方幂等；对外写带幂等键；并发热点（库位分配/取件核销）加 Redis 锁 + 乐观锁（设计 §9）。
+
+### A.3 本表与逐步计划的关系
+
+- **P1-1 已有完整逐步 TDD 计划**：见 `docs/superpowers/plans/2026-06-18-p1-foundation.md`（10 个 Task，含每步代码/命令/预期/提交）。本总表对 P1-1 只做**引用与简述**，不重复展开。
+- **其余 plan（P1-2 起）**：本表给到**任务级分解**（有序任务列表 + 关键产物 + 验收要点）。进入某个 plan 执行时，由作者/子代理把该 plan 展开成与 P1-1 同等粒度的**逐步 TDD 计划**文件（命名约定：`docs/superpowers/plans/<date>-<plan-id>-<slug>.md`），再交付执行。
+- **执行编排**：推荐 `superpowers:subagent-driven-development`（每 Task 派子代理、Task 间评审）或 `superpowers:executing-plans`。
+
+### A.4 文件/命名约定
+
+- 后端业务分包（设计 §2.5）：`identity / tenant / billing / station / parcel / inbound / pickup / shipping / logistics / notify / pay / file / analytics / audit / member / ai`，统一在 `backend/src/<context>/`。
+- 适配器：`backend/src/<context>/providers/`，接口 + `mock` 实现 + `real` 实现（P4），按 env 开关注入。
+- 前端：`station-web`、`admin-web`（Element Plus）、`user-app`（uni-app）。
+- 每个新业务表：迁移内同步加 RLS Policy + `FORCE ROW LEVEL SECURITY`（消费者只读通道除外，见设计 §3）。
+
+---
+
+## B. 计划全景表
+
+| 编号 | 周期 | 主题 | 主要上下文 | 依赖 | 状态 | 建议顺序 |
+|---|---|---|---|---|---|---|
+| **P1-1** | P1 MVP | 后端地基（多租户/RLS/JWT/RBAC/统一响应） | core, tenant, identity | — | ✅ 已详写（见专档） | 1 |
+| **P1-2** | P1 MVP | 驿站核心闭环（货架库位+包裹状态机+入库+取件+通知） | station, parcel, inbound, pickup, notify | P1-1 | ⬜ 待展开 | 2 |
+| **P1-3** | P1 MVP | 前端接入（station-web 工作台 + user-app 查件取件 + 基础统计） | 前端三端 + analytics(基础) | P1-2 | ⬜ 待展开 | 3 |
+| **P2-1** | P2 增强 | 寄件与物流（下单/选快递/定价 + 模拟支付 + 模拟轨迹） | shipping, pay, logistics | P1-2 | ⬜ 待展开 | 4 |
+| **P2-2** | P2 增强 | 滞留与异常（定时滞留扫描+分级催取 + 异常件工单） | parcel, notify, exceptions, (BullMQ) | P1-2 | ⬜ 待展开 | 5 |
+| **P2-3** | P2 增强 | 会员与评价（积分/优惠券 + 评价投诉） | member, review | P1-2, P2-1 | ⬜ 待展开 | 6 |
+| **P2-4** | P2 增强 | 运营大屏（指标聚合 + Socket.IO 实时 + 报表导出） | analytics | P1-2（+P2-1/2/3 数据源更全） | ⬜ 待展开 | 7 |
+| **P3-1** | P3 商业化 | 订阅计费（套餐/订阅/账单/用量计量，月费+用量混合） | billing | P1-1, P2-4 | ⬜ 待展开 | 8 |
+| **P3-2** | P3 商业化 | 自助入驻审核（申请→审核→开通 + admin 端） | tenant, admin-web | P1-1, P3-1 | ⬜ 待展开 | 9 |
+| **P3-3** | P3 商业化 | 平台运营后台完善（多门店监控 + 审计 + 系统配置/字典/渠道开关） | audit, admin-web, config | P3-2 | ⬜ 待展开 | 10 |
+| **P3-4** | P3 商业化 | 工程化加固（限流熔断 + 多级缓存 + 可观测性 + ShedLock 多实例防重） | 横切/基础设施 | P2-2（定时任务）, P3-* | ⬜ 待展开 | 11 |
+| **P4-1** | P4 智能化 | OCR 面单识别入库（ai-service + OcrProvider 接真） | ai, inbound | P1-2, P3-4 | ⬜ 待展开 | 12 |
+| **P4-2** | P4 智能化 | 大模型智能客服（ai-service + 知识库） | ai | P1-3, P4-1 | ⬜ 待展开 | 13 |
+| **P4-3** | P4 智能化 | 智能库位推荐与包裹量预测 | ai, station, analytics | P2-4, P4-1 | ⬜ 待展开 | 14 |
+| **P4-4** | P4 智能化 | 接真实外部服务（腾讯云短信/微信支付/物流 API/小程序订阅消息） | notify, pay, logistics 适配层 | P2-1, P3-4 | ⬜ 待展开 | 15 |
+
+> 状态图例：✅ 已完成详细计划 · ⬜ 待展开为逐步 TDD 计划。
+> 建议顺序为默认线性路径；P2 内部 / P4 内部部分 plan 可并行（见各 plan 依赖）。
+
+---
+
+## C. 各 Plan 详细分解
+
+> 统一格式：**目标** / **涉及上下文与关键文件/模块** / **有序任务列表**（任务一句话 + 关键产物 + 验收要点）/ **验收标准** / **依赖**。
+
+---
+
+### P1-1 后端地基（Foundation）
+
+> 已有完整逐步 TDD 计划，详见 `docs/superpowers/plans/2026-06-18-p1-foundation.md`，此处仅简述与引用。
+
+**目标**：搭起可运行可测试的 SaaS 后端地基——NestJS 模块化单体 + PostgreSQL/Prisma + RLS 多租户隔离 + JWT 鉴权 + RBAC 三层权限 + 统一响应/异常，跑通「平台开店 → 店长登录 → 带权限访问受保护接口 → 跨租户被 RLS 隔离」并有 e2e 冒烟。
+
+**涉及上下文与关键文件/模块**：`core`（prisma/tenant-context/http）、`tenant`（开店）、`identity`（auth/jwt/guards/decorators）；`backend/prisma/schema.prisma`、`backend/prisma/seed.ts`、`backend/test/foundation.e2e-spec.ts`。
+
+**有序任务列表（已展开，10 Task）**：
+1. 初始化 NestJS 工程与依赖 → 可启动空应用。
+2. 本地依赖容器（Postgres+Redis）与环境变量 → 容器 Up。
+3. Prisma 接入与初始数据模型（租户/用户/RBAC）→ 首迁移成功。
+4. 统一响应与全局异常（core/http）→ 拦截器单测绿。
+5. 租户上下文（AsyncLocalStorage）→ 上下文隔离单测绿。
+6. Postgres RLS + 按租户注入的 Prisma → RLS 隔离 e2e 绿。
+7. 鉴权（登录 + JWT + 全局守卫）→ login 单测绿。
+8. RBAC 权限守卫 + 请求上下文注入 → 权限守卫单测绿。
+9. 平台开店（租户创建）+ 种子数据 → 开店服务单测绿、seed 成功。
+10. e2e 冒烟（开店→登录→受保护接口→RLS 隔离）→ 两条 e2e 绿。
+
+**验收标准**：`npm run test:e2e` 全绿；平台超管 `admin/admin123456` 可开店；店长可登录、`/auth/me` 返回正确 `tenantId`；无 `tenant:create` 权限开店返回业务码 1003；跨租户 Station 被 RLS 隔离。
+
+**依赖**：无（起点）。
+
+---
+
+### P1-2 驿站核心闭环（Station Core Loop）
+
+**目标**：在地基之上实现驿站「代收」核心闭环——门店/货架/库位建模 + 包裹聚合与状态机 + 入库（生成取件码、分配库位）+ 取件核销（并发安全）+ 通知（站内/模拟短信），跑通 `PENDING → STORED →（通知）→ PICKED_UP` 全链路并有 e2e。这是整个系统的「心脏」一期。
+
+**涉及上下文与关键文件/模块**：
+- `station/`：`station.service`（门店）、`shelf.service`、`slot.service`、`slot-allocator.service`（库位分配规则）；表 `stations / shelves / slots`。
+- `parcel/`：`parcel.aggregate`（状态机）、`parcel.service`（合法流转动作）、`parcel-event` 记录、`event-bus`（进程内）；表 `parcels / parcel_events`。
+- `inbound/`：`inbound.service`（录入到件→绑手机→分配库位→生成取件码→STORED）、`pickup-code.service`（取件码生成+Redis 缓存）。
+- `pickup/`：`pickup.service`（核销出库，Redis 锁 + 乐观锁）；表 `pickup_authorizations`（家人代取，结构先建可后用）。
+- `notify/`：`notify.service` + `NotifyChannel` 接口 + `InAppChannel` / `MockSmsChannel`（控制台模拟）；表 `notifications / notify_templates`；订阅 `ParcelStored` 异步发通知。
+- `core/`：扩展 `EventBus`、Redis 锁工具。
+
+**有序任务列表**：
+1. **EventBus 抽象与进程内实现** → 产物：`core/event-bus`（`publish/subscribe`，订阅方幂等约定）；验收：发布/订阅单测绿，重复投递只生效一次。
+2. **station 数据模型与门店 CRUD** → 产物：`stations/shelves/slots` Prisma 模型 + RLS 迁移 + `station.service` 建店/列店；验收：建店单测绿、RLS 隔离生效。
+3. **货架与库位建模 CRUD** → 产物：`shelf.service`/`slot.service`（区-排-层-位编码、批量建位、库位状态 空闲/占用）；验收：批量建位与查空闲位单测绿。
+4. **库位分配规则服务** → 产物：`slot-allocator.service`（P1 规则化：就近/顺序取首个空闲位，加 Redis 锁防并发占同位）；验收：并发分配不撞位单测绿，无空位抛业务错误。
+5. **parcel 聚合与状态机** → 产物：`parcel.aggregate`（`PENDING/STORED/PICKED_UP/EXCEPTION/RETURNED` 合法流转表 + 非法流转拒绝）、乐观锁版本字段；验收：合法流转通过、非法流转抛错的状态机单测绿。
+6. **parcel 服务与事件落库** → 产物：`parcel.service`（创建包裹、推进状态、写 `parcel_events`、发领域事件）；验收：状态推进同时落事件记录单测绿。
+7. **取件码生成与缓存** → 产物：`pickup-code.service`（生成短码、防重、写 Redis 带 TTL、回查）；验收：码唯一性与 Redis 命中单测绿。
+8. **inbound 入库编排** → 产物：`inbound.service`（录入运单+手机号 → 建 parcel(PENDING) → 分配库位 → 生成取件码 → STORED → 发 `ParcelStored`）+ controller `POST /inbound`；验收：入库后包裹 STORED、占用库位、有取件码的服务单测绿。
+9. **notify 适配层与站内/模拟短信** → 产物：`NotifyChannel` 接口 + `InAppChannel` + `MockSmsChannel` + 模板渲染 + 订阅 `ParcelStored` 发通知；验收：`ParcelStored` 触发一条站内+一条模拟短信记录的单测绿。
+10. **pickup 取件核销** → 产物：`pickup.service`（取件码/手机尾号校验 → Redis 锁 → 乐观锁更新 → PICKED_UP → 发 `ParcelPickedUp` → 释放库位）+ controller `POST /pickup`；验收：正确码核销成功并释放库位、并发重复核销只成功一次的单测绿。
+11. **库位释放订阅** → 产物：`station` 订阅 `ParcelPickedUp/ParcelReturned` 置库位空闲；验收：核销后库位回到空闲单测绿。
+12. **P1-2 e2e 闭环冒烟** → 产物：`test/station-loop.e2e-spec.ts`（开店→建货架库位→入库→产生通知→核销→库位释放）；验收：全链路 e2e 绿，包裹终态 PICKED_UP、库位空闲、通知有记录。
+
+**验收标准**：
+- 单测覆盖状态机所有合法/非法流转、库位并发分配、核销并发幂等；
+- e2e 跑通完整代收闭环（入库→通知→取件→释放）；
+- 跨租户包裹/库位经 RLS 隔离；
+- 所有领域事件（`ParcelStored/ParcelPickedUp`）有订阅方且幂等。
+
+**依赖**：P1-1（RLS/鉴权/RBAC/EventBus 雏形/统一响应）。
+
+---
+
+### P1-3 前端接入（Frontends MVP）
+
+**目标**：让三端可用——`station-web` 跑通登录/工作台/入库/在库/核销/货架/员工权限对接；`user-app` 跑通登录/查件/取件码；后端提供基础统计接口，前端展示当日核心指标。对齐已产出的 31 页高保真（清爽蓝）。
+
+**涉及上下文与关键文件/模块**：
+- `station-web/`：登录、动态路由/菜单（按 RBAC 菜单+权限）、工作台、入库页、在库列表、核销页、货架管理、员工与角色权限管理；`src/api/*`、`src/store/*`（Pinia）、`src/router`、`v-perm` 指令、主题 token（清爽蓝默认）。
+- `user-app/`（uni-app → 小程序+H5）：登录（H5 手机验证码 / 小程序 openid 绑手机，P1 走验证码降级）、查件列表、取件码展示页。
+- 后端 `analytics/`（基础）：`analytics.service` 当日入库/在库/已取/通知数等计数接口（先用直查或事件计数）。
+
+**有序任务列表**：
+1. **station-web 工程脚手架与主题** → 产物：Vue3+TS+Vite+Pinia+Router 工程、Element Plus、三套主题 token（默认清爽蓝）、全屏平铺布局骨架；验收：本地起站、切主题生效。
+2. **统一请求层与登录** → 产物：Axios 封装（`{code,message,data}` 解包、token 注入、401 跳登录）、登录页对接 `/auth/login`、token 持久化；验收：登录成功进工作台、错误密码提示。
+3. **动态菜单/路由 + v-perm** → 产物：登录后拉 `/auth/me`+权限/菜单，按权限生成路由与菜单，`v-perm` 指令控制按钮；验收：店长看全功能、（造）店员看受限菜单。
+4. **入库页对接** → 产物：运单+手机号录入表单（含扫码枪键盘输入）对接 `POST /inbound`，成功展示取件码与库位；验收：录入后即时反馈取件码/库位。
+5. **在库列表与查询** → 产物：在库包裹列表（按手机尾号/取件码/库位筛选）+ 分页；验收：列表与筛选可用、空态正确。
+6. **核销页对接** → 产物：取件码/手机尾号核销表单对接 `POST /pickup`，成功提示并刷新；验收：核销成功后列表减少、库位释放可见。
+7. **货架管理页** → 产物：货架/库位建管页（建货架、批量建位、看占用率）；验收：建位后在库分配能用到。
+8. **员工与角色权限管理页** → 产物：员工 CRUD + 角色勾权限 + 门店 scope 分配（对接 identity）；验收：新建店员登录后权限/菜单按配置生效。
+9. **后端基础统计接口** → 产物：`analytics.service` + `GET /analytics/overview`（当日入库/在库/已取/通知）；验收：接口返回当日指标、租户隔离。
+10. **工作台首屏** → 产物：工作台展示当日核心指标卡 + 快捷入口（入库/核销）；验收：指标与统计接口一致。
+11. **user-app 脚手架与登录** → 产物：uni-app 工程、H5 手机验证码登录（小程序 openid 通道预留）、Consumer 映射对接；验收：H5 登录成功、拿到查件 token。
+12. **user-app 查件与取件码** → 产物：按已验证手机号跨门店查件列表 + 取件码展示页（走消费者只读通道）；验收：H5 能查到本人在某店的在库包裹并显示取件码。
+13. **P1-3 联调冒烟** → 产物：手动/脚本化端到端走查（店长入库 → user 端查到码 → 店长核销）；验收：三端串通、与后端 e2e 行为一致。
+
+**验收标准**：
+- `station-web` 可登录、按 RBAC 看到对应菜单/按钮，入库/在库/核销/货架/员工五条主流程可点通；
+- `user-app`（H5）可登录、查件、看取件码；
+- 工作台基础统计与后端一致；
+- UI 对齐高保真清爽蓝、全屏平铺、可切三主题。
+
+**依赖**：P1-2（入库/核销/通知接口）、P1-1（鉴权/RBAC/菜单）。
+
+---
+
+### P2-1 寄件与物流（Shipping & Logistics）
+
+**目标**：上线「代寄」能力——用户下单、智能选快递与定价、模拟支付、生成运单、模拟物流轨迹与追踪，跑通 `CREATED → PAID → COLLECTED → IN_TRANSIT → DELIVERED`。
+
+**涉及上下文与关键文件/模块**：
+- `shipping/`：`ship-order.aggregate`（独立状态机）、`ship-order.service`、`pricing.service`（定价规则）、`courier-selector.service`（智能选快递）；表 `ship_orders / price_rules`。
+- `pay/`：`PayChannel` 接口 + `MockPayChannel`（模拟支付）；表 `payments`。
+- `logistics/`：`LogisticsProvider` 接口 + `MockLogisticsProvider`（模拟轨迹推进）；表 `logistics_tracks`。
+- 事件：`ShipOrderCreated / ShipOrderPaid`。前端：`station-web` 寄件录单页、`user-app` 在线寄件与追踪页。
+
+**有序任务列表**：
+1. **ship_order 模型与状态机** → 产物：`ship_orders/price_rules` 模型 + RLS + `ship-order.aggregate` 流转表（含 CANCELLED）；验收：状态机单测绿。
+2. **定价服务** → 产物：`pricing.service`（按重量/距离/快递商 `price_rules` 计价）；验收：多档计价单测绿、边界正确。
+3. **智能选快递服务** → 产物：`courier-selector.service`（按价格/时效/可用性出推荐排序，规则化）；验收：给定条件返回预期排序单测绿。
+4. **下单服务** → 产物：`ship-order.service.create`（建单 CREATED → 报价快照 → 发 `ShipOrderCreated`）+ controller；验收：下单单测绿、价格快照写入。
+5. **pay 适配与模拟支付** → 产物：`PayChannel` + `MockPayChannel`（即时成功/可配失败）、`payments` 记录、支付成功推进 PAID 发 `ShipOrderPaid`；验收：支付→PAID 单测绿、幂等键防重复支付。
+6. **logistics 适配与模拟轨迹** → 产物：`LogisticsProvider` + `MockLogisticsProvider`（揽收后按节点推进 COLLECTED→IN_TRANSIT→DELIVERED，写 `logistics_tracks`）；验收：轨迹推进与状态同步单测绿。
+7. **揽收与追踪接口** → 产物：店长揽收接口（PAID→COLLECTED）、`GET /ship-orders/:id/tracks` 追踪；验收：揽收后产生首个轨迹节点。
+8. **前端寄件录单（station-web）** → 产物：寄件录单页（寄/收信息、选快递、报价、模拟支付）；验收：店内可完成一单寄件至 PAID。
+9. **前端在线寄件与追踪（user-app）** → 产物：用户下单页 + 我的寄件 + 物流追踪页；验收：用户可下单、支付、看轨迹。
+10. **P2-1 e2e 冒烟** → 产物：`test/shipping.e2e-spec.ts`（下单→支付→揽收→轨迹→DELIVERED）；验收：寄件全链路 e2e 绿。
+
+**验收标准**：寄件状态机全流转可走通；定价/选快递规则单测覆盖；模拟支付幂等；轨迹随状态推进；前后端可完成一单完整代寄。
+
+**依赖**：P1-2（parcel/事件/通知基础设施可复用）、P1-1（鉴权）。
+
+---
+
+### P2-2 滞留与异常（Overdue Scan & Exceptions）
+
+**目标**：上线运营兜底能力——BullMQ 定时扫描在库滞留包裹、分级催取通知、超超期转 RETURNED；异常件工单（标记异常/处理/归位）闭环。
+
+**涉及上下文与关键文件/模块**：
+- `core/`：BullMQ 队列基础设施（队列定义、worker、调度器）、多实例防重占位（P3-4 用 ShedLock 强化，本期先用 BullMQ repeatable job 单调度）。
+- `parcel/`：滞留扫描任务（扫 STORED 超 N 天）、发 `ParcelOverdueDetected`、超期转 RETURNED 动作。
+- `notify/`：分级催取模板（首次/二次/最终催取）。
+- `exceptions/`：`exception.service`（标记异常 EXCEPTION、建工单、处理、归位回 STORED 或转 RETURNED）；表 `exceptions`。
+- 事件：`ParcelOverdueDetected / ParcelMarkedException / ParcelReturned`。
+
+**有序任务列表**：
+1. **BullMQ 基础设施** → 产物：`core/queue`（连接 Redis、注册队列、repeatable job 注册、worker 装配）；验收：能注册一个定时 job 并被消费的集成测绿。
+2. **滞留扫描任务** → 产物：`overdue-scan.processor`（按租户/门店配置阈值查 STORED 超 N 天，分级）；验收：构造不同入库时间的数据扫出正确分级的单测绿。
+3. **分级催取通知** → 产物：`notify` 三级催取模板 + 扫描结果触发对应级别通知（幂等：同包裹同级别不重发）；验收：分级触发与去重单测绿。
+4. **超期转 RETURNED** → 产物：`parcel.service` 超超期动作（EXCEPTION/STORED → RETURNED，发 `ParcelReturned`，释放库位）；验收：超期转退回并释放库位单测绿。
+5. **异常件工单服务** → 产物：`exception.service`（标记异常建工单、查工单、处理、归位/退回）+ `exceptions` 模型 + RLS；验收：标记→处理→归位/退回工单流转单测绿。
+6. **异常与滞留接口** → 产物：`POST /parcels/:id/exception`、`GET /exceptions`、`POST /exceptions/:id/resolve`；验收：接口走通、权限校验生效。
+7. **前端异常工作台（station-web）** → 产物：异常件列表与处理页、滞留催取看板；验收：店长可标记异常、处理工单、看滞留分级。
+8. **P2-2 e2e 冒烟** → 产物：`test/overdue-exception.e2e-spec.ts`（造滞留→扫描→催取→超期退回；标记异常→处理）；验收：滞留与异常两条链路 e2e 绿。
+
+**验收标准**：定时扫描可调度且单实例不重复执行；分级催取去重；超期正确转 RETURNED 并释放库位；异常工单闭环；事件订阅幂等。
+
+**依赖**：P1-2（parcel 状态机/notify/库位）；与 P3-4（多实例防重加固）解耦先行。
+
+---
+
+### P2-3 会员与评价（Member & Review）
+
+**目标**：增强用户粘性——会员积分（取件/寄件得分）、优惠券、签到；评价与投诉。
+
+**涉及上下文与关键文件/模块**：
+- `member/`：`member.service`（会员档案）、`point.service`（积分规则/流水）、`coupon.service`（优惠券发放/核销）、`checkin.service`（签到）；表 `members / point_records`（+ `coupons`）；订阅 `ParcelPickedUp / ShipOrderPaid` 记积分。
+- `review/`：`review.service`（评价/投诉提交、店长查看回复）；表 `reviews`。
+- 前端：`user-app` 会员中心/积分/券/评价；`station-web` 评价投诉处理。
+
+**有序任务列表**：
+1. **member 模型与开户** → 产物：`members/point_records` 模型 + RLS + 注册/查会员（按 Consumer 关联）；验收：开户与查档单测绿。
+2. **积分规则与流水** → 产物：`point.service`（积分规则配置、加减分、流水）；验收：积分计算与流水单测绿。
+3. **积分事件订阅** → 产物：订阅 `ParcelPickedUp/ShipOrderPaid` 自动记积分（幂等）；验收：核销/支付各记一次积分、重复事件不重复加分单测绿。
+4. **优惠券服务** → 产物：`coupon.service`（券模板、发放、核销、过期）；验收：发券/核销/过期单测绿。
+5. **签到服务** → 产物：`checkin.service`（每日签到得分、防重复签到）；验收：连续/重复签到单测绿。
+6. **评价与投诉服务** → 产物：`review.service`（提交评价/投诉、店长查看与回复、状态流转）+ `reviews` 模型 + RLS；验收：提交→回复流转单测绿。
+7. **会员与评价接口** → 产物：会员中心、积分流水、券列表、签到、评价提交/回复接口；验收：接口走通、权限/数据范围正确。
+8. **前端会员中心（user-app）+ 评价处理（station-web）** → 产物：用户积分/券/签到/评价页 + 店长评价投诉处理页；验收：用户可签到得分用券、提交评价；店长可回复。
+9. **P2-3 e2e 冒烟** → 产物：`test/member-review.e2e-spec.ts`（核销得分→签到→领券核销；提交评价→店长回复）；验收：会员与评价链路 e2e 绿。
+
+**验收标准**：积分由事件驱动且幂等；券全生命周期可用；签到防重；评价投诉闭环；数据租户隔离。
+
+**依赖**：P1-2（`ParcelPickedUp`）、P2-1（`ShipOrderPaid`）。
+
+---
+
+### P2-4 运营大屏（Analytics Dashboard）
+
+**目标**：把经营数据可视化——指标聚合（事件增量统计 + Redis 计数/排行榜）、Socket.IO 实时大屏、报表导出。
+
+**涉及上下文与关键文件/模块**：
+- `analytics/`：`metrics.service`（订阅各领域事件做增量统计：入库/取件/寄件/积分/异常等）、Redis 计数与排行榜、`report.service`（报表生成/导出 CSV/Excel）、`analytics.gateway`（Socket.IO 推送）。
+- 前端：`station-web` 经营看板 + `admin-web`（雏形）全局大屏；实时数据走 WebSocket。
+
+**有序任务列表**：
+1. **事件增量统计** → 产物：`metrics.service` 订阅 `ParcelStored/PickedUp/Returned/ShipOrderPaid/...` 累加 Redis 计数（按租户/门店/日）；验收：事件驱动计数准确、幂等不重复计单测绿。
+2. **指标查询接口** → 产物：`GET /analytics/overview|trend|ranking`（当日/区间趋势/门店排行）；验收：聚合结果与计数一致、租户隔离。
+3. **Socket.IO 实时网关** → 产物：`analytics.gateway`（鉴权握手、按租户房间、事件到件实时推送）；验收：发生 `ParcelStored` 时房间内客户端收到推送的集成测绿。
+4. **报表导出** → 产物：`report.service`（区间报表查询 + 导出 CSV/Excel，走 BullMQ 异步生成 + file 存储）；验收：导出文件内容正确、异步完成回查可下载。
+5. **前端经营看板（station-web）** → 产物：实时指标卡 + 趋势图 + 排行 + 导出按钮（WebSocket 实时刷新）；验收：实时数据随入库/核销跳动、可导报表。
+6. **admin-web 全局大屏雏形** → 产物：平台侧多租户汇总大屏骨架（为 P3 监控铺路）；验收：能看跨租户汇总（平台 bypass）指标。
+7. **P2-4 e2e/集成冒烟** → 产物：`test/analytics.e2e-spec.ts`（触发事件→计数变化→接口/WebSocket 一致→导出）；验收：统计与实时推送链路绿。
+
+**验收标准**：指标由事件驱动且与明细一致；WebSocket 实时推送按租户隔离；报表可异步导出下载；前端看板实时刷新。
+
+**依赖**：P1-2（核心事件）；P2-1/2-2/2-3 上线后数据源更全（可增量补统计）。
+
+---
+
+### P3-1 订阅计费（Billing）
+
+**目标**：实现 SaaS 变现——套餐（基础/标准/旗舰，含基础额度）、订阅、账单、用量计量（短信条数等），计费 = 月费套餐 + 超额用量加费。
+
+**涉及上下文与关键文件/模块**：
+- `billing/`：`plan.service`（套餐）、`subscription.service`（订阅生命周期）、`usage.service`（用量计量，订阅各上下文用量事件如短信发送）、`invoice.service`（账单生成：月费+超额）、计费定时任务（账期出账）；表 `plans / subscriptions / invoices / usage_records`。
+- 事件：消费 `NotificationRequested`/发送结果等做短信用量计量；订阅状态影响 `tenant`（欠费 → SUSPENDED）。
+
+**有序任务列表**：
+1. **套餐模型与管理** → 产物：`plans` 模型 + RLS（平台级）+ `plan.service`（建套餐/含额度定义/定价）；验收：套餐 CRUD 单测绿。
+2. **订阅生命周期** → 产物：`subscription.service`（开通/续费/到期/暂停，绑定门店与套餐，账期）；验收：订阅状态流转单测绿。
+3. **用量计量** → 产物：`usage.service` 订阅用量事件（短信发送等）累加 `usage_records`（按订阅/账期/计量项，幂等）；验收：发短信即计一次量、重复事件不重计单测绿。
+4. **账单生成** → 产物：`invoice.service`（按账期出账：月费 + 超额=用量−额度 的加费，生成 `invoices`）；验收：含额度/超额的计费计算单测绿（边界：刚好用满、超额）。
+5. **出账定时任务** → 产物：账期出账 repeatable job（多实例防重，复用 P3-4 锁或 BullMQ 单调度）；验收：到账期自动出账集成测绿。
+6. **欠费联动租户状态** → 产物：欠费/超期未付 → 发事件置 `tenant` SUSPENDED（登录/写操作受限）；验收：欠费后租户被停用、付清恢复单测绿。
+7. **计费接口** → 产物：套餐/订阅/账单/用量查询与操作接口（平台与租户视角）；验收：接口与权限/隔离正确。
+8. **前端计费页** → 产物：`admin-web` 套餐与订阅管理 + `station-web` 我的订阅/账单/用量页；验收：店长看账单用量、平台管套餐订阅。
+9. **P3-1 e2e 冒烟** → 产物：`test/billing.e2e-spec.ts`（开通订阅→产生用量→出账→欠费停用→付清恢复）；验收：计费全链路 e2e 绿。
+
+**验收标准**：月费+超额混合计费计算正确且有边界用例；用量计量事件驱动幂等；出账可定时；欠费正确联动租户停用/恢复。
+
+**依赖**：P1-1（tenant/RBAC）、P2-4（用量/统计基础设施可复用）。
+
+---
+
+### P3-2 自助入驻审核（Tenant Onboarding）
+
+**目标**：开放自助入驻——经营者在线申请 → 平台审核 → 自动开通（建租户/店长/默认门店/起订阅），替代 P1 手动开店；配套 `admin-web` 审核端。
+
+**涉及上下文与关键文件/模块**：
+- `tenant/`：`application.service`（申请提交、状态机 申请→审核中→通过/驳回）、`onboarding.service`（通过后开通：复用 P1-1 开店 + P3-1 起订阅）；表 `tenant_applications`；发 `TenantStatusChanged`。
+- 前端：公开申请页（H5/官网入口）、`admin-web` 审核列表与详情。
+
+**有序任务列表**：
+1. **入驻申请模型与提交** → 产物：`tenant_applications` 模型 + `application.service.submit`（公开提交，含资料字段）；验收：提交建申请单测绿、重复手机号校验。
+2. **审核状态机** → 产物：申请状态流转（PENDING→APPROVED/REJECTED，驳回带原因）；验收：审核流转单测绿。
+3. **通过开通编排** → 产物：`onboarding.service`（审核通过 → 建租户+店长+默认门店 → 起默认订阅 → 发 `TenantStatusChanged`）；验收：一键开通后租户可用、店长可登录单测绿。
+4. **入驻接口** → 产物：公开 `POST /onboarding/applications`、平台 `GET/POST /admin/applications(:id)/review`；验收：公开提交无需登录、审核需平台权限。
+5. **前端申请页** → 产物：公开入驻申请页（H5）；验收：可提交申请、看到「待审核」状态。
+6. **admin-web 审核端** → 产物：申请列表/详情/通过/驳回页；验收：平台可审核并触发开通。
+7. **P3-2 e2e 冒烟** → 产物：`test/onboarding.e2e-spec.ts`（申请→审核通过→开通→店长登录→订阅生效）；验收：自助入驻全链路 e2e 绿。
+
+**验收标准**：申请→审核→开通闭环；开通自动建租户/店长/门店并起订阅；公开提交与平台审核权限边界正确；`TenantStatusChanged` 事件发出。
+
+**依赖**：P1-1（开店能力）、P3-1（起订阅）。
+
+---
+
+### P3-3 平台运营后台完善（Admin Console）
+
+**目标**：把 `admin-web` 做成完整平台运营后台——多门店/多租户监控、操作审计、系统配置（数据字典、渠道开关）。
+
+**涉及上下文与关键文件/模块**：
+- `audit/`：`audit.interceptor`（AOP 记录关键操作）、`audit.service`（查询）；表 `audit_logs`。
+- `config/`（系统配置）：数据字典、渠道开关（如 `NOTIFY_SMS_PROVIDER`、各适配器降级/接真开关）持久化 + 运行时读取；表 `system_configs / dictionaries`。
+- `analytics/`：复用 P2-4 跨租户汇总，扩展多租户/多门店监控视图。
+- 前端：`admin-web` 监控、审计、配置三大模块。
+
+**有序任务列表**：
+1. **操作审计 AOP** → 产物：`audit.interceptor` 自动记录关键写操作（操作人/租户/动作/对象/前后值摘要）+ `audit_logs` 模型；验收：受控接口被调用即落审计、敏感字段脱敏单测绿。
+2. **审计查询** → 产物：`audit.service` + `GET /admin/audit-logs`（按租户/操作人/时间/动作筛选）；验收：查询与平台权限正确。
+3. **系统配置与数据字典** → 产物：`config.service`（字典 CRUD、渠道开关读写、热生效缓存）+ 模型；验收：改渠道开关后适配器选择切换（mock↔real 入口）单测绿。
+4. **多租户/多门店监控** → 产物：`admin-web` 监控视图复用 analytics 跨租户汇总 + 租户/门店健康状态（在线/订阅/异常）；验收：平台可看全局与下钻单门店。
+5. **admin-web 审计与配置页** → 产物：审计日志页、系统配置/字典/渠道开关页；验收：平台可查审计、改配置。
+6. **P3-3 e2e 冒烟** → 产物：`test/admin-console.e2e-spec.ts`（触发写操作→审计可查；改渠道开关→生效）；验收：审计与配置链路 e2e 绿。
+
+**验收标准**：关键操作全审计且脱敏；渠道开关可热切换并被适配层读取；平台监控可跨租户汇总与下钻；权限严格限平台角色。
+
+**依赖**：P3-2（多租户已成规模）、P2-4（监控数据源）。
+
+---
+
+### P3-4 工程化加固（Hardening）
+
+**目标**：把系统提到可多实例上线的稳健度——接口限流与熔断、多级缓存、可观测性（结构化日志/指标/链路追踪）、ShedLock 式多实例定时任务防重。
+
+**涉及上下文与关键文件/模块**：
+- 横切/基础设施：限流（`@nestjs/throttler` + Redis）、熔断（适配层外呼包熔断器）、多级缓存（本地 LRU + Redis，写时失效）、可观测性（请求链路 ID、结构化日志、Prometheus 指标、健康检查）、分布式锁（Redis/Postgres advisory lock 实现 ShedLock 等价物）统一收口定时任务。
+
+**有序任务列表**：
+1. **接口限流** → 产物：全局 + 按接口限流（登录/核销等热点更严），Redis 后端；验收：超阈值返回限流业务码的集成测绿。
+2. **适配层熔断** → 产物：外呼适配器（notify/pay/logistics/ocr）包熔断器（失败率/超时打开、半开恢复、打开时降级）；验收：模拟下游失败触发熔断与降级单测绿。
+3. **多级缓存** → 产物：缓存抽象（本地 LRU + Redis 两级，统一 key 规范、TTL、写时失效）应用到取件码/权限/字典/统计热点；验收：命中/失效/穿透防护单测绿。
+4. **分布式锁与定时任务防重** → 产物：分布式锁工具（ShedLock 等价）统一包裹滞留扫描/出账/报表等定时任务，多实例只执行一次；验收：模拟双实例并发只执行一次的集成测绿。
+5. **可观测性** → 产物：请求链路 ID 贯穿日志、结构化日志、`/metrics`（Prometheus）、`/health` 健康检查；验收：日志带 traceId、指标可抓取、健康检查反映依赖状态。
+6. **P3-4 验证冒烟** → 产物：`test/hardening.e2e-spec.ts`（限流触发、熔断降级、双实例定时只跑一次、health 返回）；验收：加固项 e2e/集成绿。
+
+**验收标准**：热点接口限流生效；下游故障熔断+降级；缓存两级且写时失效；定时任务多实例防重；具备日志/指标/链路/健康检查。
+
+**依赖**：P2-2（定时任务已存在待加固）、P3-* 上线后规模化需要。
+
+---
+
+### P4-1 OCR 面单识别入库（OCR Inbound）
+
+**目标**：入库提速——拍面单照片由 ai-service OCR 识别运单号/手机号自动填单，识别失败回落手动；`OcrProvider` 适配层接真云 OCR。
+
+**涉及上下文与关键文件/模块**：
+- `ai-service/`（Python FastAPI）：`/ocr/waybill` 接口、`OcrProvider` 抽象（`mock` 规则/假数据 + `real` 云 OCR）。
+- 后端 `inbound/`：`ocr.client`（调 ai-service）、OCR 结果映射入库表单、低置信度回落手动；`file/` 存面单图。
+- 前端：`station-web` 入库页加「拍照/上传识别」入口。
+
+**有序任务列表**：
+1. **ai-service OCR 接口骨架** → 产物：FastAPI `/ocr/waybill`（接图返回结构化字段+置信度）+ `OcrProvider` 抽象 + mock 实现；验收：mock 返回固定字段的接口测绿。
+2. **接真 OCR Provider** → 产物：`real` OcrProvider（云 OCR SDK，env 开关切换）+ 失败降级；验收：开关切 real 走真识别、失败回 mock/手动（集成测，真服务可打桩）。
+3. **后端 OCR 客户端与映射** → 产物：`inbound` 调 ai-service、字段映射到入库表单、低置信度标记需人工确认、面单图存 file；验收：高/低置信度分支单测绿。
+4. **OCR 辅助入库接口** → 产物：`POST /inbound/ocr`（上传图→识别→预填→确认入库复用 P1-2 入库）；验收：识别预填 + 人工确认入库链路绿。
+5. **前端拍照识别入库** → 产物：入库页拍照/上传识别、预填可改、确认入库；验收：店长可拍照识别后一键入库、低置信度提示核对。
+6. **P4-1 e2e 冒烟** → 产物：`test/ocr-inbound.e2e-spec.ts`（上传图→识别→入库 STORED；mock/real 开关）；验收：OCR 入库链路绿、降级可用。
+
+**验收标准**：OCR 识别预填入库可用；低置信度回落人工；`OcrProvider` 可 mock/real 切换且失败降级；面单图留存。
+
+**依赖**：P1-2（入库）、P3-4（适配层熔断/降级、file 稳健）。
+
+---
+
+### P4-2 大模型智能客服（AI Assistant）
+
+**目标**：用户/店员问答提效——ai-service 接大模型 + 知识库（FAQ/操作指引/包裹状态查询），降级回 FAQ 检索。
+
+**涉及上下文与关键文件/模块**：
+- `ai-service/`：`/assistant/chat`（RAG：知识库检索 + 大模型生成）、知识库构建（FAQ/文档向量化）、`LlmProvider` 抽象（mock/real）、降级到关键词 FAQ。
+- 后端 `ai/`：`assistant.client`、会话上下文、可调用工具（查包裹/取件码状态，受权限与租户约束）。
+- 前端：`user-app` + `station-web` 客服入口。
+
+**有序任务列表**：
+1. **知识库构建** → 产物：FAQ/操作文档导入 + 向量化检索（mock：关键词匹配；real：向量库）；验收：给定问题检索到相关条目的测绿。
+2. **assistant 对话接口** → 产物：`/assistant/chat`（RAG 组装 + LlmProvider 生成 + 引用来源）+ mock/real 开关；验收：mock 回固定模板、real 走大模型（可打桩）。
+3. **工具调用（受控）** → 产物：助手可调后端只读工具（查我的包裹/取件码/订单状态），强制带租户/权限上下文；验收：越权/跨租户被拒、合法查询返回正确单测绿。
+4. **降级策略** → 产物：大模型不可用回落知识库 FAQ 直答；验收：模拟 LLM 故障仍返回 FAQ 答案单测绿。
+5. **前端客服入口** → 产物：`user-app`/`station-web` 对话窗口（流式回复、引用展示）；验收：用户能问「我的包裹在哪/怎么取件」拿到含真实数据的回答。
+6. **P4-2 e2e 冒烟** → 产物：`test/assistant.e2e-spec.ts`（提问→检索→（工具）→回答；LLM 故障降级）；验收：客服链路绿、降级可用。
+
+**验收标准**：RAG 问答可用且带来源；工具调用受租户/权限约束；LLM 故障降级到 FAQ；前端可对话。
+
+**依赖**：P1-3（前端）、P4-1（ai-service 已就绪）。
+
+---
+
+### P4-3 智能库位推荐与包裹量预测（Smart Slot & Forecast）
+
+**目标**：从规则化升级到智能——库位智能推荐（替代 P1-2 顺序分配，按取件概率/货架热度/动线优化）、包裹量预测（按历史预测高峰、辅助排班/库位预留）。
+
+**涉及上下文与关键文件/模块**：
+- `ai-service/`：`/slot/recommend`（特征→推荐库位）、`/forecast/volume`（时序预测包裹量）；规则/统计模型起步，可升级 ML。
+- 后端 `station/`：`slot-allocator` 接入推荐（推荐失败回落 P1-2 规则）；`analytics/`：预测结果接口与看板。
+- 前端：`station-web` 货架热力/推荐位提示、预测看板。
+
+**有序任务列表**：
+1. **库位推荐服务** → 产物：ai-service `/slot/recommend`（输入门店货架占用/包裹特征→输出推荐位排序）+ 回落规则；验收：给定占用态返回合理推荐的测绿。
+2. **分配器接入推荐** → 产物：`slot-allocator` 优先用推荐、不可用回 P1-2 顺序分配，仍加锁防撞位；验收：推荐位被占时正确回退单测绿。
+3. **包裹量预测服务** → 产物：`/forecast/volume`（用 analytics 历史→输出未来区间预测）；验收：历史数据驱动预测、空数据兜底的测绿。
+4. **预测接口与看板** → 产物：后端预测查询接口 + `station-web` 预测看板/货架热力；验收：店长可看预测高峰与货架热度。
+5. **P4-3 集成冒烟** → 产物：`test/smart-slot-forecast.e2e-spec.ts`（入库走推荐位→回退验证；预测接口返回）；验收：智能分配与预测链路绿、降级可用。
+
+**验收标准**：库位推荐生效且失败回落规则、不撞位；预测有历史驱动与空数据兜底；看板可视化。
+
+**依赖**：P2-4（历史统计）、P4-1（ai-service）。
+
+---
+
+### P4-4 接真实外部服务（Real Integrations）
+
+**目标**：把所有降级适配器切到真服务——腾讯云短信、微信支付、物流 API（快递100/快递鸟）、微信小程序订阅消息；全部由配置开关切换，业务代码不动，保留随时回降级。
+
+**涉及上下文与关键文件/模块**：
+- `notify/`：`TencentSmsChannel`、`WechatSubscribeChannel`（小程序订阅消息/公众号模板）。
+- `pay/`：`WechatPayChannel`（下单/回调/对账）。
+- `logistics/`：`KuaiDi100Provider`/`KdNiaoProvider`（真实下单与轨迹订阅/回调）。
+- 横切：回调验签、密钥管理、对账、开关与回降级（复用 P3-3 渠道开关、P3-4 熔断）。
+
+**有序任务列表**：
+1. **腾讯云短信接真** → 产物：`TencentSmsChannel`（模板报备映射、发送、失败重试、用量回 P3-1 计量），开关 `NOTIFY_SMS_PROVIDER=tencent`；验收：开关切 tencent 走真发（沙箱/打桩）、失败回 mock 集成测绿。
+2. **微信小程序订阅消息** → 产物：`WechatSubscribeChannel`（订阅消息下发、用户授权态处理），到件通知可走小程序；验收：到件触发订阅消息（打桩）、无授权回降级。
+3. **微信支付接真** → 产物：`WechatPayChannel`（统一下单、支付回调验签、订单对账），寄件支付走真支付，开关切换；验收：下单→回调→PAID 闭环（沙箱/打桩）、回调验签与幂等正确。
+4. **物流 API 接真** → 产物：`KuaiDi100/KdNiao` Provider（真实下单、轨迹订阅/回调写 `logistics_tracks`），开关切换；验收：真实轨迹回调入库、失败回模拟轨迹集成测绿。
+5. **密钥/回调安全与对账** → 产物：密钥安全存取、回调统一验签、支付/短信对账任务；验收：伪造回调被拒、对账差异可发现。
+6. **P4-4 切换验证冒烟** → 产物：`test/real-integrations.e2e-spec.ts`（各渠道 mock↔real 开关切换、真路径打桩跑通、失败回降级）；验收：四类真服务接入链路绿、可一键回降级。
+
+**验收标准**：四类外部服务均可由开关切真/回降级，业务代码零改动；回调验签与幂等安全；真实用量回流计费；失败自动降级不影响核心闭环。
+
+**依赖**：P2-1（pay/logistics/notify 适配层与降级实现）、P3-4（熔断/开关/可观测）、P3-1（用量计量回流）。
+
+---
+
+## 附：执行顺序与并行建议
+
+- **关键路径**：P1-1 → P1-2 → P1-3（MVP 可上线）→ P2-1/P2-2（并行）→ P2-3 → P2-4 → P3-1 → P3-2 → P3-3 → P3-4 → P4-1 → P4-2/P4-3（并行）→ P4-4。
+- **可并行点**：P2-1 与 P2-2 仅共用 P1-2 基础，可并行；P4-2 与 P4-3 在 P4-1 之后可并行；P4-4 各渠道（短信/支付/物流）内部可并行接入。
+- **每进入一个 plan**：先按本表「有序任务列表」展开为逐步 TDD 计划文件（粒度对齐 P1-1），经评审后再执行；执行用 subagent-driven（每 Task 派子代理 + Task 间评审）或 executing-plans。
+- **每个 plan 的隐性验收**（贯穿全程）：新表带 RLS、新事件订阅方幂等、热点并发加锁、收尾有 e2e 冒烟、测试全绿、频繁提交。

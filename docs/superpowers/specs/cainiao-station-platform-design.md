@@ -1,0 +1,235 @@
+# 菜鸟驿站 SaaS 平台 · 设计方案（整合版）
+
+> 版本 v2.0（整合版，2026-06-18）｜ 面向**真实运营**的多租户 SaaS 驿站管理平台
+> 本文为全平台设计基线；UI 细节见《UI 设计规范》，分期实现见《实现计划总表》。
+
+---
+
+## 1. 项目概述
+
+### 1.1 定位
+菜鸟驿站是社区/校园最后一公里的代收代寄网点。本平台是一套对外开放的 **SaaS**：很多互不相干的驿站经营者注册入驻、各自独立使用、数据互相隔离、按店订阅收费。核心价值——让驿站老板开箱即用地完成「代收（入库→通知→取件）+ 代寄 + 经营分析」，平台方通过订阅与增值变现。
+
+### 1.2 角色与三端
+| 端 | 应用 | 使用者 | 职责 |
+|---|---|---|---|
+| 驿站工作台 | `station-web` | 驿站店长/店员 | 入库、库位、取件核销、寄件、店内数据 |
+| 平台运营后台 | `admin-web` | SaaS 平台运营方 | 租户/门店审核、订阅计费、全局监控、平台配置 |
+| 用户端 | `user-app` | 收件人/寄件人 | 查件、取件码、在线寄件、物流追踪 |
+
+### 1.3 运营模式
+- **多租户**：一个「租户」= 一个驿站经营主体，下可挂 1~N 个门店（数据模型支持多门店；首期界面按单门店）。
+- **入驻**：P1 由平台手动开店；P3 开放自助申请→审核→开通。
+- **变现（月费 + 用量混合）**：按门店月费订阅（基础/标准/旗舰套餐，含基础额度）+ 超额用量加费（短信条数等）+ 增值（寄件抽佣、AI）。P3 落地。
+
+### 1.4 设计原则
+1. **演进式架构**：第一天就按微服务边界（限界上下文 + 事件 + 契约）设计，以模块化单体形态部署；哪个上下文先扛不住就先抽哪个。
+2. **适配层可降级**：外部依赖（扫码/短信/支付/物流/OCR）一律「接口 + 现在可降级 + 以后接真的」，核心业务不被资质/硬件卡住。
+3. **数据不串门**：每个上下文只碰自己的表，跨上下文只走接口或领域事件。
+4. **多租户安全是底线**：租户隔离由数据库层（RLS）强制。
+5. YAGNI，但边界先行。
+
+---
+
+## 2. 总体架构
+
+### 2.1 架构风格
+**模块化单体 + 微服务可演进**。单一 NestJS 应用按限界上下文分模块，模块间通过领域服务接口（同步）与领域事件总线（异步）通信，不互相直连数据库。AI 能力从第一天起即独立进程（Python FastAPI），作为「已拆出的第一个服务」验证拆分模式。
+
+### 2.2 技术栈
+| 维度 | 选型 |
+|---|---|
+| 后端 | Node 22 LTS + **NestJS** + TypeScript（Monorepo：apps + libs） |
+| 数据库 | **PostgreSQL 16 + Prisma**，行级安全 **RLS** 强制多租户隔离 |
+| 缓存/队列 | Redis 7 + **BullMQ**（取件码、验证码、异步任务、滞留扫描） |
+| 鉴权 | Passport + JWT；RBAC（平台 + 租户两套角色） |
+| 实时 | Socket.IO（运营大屏、到件推送） |
+| 存储/文档 | MinIO（S3 兼容）/ Swagger(OpenAPI3) |
+| AI | Python 3.12 + FastAPI（OCR、大模型客服），走适配层接口 |
+| 前端 | Vue3 + TS + Vite + Pinia + Vue Router；`station-web`/`admin-web` 用 Element Plus，`user-app` 用 **uni-app**（编译微信小程序 + H5） |
+| 部署 | Docker Compose 一键起，单机可上线 |
+
+### 2.3 系统分层
+```
+接入层   Nginx 反代 · 静态托管(3 前端) · API 网关(预留)
+应用层   Controllers(REST) · WebSocket Gateway · 鉴权/限流
+领域层   各限界上下文(Domain Services) · 领域事件 · 状态机
+适配层   notify/pay/logistics/ocr/file 适配器(接口 + 可降级实现)
+基础设施 PostgreSQL(RLS) · Redis/BullMQ · MinIO · EventBus
+```
+
+### 2.4 限界上下文地图（= 未来微服务切分线）
+```
+平台层    identity(认证/RBAC)   tenant(租户/入驻)   billing(订阅计费)
+核心业务  station(门店/货架库位)   parcel(包裹核心域:聚合+状态机)
+          inbound(入库) ─▶ parcel ◀─ pickup(取件核销)   shipping(寄件) ─▶ parcel
+能力/适配  notify   pay   logistics   ocr/ai   file
+支撑      analytics(统计/大屏)   audit(操作日志)   member(会员/积分)
+```
+每个方框 = 一个 Nest 模块 = 一个未来可独立部署的服务。`parcel` 是心脏。
+
+### 2.5 仓库结构（Monorepo）
+```
+backend/        # NestJS（apps/api 模块化单体；libs：contracts/core/tenant-context/event-bus）
+ai-service/     # Python FastAPI（OCR + 大模型）
+station-web/    # 驿站工作台（Vue3 + Element Plus）
+admin-web/      # 平台运营后台（Vue3 + Element Plus）
+user-app/       # 用户端（uni-app → 小程序 + H5）
+deploy/         # docker-compose、nginx、初始化
+docs/           # 设计、计划、UI 规范、ADR
+```
+后端业务分包：`identity / tenant / billing / station / parcel / inbound / pickup / shipping / logistics / notify / pay / file / analytics / audit / member / ai`。
+
+---
+
+## 3. 多租户设计
+
+- **隔离策略**：共享库 + 共享 Schema + 行级 `tenant_id` + Postgres RLS。
+- **租户层级**：`Platform → Tenant(隔离边界,计费单位) → Station(门店,1~N) + StaffUser(员工)`；`Consumer(收件人/寄件人)` 为平台级（按手机号，跨租户）。
+- **RLS 机制**：每业务表带 `tenant_id` 与 RLS Policy；请求从 JWT 解出 `tenantId` 存入 `AsyncLocalStorage`；Prisma 在事务内 `set_config('app.tenant_id', ...)`，SQL 自动被过滤；平台超管用 `app.bypass_rls='on'` 跨租户。
+- **跨店查件**：收件人按已验证手机号聚合其在各门店的包裹——专用「消费者只读通道」（绕租户 RLS、仅返回该手机号数据），不影响租户写隔离。
+- **租户生命周期**：申请 → 审核 → 开通(active) → 停用(suspended,欠费) → 注销(closed)；状态变更发 `TenantStatusChanged`。
+
+---
+
+## 4. 包裹核心域（系统心脏）
+
+### 4.1 代收包裹 Parcel 状态机
+```
+[PENDING] ──入库完成──▶ [STORED] ──取件核销──▶ [PICKED_UP]
+待入库                   在库待取                已取件
+                          │  ▲ 标记异常/归位
+                          ▼  │
+                      [EXCEPTION] ──滞留超期/退回──▶ [RETURNED]
+```
+| 状态 | 进入触发 | 关键副作用 |
+|---|---|---|
+| PENDING | 入库扫描 | 占位待分配库位 |
+| STORED | 入库完成（分配库位+取件码） | 发 `ParcelStored` → 触发通知 |
+| PICKED_UP | 取件核销 | 发 `ParcelPickedUp` → 释放库位、记积分 |
+| EXCEPTION | 标记异常 | 进异常工单 |
+| RETURNED | 滞留超期/主动退回 | 发 `ParcelReturned` → 释放库位 |
+
+状态机在 `parcel` 上下文统一收口，校验流转合法性；并发用乐观锁 + Redis 锁。
+
+### 4.2 寄件订单 ShipOrder 状态机（独立聚合）
+`CREATED → PAID → COLLECTED → IN_TRANSIT → DELIVERED`（早期可 CANCELLED）。
+
+### 4.3 领域事件
+`ParcelStored / ParcelPickedUp / ParcelMarkedException / ParcelReturned / ParcelOverdueDetected / ShipOrderCreated / ShipOrderPaid / TenantStatusChanged / NotificationRequested`。先走进程内 EventBus，演进期换 Redis Stream/Kafka，订阅方不变。
+
+---
+
+## 5. 限界上下文（职责 / 关键实体 / 接口 / 事件）
+
+- **identity（认证 + 完整自定义 RBAC）**：三类主体（平台员工/租户员工/收件人，收件人仅认证不入 RBAC）；两套独立角色体系（`roles.scope=platform|tenant`）；P1 即完整动态 RBAC（自建角色、勾权限、配菜单）。权限三层：① 功能权限（操作码 `module:action`，后端 `@RequirePermission` + 前端 `v-perm`）② 菜单/动态路由 ③ 数据范围（租户内按门店：店长=全租户门店、店员=`staff_stations` 分配门店）。三道防线：RLS 租户隔离 + 功能权限 + 门店 scope。种子角色：平台 超管/运营/客服/财务；租户 店长/店员。JWT 仅含 `userId/type/tenantId/roleCodes`，权限明细登录后拉取。
+- **tenant**：租户注册/审核/开通/停用、门店归属、入驻申请；发 `TenantStatusChanged`。
+- **billing（P3）**：套餐、订阅、账单、用量计量；计费 = 月费套餐(含额度) + 超额用量加费。
+- **station**：门店、货架(区-排-层-位)、库位；库位分配（P1 规则化，P4 智能推荐）；订阅 `ParcelPickedUp/Returned` 释放库位。
+- **inbound**：扫码/手动录入到件、绑手机号、生成取件码、调库位分配、推进至 STORED；发 `ParcelStored`。录入：键盘扫码枪/手动/批量/（P4）OCR。
+- **pickup**：核销出库（取件码/手机尾号/扫码/（P4）人脸）、家人代取授权、存证；并发加锁；发 `ParcelPickedUp`。
+- **shipping（P2）**：下单、智能选快递/定价、揽收、支付、运单；发 `ShipOrderCreated/Paid`。
+- **parcel**：包裹聚合根 + 状态机唯一权威，对外只暴露合法流转动作。
+- **notify**：统一通知出口，多渠道可降级（站内 / 模拟短信 / 腾讯云短信 / 微信模板·小程序订阅消息 / Socket.IO 推送）；BullMQ 异步 + 重试 + 模板。
+- **pay（P2）**：`PayChannel`，降级=模拟支付，真实=微信支付。
+- **logistics（P2）**：`LogisticsProvider`，降级=模拟轨迹，真实=快递100/快递鸟。
+- **ocr/ai（P4）**：独立 ai-service；面单 OCR、大模型客服、智能库位/预测；降级回落手动/FAQ。
+- **file**：`FileStorage`(MinIO，可换 OSS)；面单图、存证照、报表。
+- **analytics**：经营指标聚合、实时大屏(Socket.IO)、报表；订阅事件做增量统计 + Redis 计数/排行榜。
+- **audit**：AOP 记录关键操作。
+- **member（P2）**：会员、积分、优惠券、签到；订阅 `ParcelPickedUp/ShipOrderPaid`。
+
+---
+
+## 6. 数据模型（关键库表）
+
+> 约定：业务表含 `id(uuid)`、`tenant_id`（平台级表除外）、`created_at/updated_at/deleted_at(软删)`、`created_by`；`tenant_id` 建 RLS Policy 与联合索引。
+
+- **identity/tenant/billing**：`users`、`roles(scope,is_builtin)`、`permissions`、`menus`、`user_roles`、`role_permissions`、`role_menus`、`staff_stations`、`tenants`、`tenant_applications`、`plans`、`subscriptions`、`invoices`、`usage_records`
+- **station**：`stations`、`shelves`、`slots`
+- **parcel/inbound/pickup**：`parcels`、`parcel_events`、`pickup_authorizations`、`exceptions`
+- **shipping**：`ship_orders`、`price_rules`
+- **适配/支撑**：`notifications`、`notify_templates`、`payments`、`logistics_tracks`、`audit_logs`、`members`、`point_records`、`consumers(平台级)`
+
+---
+
+## 7. 集成适配层（统一模式：接口 + 现在降级 + 以后真实）
+
+| 集成点 | 接口 | 现在降级 | 未来真实 |
+|---|---|---|---|
+| 扫码输入 | `ScanSource` | 键盘扫码枪 / H5 摄像头 | PDA SDK |
+| 短信 | `NotifyChannel` | 站内 + 控制台模拟 | 腾讯云短信 |
+| 微信 | `NotifyChannel` | 站内/H5 | 公众号模板·小程序订阅消息 |
+| 支付 | `PayChannel` | 模拟支付 | 微信支付 |
+| 物流 | `LogisticsProvider` | 模拟轨迹 | 快递100/快递鸟 |
+| OCR | `OcrProvider` | 手动录入 | 云 OCR |
+| 存储 | `FileStorage` | MinIO | 阿里云 OSS |
+
+切换由配置开关控制（如 `NOTIFY_SMS_PROVIDER=mock|tencent`），业务代码不动。
+
+---
+
+## 8. 前端总览（详见《UI 设计规范》）
+
+- 三应用：`station-web`、`admin-web`（均 Element Plus）、`user-app`（uni-app → 小程序 + H5）。
+- **三套可切换主题**（token 化 CSS 变量，一套组件库三套皮肤）：清爽蓝 / 科技暗 / 柔和薄荷；切换记忆偏好；默认清爽蓝。
+- **布局规范：全屏平铺（full-bleed）**——固定侧栏 + 内容区铺满剩余全宽，不做居中内嵌容器。
+- 收件人身份：小程序微信登录(openid)绑手机号 / H5 手机号验证码，统一映射平台级 `Consumer`。
+- 已产出 31 页高保真（清爽蓝），见 `design/mockups/hifi/`。
+
+---
+
+## 9. 横切关注点
+
+- 鉴权与权限：JWT(access+refresh)；RBAC 三层 + 三道防线（见 §5 identity）。
+- 事件总线：`EventBus` 抽象，进程内 → MQ；订阅方幂等。
+- 异步任务（BullMQ）：通知发送、滞留扫描、报表、订阅到期；多实例防重复。
+- 缓存（Redis）：取件码、验证码、统计计数、排行榜；写时失效。
+- 并发幂等：库位分配/取件核销加 Redis 锁 + 乐观锁；对外写带幂等键。
+- 统一响应 `{code,message,data}` + 全局异常 + 操作审计 + 结构化日志 + 请求链路 ID。
+- 安全：密码 argon2/bcrypt、接口限流、RLS 防越权、输入校验、敏感信息脱敏。
+
+---
+
+## 10. 关键业务流程
+
+- **入库**：扫码/录入运单+手机号 → parcel(PENDING) → 分配库位 → 生成取件码 → STORED → `ParcelStored` → notify 异步通知 → analytics 计数。
+- **取件核销**：输入取件码/手机尾号 → 校验(Redis+DB)+加锁 → PICKED_UP → `ParcelPickedUp` → 释放库位 + 积分 + 计数 + 存证。
+- **寄件**：下单 → 报价 → 模拟支付 → `ShipOrderPaid` → 揽收 → 模拟轨迹 → 追踪。
+- **滞留扫描**：BullMQ 定时扫 STORED 超 N 天 → `ParcelOverdueDetected` → 分级催取 → 超超期转 RETURNED。
+- **入驻**：申请 → 审核 → 开通(建租户/店长/默认门店) → `TenantStatusChanged` → 起订阅。
+
+---
+
+## 11. 落地路线（分期，详见《实现计划总表》）
+
+| 期 | 主题 | 范围 |
+|---|---|---|
+| **P1** | MVP 核心闭环 | 多租户地基 + RBAC + 门店货架 + 入库→通知→取件 + 用户端查件取件 + 基础统计 |
+| **P2** | 经营增强 | 寄件+模拟支付/物流 · 滞留扫描催取 · 异常件 · 评价 · 积分 · 运营大屏 |
+| **P3** | SaaS 商业化 | 订阅计费 · 自助入驻审核 · 平台运营后台 · 多门店监控 · 限流熔断 |
+| **P4** | 智能化 & 接真服务 | OCR 入库 · 大模型客服 · 智能库位/预测 · 短信/支付/物流/微信接真实 |
+
+---
+
+## 12. 部署与演进
+
+- **部署**：Docker Compose（nginx + nest-api + ai-service + postgres + redis + minio），单机起步；Prisma migrate 版本化；Postgres + MinIO 定时备份。
+- **微服务演进**：先抽 notify/analytics/ai/file（耦合最松、负载独立）；EventBus 进程内 → Redis Stream/Kafka；契约换 gRPC/HTTP + API 网关；按上下文表组迁库。边界与契约第一天定好，拆分只改通信与部署单元。
+
+---
+
+## 附：关键决策摘要
+
+| 议题 | 决策 |
+|---|---|
+| 运营模式 | 多租户 SaaS（很多驿站入驻、数据隔离、订阅收费） |
+| 后端栈 | NestJS + TS（模块化单体、演进式微服务） |
+| 多租户隔离 | 共享库 + Postgres RLS（行级 `tenant_id`） |
+| 多门店 | 数据支持多门店，P1 界面单门店 |
+| 用户端 | uni-app（小程序 + H5），按手机号跨门店聚合查件 |
+| 计费 | 月费 + 用量混合（P3） |
+| 代收货款 COD | 暂不做（预留接口） |
+| 短信服务商 | 腾讯云（P4 接入，现模拟） |
+| 权限 | 完整自定义 RBAC（功能/菜单/数据范围三层 + 三道防线） |
+| UI 主题 | 3 套可切换（清爽蓝/科技暗/柔和薄荷），全屏平铺布局 |
