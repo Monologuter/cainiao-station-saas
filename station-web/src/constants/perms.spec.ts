@@ -11,6 +11,9 @@ describe('permission metadata', () => {
       'exception:read',
       'station:manage',
       'shipping:read',
+      'review:read',
+      'complaint:handle',
+      'coupon:manage',
     ]);
 
     expect(groups).toEqual([
@@ -36,6 +39,17 @@ describe('permission metadata', () => {
       {
         module: '寄件',
         items: [{ code: 'shipping:read', name: '查看寄件单' }],
+      },
+      {
+        module: '会员',
+        items: [{ code: 'coupon:manage', name: '管理优惠券' }],
+      },
+      {
+        module: '评价',
+        items: [
+          { code: 'review:read', name: '查看评价' },
+          { code: 'complaint:handle', name: '处理投诉' },
+        ],
       },
     ]);
   });

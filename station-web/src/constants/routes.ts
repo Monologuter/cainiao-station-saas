@@ -1,8 +1,11 @@
 import type { Component } from 'vue';
 import ExceptionsView from '@/views/ExceptionsView.vue';
+import ComplaintsView from '@/views/ComplaintsView.vue';
+import CouponsView from '@/views/CouponsView.vue';
 import InboundView from '@/views/InboundView.vue';
 import ParcelsView from '@/views/ParcelsView.vue';
 import PickupView from '@/views/PickupView.vue';
+import ReviewsView from '@/views/ReviewsView.vue';
 import ShelvesView from '@/views/ShelvesView.vue';
 import SettingsView from '@/views/SettingsView.vue';
 import ShippingView from '@/views/ShippingView.vue';
@@ -60,6 +63,22 @@ export const stationRouteDefs: StationRouteDef[] = [
     component: ExceptionsView,
   },
   {
+    code: 'reviews',
+    name: 'Reviews',
+    path: 'reviews',
+    title: '评价管理',
+    perm: 'review:read',
+    component: ReviewsView,
+  },
+  {
+    code: 'complaints',
+    name: 'Complaints',
+    path: 'complaints',
+    title: '投诉处理',
+    perm: 'complaint:read',
+    component: ComplaintsView,
+  },
+  {
     code: 'shelves',
     name: 'Shelves',
     path: 'shelves',
@@ -90,6 +109,14 @@ export const stationRouteDefs: StationRouteDef[] = [
     title: '寄件管理',
     perm: 'shipping:read',
     component: ShippingView,
+  },
+  {
+    code: 'coupons',
+    name: 'Coupons',
+    path: 'coupons',
+    title: '优惠券',
+    perm: 'coupon:manage',
+    component: CouponsView,
   },
   {
     code: 'statistics',

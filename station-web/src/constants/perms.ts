@@ -22,9 +22,16 @@ export const permissionMetas: PermissionMeta[] = [
   { code: 'shipping:pay', name: '寄件支付', module: '寄件' },
   { code: 'shipping:collect', name: '寄件揽收', module: '寄件' },
   { code: 'shipping:cancel', name: '取消寄件单', module: '寄件' },
+  { code: 'coupon:manage', name: '管理优惠券', module: '会员' },
+  { code: 'coupon:issue', name: '发放优惠券', module: '会员' },
+  { code: 'review:read', name: '查看评价', module: '评价' },
+  { code: 'review:reply', name: '回复评价', module: '评价' },
+  { code: 'review:manage', name: '管理评价', module: '评价' },
+  { code: 'complaint:read', name: '查看投诉', module: '评价' },
+  { code: 'complaint:handle', name: '处理投诉', module: '评价' },
 ];
 
-const moduleOrder = ['包裹', '异常', '门店', '寄件', '平台'];
+const moduleOrder = ['包裹', '异常', '门店', '寄件', '会员', '评价', '平台'];
 
 export function permissionName(code: string) {
   return permissionMetas.find((item) => item.code === code)?.name ?? code;
