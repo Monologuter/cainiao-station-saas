@@ -39,6 +39,18 @@ export class TenantService {
           isBuiltin: true,
         },
       });
+      const ownerPerms = await tx.permission.findMany({
+        where: { code: { in: ['station:manage', 'station:read'] } },
+      });
+      if (ownerPerms.length > 0) {
+        await tx.rolePermission.createMany({
+          data: ownerPerms.map((permission) => ({
+            roleId: ownerRole.id,
+            permissionId: permission.id,
+          })),
+          skipDuplicates: true,
+        });
+      }
       const user = await tx.user.create({
         data: {
           tenantId: tenant.id,

@@ -9,12 +9,14 @@ import { RedisService } from './core/redis/redis.service';
 import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
 import { PermissionGuard } from './modules/identity/permission.guard';
+import { StationModule } from './modules/station/station.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     IdentityModule,
+    StationModule,
     TenantModule,
   ],
   controllers: [],

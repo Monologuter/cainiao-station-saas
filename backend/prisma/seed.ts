@@ -12,6 +12,8 @@ async function main() {
     const perms = [
       { code: 'tenant:create', name: '开店', module: 'tenant' },
       { code: 'tenant:read', name: '查看租户', module: 'tenant' },
+      { code: 'station:manage', name: '货架库位管理', module: 'station' },
+      { code: 'station:read', name: '查看门店货架库位', module: 'station' },
     ];
     for (const perm of perms) {
       await tx.permission.upsert({
@@ -65,6 +67,27 @@ async function main() {
       update: {},
       create: { userId: admin.id, roleId: superRole.id },
     });
+
+    const stationPerms = await tx.permission.findMany({
+      where: { code: { in: ['station:manage', 'station:read'] } },
+    });
+    const bossRoles = await tx.role.findMany({
+      where: { tenantId: { not: null }, code: '店长' },
+    });
+    for (const role of bossRoles) {
+      for (const perm of stationPerms) {
+        await tx.rolePermission.upsert({
+          where: {
+            roleId_permissionId: {
+              roleId: role.id,
+              permissionId: perm.id,
+            },
+          },
+          update: {},
+          create: { roleId: role.id, permissionId: perm.id },
+        });
+      }
+    }
   });
 
   console.log('seed done: platform admin = admin / admin123456');

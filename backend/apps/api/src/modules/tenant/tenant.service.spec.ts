@@ -13,6 +13,8 @@ describe('TenantService.createTenant', () => {
           (created.station = { id: 's1', ...data }),
       },
       role: { create: async ({ data }: any) => ({ id: 'r1', ...data }) },
+      permission: { findMany: async () => [{ id: 'p1' }, { id: 'p2' }] },
+      rolePermission: { createMany: async () => ({ count: 2 }) },
       user: {
         create: async ({ data }: any) => (created.user = { id: 'u1', ...data }),
       },

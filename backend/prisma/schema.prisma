@@ -23,6 +23,17 @@ enum TenantStatus {
   CLOSED
 }
 
+enum ShelfStatus {
+  ACTIVE
+  DISABLED
+}
+
+enum SlotStatus {
+  FREE
+  OCCUPIED
+  DISABLED
+}
+
 model Tenant {
   id           String       @id @default(uuid()) @db.Uuid
   name         String
@@ -32,6 +43,8 @@ model Tenant {
   createdAt    DateTime     @default(now())
   users        User[]
   stations     Station[]
+  shelves      Shelf[]
+  slots        Slot[]
 }
 
 model Station {
@@ -41,8 +54,56 @@ model Station {
   code      String
   createdAt DateTime @default(now())
   tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  shelves   Shelf[]
+  slots     Slot[]
 
   @@index([tenantId])
+}
+
+model Shelf {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String      @map("tenant_id") @db.Uuid
+  stationId String      @map("station_id") @db.Uuid
+  code      String
+  name      String
+  zone      String?
+  status    ShelfStatus @default(ACTIVE)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  deletedAt DateTime?   @map("deleted_at")
+  createdBy String?     @map("created_by") @db.Uuid
+  tenant    Tenant      @relation(fields: [tenantId], references: [id])
+  station   Station     @relation(fields: [stationId], references: [id])
+  slots     Slot[]
+
+  @@unique([stationId, code])
+  @@index([tenantId, stationId])
+  @@map("shelves")
+}
+
+model Slot {
+  id              String     @id @default(uuid()) @db.Uuid
+  tenantId        String     @map("tenant_id") @db.Uuid
+  stationId       String     @map("station_id") @db.Uuid
+  shelfId         String     @map("shelf_id") @db.Uuid
+  code            String
+  rowNo           Int?       @map("row_no")
+  levelNo         Int?       @map("level_no")
+  colNo           Int?       @map("col_no")
+  status          SlotStatus @default(FREE)
+  currentParcelId String?    @map("current_parcel_id") @db.Uuid
+  version         Int        @default(0)
+  createdAt       DateTime   @default(now()) @map("created_at")
+  updatedAt       DateTime   @updatedAt @map("updated_at")
+  deletedAt       DateTime?  @map("deleted_at")
+  createdBy       String?    @map("created_by") @db.Uuid
+  tenant          Tenant     @relation(fields: [tenantId], references: [id])
+  station         Station    @relation(fields: [stationId], references: [id])
+  shelf           Shelf      @relation(fields: [shelfId], references: [id])
+
+  @@unique([stationId, code])
+  @@index([tenantId, stationId, status])
+  @@map("slots")
 }
 
 model User {
