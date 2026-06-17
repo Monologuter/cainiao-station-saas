@@ -10,6 +10,11 @@ import { TenantService } from './tenant.service';
 @Module({
   imports: [BillingModule, FileModule],
   controllers: [TenantController],
-  providers: [ApplicationService, OnboardingService, TenantService, PrismaService],
+  providers: [
+    ApplicationService,
+    OnboardingService,
+    TenantService,
+    PrismaService,
+  ],
 })
 export class TenantModule {}

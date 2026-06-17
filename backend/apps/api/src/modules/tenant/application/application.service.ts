@@ -1,8 +1,14 @@
 import { Injectable } from '@nestjs/common';
+import { EventBus } from '../../../core/event-bus/event-bus';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { ApiCode, BizError } from '../../../core/http/api-code';
 import { FileStorageService } from '../../file/file-storage.service';
+import { OnboardingService } from '../onboarding/onboarding.service';
 import type { SubmitApplicationInput } from './application.dto';
+import {
+  assertApplicationTransition,
+  type ApplicationAction,
+} from './application.state';
 
 const REQUIRED_QUALIFICATIONS = {
   COMPANY: ['BUSINESS_LICENSE'],
@@ -14,6 +20,8 @@ export class ApplicationService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly files: FileStorageService = new FileStorageService(),
+    private readonly onboarding?: OnboardingService,
+    private readonly eventBus: EventBus = new EventBus(),
   ) {}
 
   async submit(input: SubmitApplicationInput) {
@@ -122,6 +130,62 @@ export class ApplicationService {
     };
   }
 
+  async approve(
+    id: string,
+    reviewerId: string,
+    override: { planCode?: string; stationName?: string } = {},
+  ) {
+    await this.requireReviewable(id, 'approve');
+    if (!this.onboarding) {
+      throw new BizError(ApiCode.INTERNAL, '入驻编排服务未配置');
+    }
+    const result = await this.onboarding.provision({
+      applicationId: id,
+      reviewerId,
+      ...override,
+    });
+    return {
+      tenantId: result.tenantId,
+      ownerUsername: result.ownerUsername,
+    };
+  }
+
+  async reject(id: string, reviewerId: string, rejectReason: string) {
+    const reason = rejectReason.trim();
+    if (!reason) {
+      throw new BizError(ApiCode.BAD_REQUEST, '驳回原因必填');
+    }
+    const application = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      const current = await tx.tenantApplication.findUnique({
+        where: { id },
+        select: { id: true, status: true, contactPhone: true },
+      });
+      if (!current) {
+        throw new BizError(ApiCode.NOT_FOUND, '申请不存在');
+      }
+      assertApplicationTransition(current.status, 'reject');
+      return tx.tenantApplication.update({
+        where: { id },
+        data: {
+          status: 'REJECTED',
+          reviewedBy: reviewerId,
+          reviewedAt: new Date(),
+          rejectReason: reason,
+        },
+      });
+    });
+    await this.eventBus.publish(
+      EventBus.createEvent('ApplicationRejected', {
+        applicationId: application.id,
+        contactPhone: application.contactPhone,
+        rejectReason: reason,
+      }),
+    );
+  }
+
   private assertRequiredFields(input: SubmitApplicationInput) {
     if (input.entityType === 'COMPANY' && !input.unifiedCreditCode) {
       throw new BizError(ApiCode.BAD_REQUEST, '企业申请需填写统一社会信用代码');
@@ -161,5 +225,22 @@ export class ApplicationService {
         fileName: String(item.fileName ?? ''),
       }))
       .filter((item) => item.fileKey);
+  }
+
+  private async requireReviewable(id: string, action: ApplicationAction) {
+    const application = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.tenantApplication.findUnique({
+        where: { id },
+        select: { id: true, status: true },
+      });
+    });
+    if (!application) {
+      throw new BizError(ApiCode.NOT_FOUND, '申请不存在');
+    }
+    assertApplicationTransition(application.status, action);
+    return application;
   }
 }
