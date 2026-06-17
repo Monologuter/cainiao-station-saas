@@ -12,10 +12,11 @@ import {
   UsersRound,
 } from "lucide-vue-next";
 import BillingView from "@/views/BillingView.vue";
+import ApplicationsView from "@/views/ApplicationsView.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import PlansView from "@/views/PlansView.vue";
 
-type ViewKey = "overview" | "billing" | "plans";
+type ViewKey = "overview" | "applications" | "billing" | "plans";
 
 const currentView = ref<ViewKey>("overview");
 
@@ -58,6 +59,11 @@ const viewMeta = computed(() => {
       sub: "2026年6月18日 周四 · 管理租户订阅、账单回款与计费周期",
       component: BillingView,
     },
+    applications: {
+      title: "入驻审核",
+      sub: "2026年6月18日 周四 · 审核商户入驻申请并自动开通租户",
+      component: ApplicationsView,
+    },
     plans: {
       title: "套餐配置",
       sub: "2026年6月18日 周四 · 管理平台订阅套餐与用量加费规则",
@@ -68,7 +74,12 @@ const viewMeta = computed(() => {
 });
 
 function selectView(key: string) {
-  if (key === "overview" || key === "billing" || key === "plans") {
+  if (
+    key === "overview" ||
+    key === "applications" ||
+    key === "billing" ||
+    key === "plans"
+  ) {
     currentView.value = key;
   }
 }

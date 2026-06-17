@@ -275,6 +275,12 @@ svg {
   color: #fff;
 }
 
+.btn-danger {
+  border-color: var(--danger);
+  background: var(--danger);
+  color: #fff;
+}
+
 .overview-kpis {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -783,6 +789,99 @@ textarea.input {
 .empty {
   padding: 28px;
   color: var(--muted);
+}
+
+.applications-toolbar {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 14px 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.applications-toolbar .muted {
+  margin-left: auto;
+}
+
+.search-input {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 280px;
+  height: 36px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--muted);
+}
+
+.search-input input {
+  width: 100%;
+  border: 0;
+  outline: 0;
+  background: transparent;
+  color: var(--text);
+  font: inherit;
+}
+
+.entity-tag {
+  margin-left: 8px;
+}
+
+.application-modal {
+  width: 760px;
+}
+
+.review-layout {
+  display: grid;
+  grid-template-columns: 1fr 300px;
+  gap: 18px;
+}
+
+.review-block {
+  display: grid;
+  gap: 14px;
+}
+
+.review-block h4 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.review-dl {
+  display: grid;
+  grid-template-columns: 82px 1fr;
+  gap: 10px 14px;
+  font-size: 13px;
+}
+
+.review-dl dt {
+  color: var(--muted);
+}
+
+.review-dl dd {
+  font-weight: 600;
+}
+
+.license-list {
+  display: grid;
+  gap: 8px;
+}
+
+.license-list a {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px dashed var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 600;
+  text-decoration: none;
 }
 
 @media (max-width: 1120px) {
