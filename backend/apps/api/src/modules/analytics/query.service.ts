@@ -190,6 +190,42 @@ export class QueryService {
     });
   }
 
+  async platformTenantCompare(input: {
+    metric: string;
+    date?: Date;
+    limit?: number;
+  }) {
+    const statDate = this.dateOnly(input.date ?? new Date());
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const rows = await tx.metricDaily.groupBy({
+        by: ['tenantId'],
+        where: {
+          metric: input.metric,
+          statDate,
+        },
+        _sum: { value: true },
+        orderBy: { _sum: { value: 'desc' } },
+        take: input.limit ?? 10,
+      });
+      const tenants = await tx.tenant.findMany({
+        where: { id: { in: rows.map((row: any) => row.tenantId) } },
+        select: { id: true, name: true },
+      });
+      const names = new Map(
+        tenants.map((tenant: any) => [tenant.id, tenant.name]),
+      );
+
+      return {
+        metric: input.metric,
+        rows: rows.map((row: any) => ({
+          tenantId: row.tenantId,
+          name: names.get(row.tenantId) ?? row.tenantId,
+          value: Number(row._sum.value ?? 0),
+        })),
+      };
+    });
+  }
+
   private overviewFromDetail(input: OverviewInput, date: Date) {
     const { start, end } = this.dayBounds(date);
     const overdueBefore = new Date(date);

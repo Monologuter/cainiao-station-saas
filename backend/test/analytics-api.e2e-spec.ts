@@ -134,6 +134,16 @@ describe('Analytics REST API e2e', () => {
       parcels: expect.any(Number),
       gmv: expect.any(Number),
     });
+
+    const compare = await request(app.getHttpServer())
+      .get('/api/admin/analytics/tenants/compare')
+      .query({ metric: 'inbound', date: today() })
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(compare.body.data).toMatchObject({
+      metric: 'inbound',
+      rows: expect.any(Array),
+    });
   });
 
   async function login(username: string, password: string) {

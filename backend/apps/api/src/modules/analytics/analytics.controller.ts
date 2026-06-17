@@ -170,6 +170,17 @@ export class AdminAnalyticsController {
     return this.queries.platformOverview(this.parseDate(query.date));
   }
 
+  @RequirePermission('analytics:platform:read')
+  @Get('tenants/compare')
+  tenantCompare(@CurrentUser() user: any, @Query() query: any) {
+    this.assertPlatform(user);
+    return this.queries.platformTenantCompare({
+      metric: query.metric ?? 'inbound',
+      date: this.parseDate(query.date),
+      limit: this.parseLimit(query.limit),
+    });
+  }
+
   private assertPlatform(user: any) {
     if (!user?.isPlatform) {
       throw new BizError(ApiCode.FORBIDDEN, '无权限执行该操作');
@@ -178,5 +189,10 @@ export class AdminAnalyticsController {
 
   private parseDate(value?: string) {
     return value ? new Date(`${value}T00:00:00.000Z`) : undefined;
+  }
+
+  private parseLimit(value?: string) {
+    const parsed = Number(value ?? 10);
+    return Number.isFinite(parsed) && parsed > 0 ? Math.min(parsed, 100) : 10;
   }
 }
