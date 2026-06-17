@@ -36,11 +36,13 @@
     --font:'Plus Jakarta Sans','PingFang SC',system-ui,sans-serif;--font-head:var(--font);--font-num:var(--font);--glow:none;
   }
   *{box-sizing:border-box;margin:0;padding:0}
-  body{font-family:var(--font);background:var(--bg);color:var(--text);width:1440px;transition:background .3s,color .3s}
+  html,body{min-height:100vh}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;transition:background .3s,color .3s}
   :root[data-theme="dark"] body{background:var(--bg) radial-gradient(circle at 1px 1px,rgba(34,211,238,.06) 1px,transparent 0) 0 0/26px 26px}
   :root[data-theme="mint"] body{background:linear-gradient(160deg,#F1FAF6,#F2F6FF)}
   svg{stroke:currentColor;fill:none}
-  .app{display:grid;grid-template-columns:240px 1fr;min-height:920px}
+  .app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+  .side{position:sticky;top:0;height:100vh}
   /* sidebar */
   .side{background:var(--side-bg);border-right:1px solid var(--side-line);padding:18px 14px;transition:background .3s}
   .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 18px}
