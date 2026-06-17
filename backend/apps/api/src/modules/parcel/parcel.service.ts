@@ -17,6 +17,15 @@ interface StoreParcelInput {
   slotId: string;
 }
 
+interface ListParcelInput {
+  status?: string;
+  phoneTail?: string;
+  pickupCode?: string;
+  slot?: string;
+  page?: string;
+  size?: string;
+}
+
 @Injectable()
 export class ParcelService {
   constructor(
@@ -160,6 +169,52 @@ export class ParcelService {
     return event.parcel;
   }
 
+  async list(input: ListParcelInput) {
+    const page = this.parsePositiveInt(input.page, 1);
+    const size = Math.min(this.parsePositiveInt(input.size, 20), 100);
+    const where = this.toListWhere(input);
+
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const [total, list] = await Promise.all([
+        tx.parcel.count({ where }),
+        tx.parcel.findMany({
+          where,
+          include: {
+            station: true,
+            slot: true,
+          },
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * size,
+          take: size,
+        }),
+      ]);
+
+      return {
+        list: list.map((parcel: any) => this.toParcelDto(parcel)),
+        total,
+        page,
+        size,
+      };
+    });
+  }
+
+  async detail(id: string) {
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const parcel = await tx.parcel.findUnique({
+        where: { id },
+        include: {
+          station: true,
+          slot: true,
+          events: { orderBy: { createdAt: 'asc' } },
+        },
+      });
+      if (!parcel) {
+        throw new BizError(ApiCode.NOT_FOUND, '包裹不存在');
+      }
+      return this.toParcelDto(parcel);
+    });
+  }
+
   private requireContext() {
     const ctx = TenantContext.get();
     if (!ctx?.tenantId) {
@@ -170,5 +225,79 @@ export class ParcelService {
 
   private phoneTail(phone: string) {
     return phone.slice(-4);
+  }
+
+  private toListWhere(input: ListParcelInput) {
+    const where: any = {};
+    if (input.status) {
+      where.status = this.parseStatus(input.status);
+    }
+    if (input.phoneTail) {
+      where.receiverPhoneTail = input.phoneTail;
+    }
+    if (input.pickupCode) {
+      where.pickupCode = input.pickupCode;
+    }
+    if (input.slot) {
+      where.slot = { is: { code: input.slot } };
+    }
+    return where;
+  }
+
+  private parseStatus(status: string): ParcelStatus {
+    if (
+      status === 'PENDING' ||
+      status === 'STORED' ||
+      status === 'PICKED_UP' ||
+      status === 'EXCEPTION' ||
+      status === 'RETURNED'
+    ) {
+      return status;
+    }
+    throw new BizError(ApiCode.BAD_REQUEST, '包裹状态不支持');
+  }
+
+  private parsePositiveInt(value: string | undefined, fallback: number) {
+    const parsed = Number(value);
+    return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private toParcelDto(parcel: any) {
+    return {
+      id: parcel.id,
+      tenantId: parcel.tenantId,
+      stationId: parcel.stationId,
+      waybillNo: parcel.waybillNo,
+      carrier: parcel.carrier,
+      receiverPhoneTail: parcel.receiverPhoneTail,
+      pickupCode: parcel.pickupCode,
+      status: parcel.status,
+      storedAt: parcel.storedAt,
+      pickedUpAt: parcel.pickedUpAt,
+      createdAt: parcel.createdAt,
+      updatedAt: parcel.updatedAt,
+      station: parcel.station
+        ? {
+            id: parcel.station.id,
+            name: parcel.station.name,
+            code: parcel.station.code,
+          }
+        : null,
+      slot: parcel.slot
+        ? {
+            id: parcel.slot.id,
+            code: parcel.slot.code,
+          }
+        : null,
+      events: parcel.events?.map((event: any) => ({
+        id: event.id,
+        fromStatus: event.fromStatus,
+        toStatus: event.toStatus,
+        eventType: event.eventType,
+        operatorId: event.operatorId,
+        payload: event.payload,
+        createdAt: event.createdAt,
+      })),
+    };
   }
 }
