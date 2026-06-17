@@ -198,6 +198,25 @@ enum ComplaintStatus {
   CLOSED
 }
 
+enum ReportJobStatus {
+  PENDING
+  RUNNING
+  DONE
+  FAILED
+}
+
+enum ReportFormat {
+  CSV
+  XLSX
+}
+
+enum ReportType {
+  DAILY_SUMMARY
+  INBOUND_DETAIL
+  PICKUP_DETAIL
+  STATION_COMPARE
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -377,6 +396,45 @@ model Complaint {
   @@map("complaints")
 }
 
+model MetricDaily {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  stationId String?  @map("station_id") @db.Uuid
+  statDate  DateTime @map("stat_date") @db.Date
+  metric    String   @db.VarChar(40)
+  value     BigInt   @default(0)
+  updatedAt DateTime @updatedAt @map("updated_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  station   Station? @relation(fields: [stationId], references: [id])
+
+  @@unique([tenantId, stationId, statDate, metric])
+  @@index([tenantId, statDate, metric])
+  @@index([tenantId, stationId, statDate])
+  @@map("metric_daily")
+}
+
+model ReportJob {
+  id        String          @id @default(uuid()) @db.Uuid
+  tenantId  String          @map("tenant_id") @db.Uuid
+  stationId String?         @map("station_id") @db.Uuid
+  type      ReportType
+  rangeFrom DateTime        @map("range_from") @db.Date
+  rangeTo   DateTime        @map("range_to") @db.Date
+  format    ReportFormat
+  status    ReportJobStatus @default(PENDING)
+  fileKey   String?         @map("file_key") @db.VarChar(255)
+  error     String?         @db.Text
+  createdBy String          @map("created_by") @db.Uuid
+  createdAt DateTime        @default(now()) @map("created_at")
+  updatedAt DateTime        @updatedAt @map("updated_at")
+  tenant    Tenant          @relation(fields: [tenantId], references: [id])
+  station   Station?        @relation(fields: [stationId], references: [id])
+
+  @@index([tenantId, status, createdAt])
+  @@index([tenantId, stationId, createdAt])
+  @@map("report_jobs")
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
@@ -402,6 +460,8 @@ model Tenant {
   coupons              Coupon[]
   reviews              Review[]
   complaints           Complaint[]
+  metricDailies        MetricDaily[]
+  reportJobs           ReportJob[]
 }
 
 model Station {
@@ -418,6 +478,8 @@ model Station {
   exceptions ExceptionTicket[]
   reviews    Review[]
   complaints Complaint[]
+  metrics    MetricDaily[]
+  reportJobs ReportJob[]
 
   @@index([tenantId])
 }
