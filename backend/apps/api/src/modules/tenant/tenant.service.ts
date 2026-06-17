@@ -43,6 +43,7 @@ const TENANT_DEFAULT_PERMISSIONS = [
 ];
 
 const EXTRA_AVAILABLE_PERMISSIONS = [
+  { code: 'tenant:review', name: '审核入驻', module: 'tenant' },
   { code: 'analytics:reconcile', name: '手动对账重算', module: 'analytics' },
   {
     code: 'analytics:platform:read',

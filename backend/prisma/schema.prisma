@@ -252,6 +252,17 @@ enum InvoiceStatus {
   VOID
 }
 
+enum ApplicationStatus {
+  PENDING
+  APPROVED
+  REJECTED
+}
+
+enum EntityType {
+  INDIVIDUAL
+  COMPANY
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -588,6 +599,34 @@ model Invoice {
   @@index([status, dueAt])
   @@index([tenantId, subscriptionId])
   @@map("invoices")
+}
+
+model TenantApplication {
+  id                String            @id @default(uuid()) @db.Uuid
+  applicationNo     String            @unique @map("application_no") @db.VarChar(40)
+  status            ApplicationStatus @default(PENDING)
+  entityType        EntityType        @map("entity_type")
+  entityName        String            @map("entity_name") @db.VarChar(120)
+  unifiedCreditCode String?           @map("unified_credit_code") @db.VarChar(64)
+  regionCode        String            @map("region_code") @db.VarChar(20)
+  contactName       String            @map("contact_name") @db.VarChar(60)
+  contactPhone      String            @map("contact_phone") @db.VarChar(20)
+  contactEmail      String?           @map("contact_email") @db.VarChar(120)
+  stationName       String            @map("station_name") @db.VarChar(120)
+  stationAddress    String            @map("station_address") @db.VarChar(255)
+  proposedPlanCode  String?           @map("proposed_plan_code") @db.VarChar(40)
+  qualifications    Json              @default("[]")
+  reviewedBy        String?           @map("reviewed_by") @db.Uuid
+  reviewedAt        DateTime?         @map("reviewed_at")
+  rejectReason      String?           @map("reject_reason") @db.VarChar(500)
+  approvedTenantId  String?           @map("approved_tenant_id") @db.Uuid
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
+
+  @@index([status, createdAt])
+  @@index([contactPhone])
+  @@map("tenant_applications")
 }
 
 model Tenant {
