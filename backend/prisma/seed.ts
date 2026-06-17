@@ -12,6 +12,13 @@ const shippingPerms = [
   { code: 'shipping:cancel', name: '取消寄件单', module: 'shipping' },
 ];
 
+const exceptionPerms = [
+  { code: 'exception:create', name: '标记异常件', module: 'exception' },
+  { code: 'exception:read', name: '查看异常件', module: 'exception' },
+  { code: 'exception:handle', name: '处理异常件', module: 'exception' },
+  { code: 'parcel:overdue:scan', name: '手动滞留扫描', module: 'parcel' },
+];
+
 const defaultPriceRules = [
   ['SF', '顺丰速运', 900, 500, 12],
   ['YTO', '圆通速递', 600, 300, 48],
@@ -41,6 +48,7 @@ async function main() {
       { code: 'parcel:pickup', name: '取件核销', module: 'parcel' },
       { code: 'parcel:read', name: '查看包裹通知', module: 'parcel' },
       ...shippingPerms,
+      ...exceptionPerms,
     ];
     for (const perm of perms) {
       await tx.permission.upsert({
@@ -125,6 +133,7 @@ async function main() {
             'parcel:pickup',
             'parcel:read',
             ...shippingPerms.map((permission) => permission.code),
+            ...exceptionPerms.map((permission) => permission.code),
           ],
         },
       },

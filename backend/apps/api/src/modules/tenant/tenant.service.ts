@@ -21,6 +21,10 @@ const TENANT_DEFAULT_PERMISSIONS = [
   { code: 'shipping:pay', name: '寄件支付', module: 'shipping' },
   { code: 'shipping:collect', name: '寄件揽收', module: 'shipping' },
   { code: 'shipping:cancel', name: '取消寄件单', module: 'shipping' },
+  { code: 'exception:create', name: '标记异常件', module: 'exception' },
+  { code: 'exception:read', name: '查看异常件', module: 'exception' },
+  { code: 'exception:handle', name: '处理异常件', module: 'exception' },
+  { code: 'parcel:overdue:scan', name: '手动滞留扫描', module: 'parcel' },
 ];
 
 const DEFAULT_PRICE_RULES = [

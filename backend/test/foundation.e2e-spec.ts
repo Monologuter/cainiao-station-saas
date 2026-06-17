@@ -146,7 +146,14 @@ describe('Foundation e2e', () => {
       .set('Authorization', `Bearer ${bossToken}`)
       .expect(200);
     expect(bossPermissions.body.data).toEqual(
-      expect.arrayContaining(['parcel:inbound', 'parcel:pickup']),
+      expect.arrayContaining([
+        'parcel:inbound',
+        'parcel:pickup',
+        'exception:create',
+        'exception:read',
+        'exception:handle',
+        'parcel:overdue:scan',
+      ]),
     );
     expect(bossPermissions.body.data).not.toContain('tenant:create');
 
@@ -159,9 +166,13 @@ describe('Foundation e2e', () => {
       expect.arrayContaining([
         expect.objectContaining({ code: 'inbound' }),
         expect.objectContaining({ code: 'pickup' }),
+        expect.objectContaining({ code: 'exceptions', perm: 'exception:read' }),
         expect.objectContaining({ code: 'shelves' }),
       ]),
     );
+    expect(
+      flattened.find((item: any) => item.code === 'exceptions'),
+    ).not.toEqual(expect.objectContaining({ disabled: true }));
     expect(flattened).not.toEqual(
       expect.arrayContaining([
         expect.objectContaining({ code: 'tenant-open' }),

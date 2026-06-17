@@ -104,6 +104,33 @@ enum LogisticsTrackSource {
   PROVIDER
 }
 
+enum ExceptionType {
+  DAMAGED
+  MISDELIVERED
+  UNCLAIMED
+  REJECTED
+  OVERSIZED
+}
+
+enum ExceptionStatus {
+  OPEN
+  IN_PROGRESS
+  RESOLVED
+}
+
+enum ExceptionResolution {
+  CONTACT_COURIER
+  RETURN
+  RESTOCK
+  VOID
+}
+
+enum Severity {
+  LOW
+  MEDIUM
+  HIGH
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
@@ -124,6 +151,7 @@ model Tenant {
   priceRules           PriceRule[]
   payments             Payment[]
   logisticsTracks      LogisticsTrack[]
+  exceptionTickets     ExceptionTicket[]
 }
 
 model Station {
@@ -137,6 +165,7 @@ model Station {
   slots      Slot[]
   parcels    Parcel[]
   shipOrders ShipOrder[]
+  exceptions ExceptionTicket[]
 
   @@index([tenantId])
 }
@@ -201,6 +230,8 @@ model Parcel {
   status            ParcelStatus   @default(PENDING)
   storedAt          DateTime?      @map("stored_at")
   pickedUpAt        DateTime?      @map("picked_up_at")
+  lastOverdueLevel   Int            @default(0) @map("last_overdue_level")
+  overdueReturnedAt  DateTime?      @map("overdue_returned_at")
   version           Int            @default(0)
   createdAt         DateTime       @default(now()) @map("created_at")
   updatedAt         DateTime       @updatedAt @map("updated_at")
@@ -211,11 +242,44 @@ model Parcel {
   slot              Slot?          @relation(fields: [slotId], references: [id])
   events            ParcelEvent[]
   notifications     Notification[]
+  exceptionTickets  ExceptionTicket[]
 
   @@index([tenantId, stationId, status])
   @@index([tenantId, receiverPhone])
   @@index([tenantId, stationId, receiverPhoneTail, status])
   @@map("parcels")
+}
+
+model ExceptionTicket {
+  id                 String               @id @default(uuid()) @db.Uuid
+  tenantId           String               @map("tenant_id") @db.Uuid
+  stationId          String               @map("station_id") @db.Uuid
+  parcelId           String?              @map("parcel_id") @db.Uuid
+  code               String               @db.VarChar(40)
+  type               ExceptionType
+  status             ExceptionStatus      @default(OPEN)
+  resolution         ExceptionResolution?
+  severity           Severity?
+  description        String
+  evidenceUrls       Json                 @default("[]") @map("evidence_urls")
+  assigneeId         String?              @map("assignee_id") @db.Uuid
+  parcelStatusBefore ParcelStatus?        @map("parcel_status_before")
+  openedAt           DateTime             @default(now()) @map("opened_at")
+  resolvedAt         DateTime?            @map("resolved_at")
+  resolutionNote     String?              @map("resolution_note")
+  createdAt          DateTime             @default(now()) @map("created_at")
+  updatedAt          DateTime             @updatedAt @map("updated_at")
+  deletedAt          DateTime?            @map("deleted_at")
+  createdBy          String?              @map("created_by") @db.Uuid
+  tenant             Tenant               @relation(fields: [tenantId], references: [id])
+  station            Station              @relation(fields: [stationId], references: [id])
+  parcel             Parcel?              @relation(fields: [parcelId], references: [id])
+
+  @@unique([tenantId, code])
+  @@index([tenantId, status])
+  @@index([tenantId, stationId, status])
+  @@index([tenantId, parcelId])
+  @@map("exceptions")
 }
 
 model ParcelEvent {
