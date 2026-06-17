@@ -96,4 +96,56 @@ describe('NotifyService', () => {
     });
     expect(upserts[0].update).toEqual({});
   });
+
+  it('creates level-specific overdue notifications with parcel-level dedup', async () => {
+    const upserts: any[] = [];
+    const tx = {
+      notification: {
+        upsert: async (args: any) => {
+          upserts.push(args);
+          return args.create;
+        },
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const renderer = {
+      render: jest.fn(async (code, channel, vars) => ({
+        content: `${code}:${channel}:${vars.daysOverdue}`,
+      })),
+    } as any;
+    const service = new NotifyService(tenantPrisma, renderer);
+
+    await service.notifyParcelOverdue({
+      parcelId: 'p1',
+      tenantId: 't1',
+      stationId: 's1',
+      receiverPhone: '13800000000',
+      pickupCode: '1234',
+      slotCode: 'A-01',
+      level: 2,
+      daysOverdue: 7,
+    });
+
+    expect(renderer.render).toHaveBeenCalledWith('OVERDUE_URGE', 'IN_APP', {
+      code: '1234',
+      slot: 'A-01',
+      station: 's1',
+      daysOverdue: '7',
+    });
+    expect(upserts).toHaveLength(2);
+    expect(upserts[0].where).toEqual({
+      tenantId_dedupKey: {
+        tenantId: 't1',
+        dedupKey: 'p1:ParcelOverdue:2:IN_APP',
+      },
+    });
+    expect(upserts[0].create).toMatchObject({
+      tenantId: 't1',
+      parcelId: 'p1',
+      receiverPhone: '13800000000',
+      templateCode: 'OVERDUE_URGE',
+      status: 'SENT',
+      dedupKey: 'p1:ParcelOverdue:2:IN_APP',
+    });
+  });
 });

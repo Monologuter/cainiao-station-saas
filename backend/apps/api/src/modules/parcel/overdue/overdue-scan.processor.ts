@@ -16,6 +16,10 @@ interface StoredParcelForScan {
   stationId: string;
   storedAt: Date | null;
   lastOverdueLevel: number;
+  receiverPhone: string;
+  pickupCode?: string | null;
+  slot?: { code: string } | null;
+  station?: { name: string } | null;
 }
 
 export interface OverdueScanResult {
@@ -65,6 +69,10 @@ export class OverdueScanProcessor {
           stationId: true,
           storedAt: true,
           lastOverdueLevel: true,
+          receiverPhone: true,
+          pickupCode: true,
+          slot: { select: { code: true } },
+          station: { select: { name: true } },
         },
         orderBy: { storedAt: 'asc' },
         take: OVERDUE_SCAN_BATCH_SIZE,
@@ -103,6 +111,10 @@ export class OverdueScanProcessor {
           level: overdue.level,
           storedAt: parcel.storedAt,
           daysOverdue: this.daysBetween(parcel.storedAt, now),
+          receiverPhone: parcel.receiverPhone,
+          pickupCode: parcel.pickupCode,
+          slotCode: parcel.slot?.code,
+          stationName: parcel.station?.name,
         }),
       );
     }
