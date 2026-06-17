@@ -1,0 +1,266 @@
+<!-- @dsCard group="user-app" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1">
+<title>物流追踪 · 驿小站</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题 · 内联）
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.blue{background:var(--primary-soft);color:var(--primary)}
+.tag.green{background:var(--ok-soft);color:var(--ok)}
+.tag.red{background:var(--danger-soft);color:var(--danger)}
+.tag.amber{background:var(--warn-soft);color:var(--warn)}
+.tag.gray{background:#F1F5F9;color:#64748B}
+.tag.purple{background:var(--purple-soft);color:var(--purple)}
+
+/* ---------- 移动端外壳 ---------- */
+body{font-family:var(--font);background:#E9EDF3;color:var(--text);-webkit-font-smoothing:antialiased}
+.phone{width:390px;min-height:844px;margin:0 auto;background:var(--bg);position:relative;display:flex;flex-direction:column;overflow:hidden}
+
+/* 状态栏 */
+.statusbar{height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 22px;background:var(--surface);font-weight:600;font-size:14px}
+.statusbar .sb-r{display:flex;align-items:center;gap:6px}
+.statusbar .sb-r svg{width:16px;height:16px;color:var(--text)}
+
+/* 标题栏 */
+.navbar{height:50px;flex-shrink:0;display:flex;align-items:center;padding:0 14px;background:var(--surface);border-bottom:1px solid var(--border-2);gap:6px}
+.navbar .back{width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--text)}
+.navbar .back:hover{background:var(--surface-2)}
+.navbar .back svg{width:22px;height:22px}
+.navbar h1{font-size:17px;font-weight:600;letter-spacing:-.01em}
+.navbar .nb-r{margin-left:auto;width:36px;height:36px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.navbar .nb-r:hover{background:var(--surface-2)}
+.navbar .nb-r svg{width:20px;height:20px}
+
+/* 滚动内容区 */
+.scroll{flex:1;overflow-y:auto;padding:16px 16px 28px}
+
+/* ---------- 运单卡 ---------- */
+.ship-card{background:linear-gradient(135deg,#3B6EF6 0%,#2557E6 100%);border-radius:var(--radius-lg);padding:18px;color:#fff;box-shadow:0 10px 24px rgba(59,110,246,.28);position:relative;overflow:hidden}
+.ship-card::after{content:"";position:absolute;right:-30px;top:-30px;width:120px;height:120px;border-radius:50%;background:rgba(255,255,255,.08)}
+.ship-card .row1{display:flex;align-items:center;justify-content:space-between;position:relative;z-index:1}
+.ship-card .carrier{display:flex;align-items:center;gap:10px}
+.ship-card .carrier .ico{width:40px;height:40px;border-radius:11px;background:rgba(255,255,255,.18);display:grid;place-items:center;cursor:pointer}
+.ship-card .carrier .ico svg{width:21px;height:21px;color:#fff}
+.ship-card .carrier b{font-size:15px;font-weight:600;display:block}
+.ship-card .carrier .no{font-size:12px;color:rgba(255,255,255,.8);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:5px;margin-top:2px;cursor:pointer}
+.ship-card .carrier .no svg{width:13px;height:13px;color:rgba(255,255,255,.8)}
+.ship-card .st-tag{display:inline-flex;align-items:center;gap:5px;font-size:12px;font-weight:600;padding:5px 11px;border-radius:8px;background:rgba(255,255,255,.2);color:#fff;backdrop-filter:blur(4px)}
+.ship-card .st-tag .d{width:6px;height:6px;border-radius:50%;background:#fff;box-shadow:0 0 0 3px rgba(255,255,255,.3);animation:pulse 1.6s infinite}
+@keyframes pulse{0%,100%{opacity:1}50%{opacity:.4}}
+.ship-card .recv{margin-top:16px;padding-top:14px;border-top:1px solid rgba(255,255,255,.16);display:flex;align-items:center;gap:9px;position:relative;z-index:1}
+.ship-card .recv svg{width:16px;height:16px;color:rgba(255,255,255,.85);flex-shrink:0}
+.ship-card .recv .txt{font-size:12.5px;color:rgba(255,255,255,.92);line-height:1.5}
+.ship-card .recv .txt b{font-weight:600;color:#fff}
+
+/* ---------- 时间线卡 ---------- */
+.tl-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);margin-top:16px;overflow:hidden}
+.tl-card .hd{display:flex;align-items:center;gap:8px;padding:15px 18px 13px}
+.tl-card .hd svg{width:17px;height:17px;color:var(--primary)}
+.tl-card .hd h2{font-size:14.5px;font-weight:600}
+.tl-card .hd .cnt{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:500}
+
+.timeline{padding:4px 18px 18px}
+.node{display:flex;gap:14px;position:relative}
+/* 竖线：连接到下一个节点 */
+.node::before{content:"";position:absolute;left:8px;top:20px;bottom:-6px;width:2px;background:var(--border);transform:translateX(-50%)}
+.node:last-child::before{display:none}
+.node .dot-wrap{flex-shrink:0;width:18px;display:flex;justify-content:center;padding-top:3px}
+.node .dot{width:12px;height:12px;border-radius:50%;background:#fff;border:2.5px solid var(--border);box-sizing:border-box}
+.node .body{flex:1;padding-bottom:22px;min-width:0}
+.node:last-child .body{padding-bottom:2px}
+.node .nd-st{font-size:13.5px;font-weight:600;color:var(--muted);line-height:1.3}
+.node .nd-desc{font-size:13px;color:var(--muted);margin-top:4px;line-height:1.5}
+.node .nd-time{font-size:11.5px;color:#94A3B8;margin-top:5px;font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:5px}
+.node .nd-time svg{width:12px;height:12px;color:#A7AFBC}
+
+/* 当前/最新节点高亮 */
+.node.current::before{background:linear-gradient(180deg,var(--primary),var(--border))}
+.node.current .dot{width:16px;height:16px;border:none;background:var(--primary);box-shadow:0 0 0 4px var(--primary-soft);margin-top:-1px}
+.node.current .nd-st{color:var(--primary);font-weight:700;font-size:14px}
+.node.current .nd-desc{color:var(--text);font-weight:500}
+.node.current .nd-time svg{color:var(--primary)}
+
+/* 取件码高亮块 */
+.pickup{margin-top:11px;background:var(--primary-soft);border:1px solid #D6E2FD;border-radius:var(--radius-sm);padding:11px 13px;display:flex;align-items:center;gap:11px;cursor:pointer}
+.pickup .pk-ico{width:34px;height:34px;border-radius:9px;background:var(--primary);color:#fff;display:grid;place-items:center;flex-shrink:0}
+.pickup .pk-ico svg{width:18px;height:18px;color:#fff}
+.pickup .pk-info .lab{font-size:11px;color:var(--primary);font-weight:600}
+.pickup .pk-info .code{font-size:19px;font-weight:700;color:var(--primary-700);letter-spacing:.04em;font-variant-numeric:tabular-nums;margin-top:1px}
+.pickup .pk-arrow{margin-left:auto;color:var(--primary)}
+.pickup .pk-arrow svg{width:18px;height:18px}
+
+/* 底部动作 */
+.actions{padding:14px 16px calc(14px + env(safe-area-inset-bottom));background:var(--surface);border-top:1px solid var(--border-2);display:flex;gap:11px;flex-shrink:0}
+.actions .btn{flex:1;height:46px;border-radius:var(--radius);font-size:14.5px;font-weight:600;display:inline-flex;align-items:center;justify-content:center;gap:7px;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s}
+.actions .btn svg{width:18px;height:18px}
+.actions .btn:hover{background:var(--surface-2);border-color:#D6DBE4}
+.actions .btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.actions .btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- 状态栏 -->
+  <div class="statusbar">
+    <span class="tnum">9:41</span>
+    <div class="sb-r">
+      <svg viewBox="0 0 24 24"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 20 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="11" rx="2"/><line x1="22" y1="11" x2="22" y2="14"/><rect x="4" y="9" width="13" height="7" rx="1" fill="currentColor" stroke="none"/></svg>
+    </div>
+  </div>
+
+  <!-- 标题栏 -->
+  <div class="navbar">
+    <div class="back">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </div>
+    <h1>物流追踪</h1>
+    <div class="nb-r">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="1"/><circle cx="19" cy="12" r="1"/><circle cx="5" cy="12" r="1"/></svg>
+    </div>
+  </div>
+
+  <!-- 内容滚动区 -->
+  <div class="scroll">
+
+    <!-- 运单卡 -->
+    <div class="ship-card">
+      <div class="row1">
+        <div class="carrier">
+          <div class="ico">
+            <svg viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.624l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+          </div>
+          <div>
+            <b>中通快递</b>
+            <div class="no tnum">运单号 78812345678
+              <svg viewBox="0 0 24 24"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg>
+            </div>
+          </div>
+        </div>
+        <span class="st-tag"><span class="d"></span>运输中</span>
+      </div>
+      <div class="recv">
+        <svg viewBox="0 0 24 24"><path d="M20 10c0 6-8 12-8 12s-8-6-8-12a8 8 0 0 1 16 0Z"/><circle cx="12" cy="10" r="3"/></svg>
+        <div class="txt">收件人 <b>王**</b>（尾号 6823）· 浙江省杭州市西湖区文一西路 <b>城南综合驿站</b></div>
+      </div>
+    </div>
+
+    <!-- 时间线卡 -->
+    <div class="tl-card">
+      <div class="hd">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+        <h2>物流轨迹</h2>
+        <span class="cnt">共 5 条更新</span>
+      </div>
+
+      <div class="timeline">
+
+        <!-- 最新：已到驿站（当前·高亮） -->
+        <div class="node current">
+          <div class="dot-wrap"><div class="dot"></div></div>
+          <div class="body">
+            <div class="nd-st">已到驿站</div>
+            <div class="nd-desc">快件已入库「城南综合驿站」，请凭取件码到店领取。</div>
+            <div class="pickup">
+              <div class="pk-ico">
+                <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+              </div>
+              <div class="pk-info">
+                <div class="lab">取件码</div>
+                <div class="code tnum">8-2-1043</div>
+              </div>
+              <div class="pk-arrow">
+                <svg viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg>
+              </div>
+            </div>
+            <div class="nd-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>06-17 09:12</div>
+          </div>
+        </div>
+
+        <!-- 派送中 -->
+        <div class="node">
+          <div class="dot-wrap"><div class="dot"></div></div>
+          <div class="body">
+            <div class="nd-st">派送中</div>
+            <div class="nd-desc">快件到达「杭州城南网点」，快递员正在派送。</div>
+            <div class="nd-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>06-17 08:30</div>
+          </div>
+        </div>
+
+        <!-- 运输中 -->
+        <div class="node">
+          <div class="dot-wrap"><div class="dot"></div></div>
+          <div class="body">
+            <div class="nd-st">运输中</div>
+            <div class="nd-desc">快件离开「杭州转运中心」，发往本市。</div>
+            <div class="nd-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>06-17 02:10</div>
+          </div>
+        </div>
+
+        <!-- 运输中 -->
+        <div class="node">
+          <div class="dot-wrap"><div class="dot"></div></div>
+          <div class="body">
+            <div class="nd-st">运输中</div>
+            <div class="nd-desc">快件到达「杭州转运中心」。</div>
+            <div class="nd-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>06-16 14:50</div>
+          </div>
+        </div>
+
+        <!-- 已揽收 -->
+        <div class="node">
+          <div class="dot-wrap"><div class="dot"></div></div>
+          <div class="body">
+            <div class="nd-st">已揽收</div>
+            <div class="nd-desc">商家已发货，「义乌北苑揽收点」已揽收快件。</div>
+            <div class="nd-time"><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>06-16 09:20</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+
+  </div>
+
+  <!-- 底部动作 -->
+  <div class="actions">
+    <div class="btn">
+      <svg viewBox="0 0 24 24"><path d="M14.05 2a9 9 0 0 1 8 7.94"/><path d="M14.05 6A5 5 0 0 1 18 10"/><path d="M22 16.92v3a2 2 0 0 1-2.18 2 19.79 19.79 0 0 1-8.63-3.07 19.5 19.5 0 0 1-6-6 19.79 19.79 0 0 1-3.07-8.67A2 2 0 0 1 4.11 2h3a2 2 0 0 1 2 1.72 12.84 12.84 0 0 0 .7 2.81 2 2 0 0 1-.45 2.11L8.09 9.91a16 16 0 0 0 6 6l1.27-1.27a2 2 0 0 1 2.11-.45 12.84 12.84 0 0 0 2.81.7A2 2 0 0 1 22 16.92Z"/></svg>
+      联系驿站
+    </div>
+    <div class="btn btn-primary">
+      <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/><line x1="14" y1="14" x2="14" y2="21"/><line x1="21" y1="14" x2="21" y2="21"/><line x1="14" y1="17" x2="21" y2="17"/></svg>
+      取件码
+    </div>
+  </div>
+
+</div>
+</body>
+</html>

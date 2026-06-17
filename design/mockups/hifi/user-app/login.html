@@ -1,0 +1,248 @@
+<!-- @dsCard group="user-app" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=390, initial-scale=1">
+<title>驿小站 · 登录授权</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题）— 内联
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100vh}
+body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;font-size:14px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.link{color:var(--primary);font-weight:600;cursor:pointer}
+
+/* ---------- 按钮 ---------- */
+.btn{display:inline-flex;align-items:center;justify-content:center;gap:7px;height:36px;padding:0 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s;white-space:nowrap}
+.btn:hover{border-color:#D6DBE4;background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+.btn-lg{height:44px;padding:0 20px;font-size:14.5px}
+
+/* ---------- 表单 ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12.5px;font-weight:600;color:var(--text)}
+.input{height:38px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-size:13.5px;font-family:var(--font);color:var(--text);background:var(--surface);outline:none;transition:.18s;width:100%}
+.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.input::placeholder{color:#A7AFBC}
+
+/* ===========================================================
+   本页特有样式 · 移动端登录
+   =========================================================== */
+body{display:flex;justify-content:center;background:#EAF0FB}
+.phone{width:390px;min-height:844px;margin:0 auto;background:var(--surface);position:relative;display:flex;flex-direction:column;overflow:hidden}
+
+/* 顶部状态栏 */
+.statusbar{height:44px;flex-shrink:0;display:flex;align-items:center;justify-content:space-between;padding:0 20px;font-size:14px;font-weight:600;color:var(--text)}
+.statusbar .time{font-variant-numeric:tabular-nums;letter-spacing:.02em}
+.statusbar .sys{display:flex;align-items:center;gap:6px}
+.statusbar .sys svg{width:16px;height:16px;stroke-width:2.2}
+.statusbar .bat{width:24px;height:12px;border:1.6px solid var(--text);border-radius:3px;position:relative;display:inline-block}
+.statusbar .bat::after{content:"";position:absolute;right:-3px;top:3px;width:2px;height:4px;background:var(--text);border-radius:0 1px 1px 0}
+.statusbar .bat i{position:absolute;inset:1.6px;width:72%;background:var(--text);border-radius:1px;display:block}
+
+/* 内容滚动区 */
+.scroll{flex:1;display:flex;flex-direction:column;padding:0 26px}
+
+/* 品牌区 */
+.brand-wrap{flex:1;min-height:340px;display:flex;flex-direction:column;align-items:center;justify-content:center;text-align:center;padding-top:14px}
+.logo-badge{width:96px;height:96px;border-radius:28px;background:linear-gradient(150deg,var(--primary) 0%,#5B86FB 60%,#7C5CFC 130%);display:grid;place-items:center;box-shadow:0 16px 30px rgba(59,110,246,.32),0 2px 6px rgba(59,110,246,.2);position:relative}
+.logo-badge svg{width:50px;height:50px;color:#fff;stroke-width:1.9}
+.logo-badge .spark{position:absolute;top:-6px;right:-6px;width:30px;height:30px;border-radius:50%;background:#fff;display:grid;place-items:center;box-shadow:var(--shadow)}
+.logo-badge .spark svg{width:17px;height:17px;color:var(--accent);stroke-width:2.4}
+.brand-name{font-size:27px;font-weight:700;letter-spacing:.03em;margin-top:22px}
+.slogan{font-size:14px;color:var(--muted);margin-top:9px;font-weight:500;letter-spacing:.04em}
+
+/* 包裹插画 SVG */
+.illu{margin-top:24px;width:240px;height:96px}
+
+/* 登录区卡片 */
+.login-area{padding-bottom:26px}
+.wx-btn{width:100%;background:#07C160;border-color:#07C160;color:#fff;box-shadow:0 8px 18px rgba(7,193,96,.26)}
+.wx-btn:hover{background:#06AD56;border-color:#06AD56}
+.wx-btn svg{width:21px;height:21px;stroke-width:2.1}
+
+/* 分隔「或」 */
+.divider{display:flex;align-items:center;gap:14px;margin:22px 2px;color:var(--muted)}
+.divider::before,.divider::after{content:"";flex:1;height:1px;background:var(--border)}
+.divider span{font-size:12.5px;font-weight:500;letter-spacing:.06em}
+
+/* 手机号 / 验证码 */
+.phone-form{display:flex;flex-direction:column;gap:12px}
+.in-wrap{position:relative}
+.in-wrap .ic{position:absolute;left:13px;top:50%;transform:translateY(-50%);color:var(--muted);width:17px;height:17px;pointer-events:none}
+.in-wrap .ic svg{width:17px;height:17px}
+.in-wrap .input{height:48px;padding-left:40px;border-radius:var(--radius);font-size:14.5px;background:var(--surface-2)}
+.code-row{display:flex;gap:10px}
+.code-row .in-wrap{flex:1}
+.code-row .input{padding-right:14px}
+.get-code{flex-shrink:0;height:48px;padding:0 14px;border-radius:var(--radius);font-size:13px;font-weight:600;color:var(--primary);background:var(--primary-soft);border:1px solid transparent;cursor:pointer;transition:.18s;white-space:nowrap}
+.get-code:hover{background:#DEE9FE}
+.submit-btn{width:100%;height:48px;border-radius:var(--radius);margin-top:4px;font-size:15px;box-shadow:0 8px 18px rgba(59,110,246,.22)}
+
+/* 协议勾选 */
+.agree{display:flex;align-items:flex-start;gap:9px;margin-top:18px;padding:0 2px}
+.cbx{flex-shrink:0;width:18px;height:18px;border-radius:5px;border:1.6px solid #CBD5E1;background:var(--surface);display:grid;place-items:center;cursor:pointer;margin-top:1px;transition:.18s}
+.cbx.on{background:var(--primary);border-color:var(--primary)}
+.cbx svg{width:12px;height:12px;color:#fff;stroke-width:3;opacity:0}
+.cbx.on svg{opacity:1}
+.agree-txt{font-size:12px;line-height:1.65;color:var(--muted)}
+.agree-txt a{color:var(--primary);font-weight:600;cursor:pointer}
+
+/* 底部安全提示 */
+.foot-note{text-align:center;font-size:11px;color:#A7AFBC;padding:14px 0 22px;display:flex;align-items:center;justify-content:center;gap:6px}
+.foot-note svg{width:13px;height:13px}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- 状态栏 -->
+  <div class="statusbar">
+    <span class="time tnum">9:41</span>
+    <span class="sys">
+      <!-- signal -->
+      <svg viewBox="0 0 24 24"><path d="M2 20h.01M7 20v-4M12 20v-8M17 20V8M22 4v16"/></svg>
+      <!-- wifi -->
+      <svg viewBox="0 0 24 24"><path d="M5 13a10 10 0 0 1 14 0M8.5 16.5a5 5 0 0 1 7 0M2 8.82a15 15 0 0 1 20 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      <span class="bat"><i></i></span>
+    </span>
+  </div>
+
+  <div class="scroll">
+
+    <!-- 品牌区 -->
+    <div class="brand-wrap">
+      <div class="logo-badge">
+        <!-- package -->
+        <svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        <span class="spark">
+          <!-- check -->
+          <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+      </div>
+      <div class="brand-name">驿小站</div>
+      <div class="slogan">快递到站，一键查取</div>
+
+      <!-- 包裹插画 -->
+      <svg class="illu" viewBox="0 0 240 96" fill="none">
+        <!-- 地面线 -->
+        <line x1="20" y1="84" x2="220" y2="84" stroke="#DCE3F2" stroke-width="2" stroke-linecap="round"/>
+        <!-- 后方包裹（淡） -->
+        <g stroke="#C8D4F0" stroke-width="2" stroke-linejoin="round">
+          <rect x="38" y="50" width="34" height="30" rx="3"/>
+          <path d="M38 60h34"/><path d="M55 50v30"/>
+        </g>
+        <!-- 主包裹箱 -->
+        <g stroke="var(--primary)" stroke-width="2.2" stroke-linejoin="round" stroke-linecap="round">
+          <path d="M96 44 120 36l24 8v26l-24 8-24-8Z" fill="#EBF1FE"/>
+          <path d="M96 44 120 52l24-8"/>
+          <path d="M120 52v30"/>
+          <!-- 胶带 -->
+          <path d="M120 36v8" stroke="#7C5CFC"/>
+        </g>
+        <!-- 标签 -->
+        <rect x="108" y="56" width="16" height="11" rx="1.5" fill="#fff" stroke="var(--accent)" stroke-width="1.8"/>
+        <path d="M111 61h10" stroke="var(--accent)" stroke-width="1.6" stroke-linecap="round"/>
+        <!-- 右侧小包裹 -->
+        <g stroke="#9DB6F5" stroke-width="2" stroke-linejoin="round">
+          <rect x="166" y="58" width="26" height="22" rx="3" fill="#F4F7FE"/>
+          <path d="M166 66h26"/><path d="M179 58v22"/>
+        </g>
+        <!-- 漂浮对勾气泡 -->
+        <circle cx="158" cy="34" r="11" fill="#E7F8F1" stroke="var(--accent)" stroke-width="2"/>
+        <path d="M153.5 34.5 157 38l5-6" stroke="var(--accent)" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/>
+        <!-- 速度线 -->
+        <path d="M70 38h14M62 30h10" stroke="#BFD0F6" stroke-width="2" stroke-linecap="round"/>
+      </svg>
+    </div>
+
+    <!-- 登录区 -->
+    <div class="login-area">
+
+      <!-- 微信一键登录 -->
+      <button class="btn btn-lg wx-btn">
+        <!-- wechat (message-circle 风格) -->
+        <svg viewBox="0 0 24 24" stroke-linecap="round" stroke-linejoin="round">
+          <path d="M9 3C5.13 3 2 5.6 2 8.8c0 1.78.97 3.37 2.5 4.43L4 16l2.9-1.5c.66.18 1.37.3 2.1.3l.55-.02"/>
+          <path d="M22 14.3c0-2.7-2.6-4.9-5.8-4.9s-5.8 2.2-5.8 4.9 2.6 4.9 5.8 4.9c.62 0 1.22-.08 1.78-.24L21 20.4l-.5-2.06c.92-.9 1.5-2.06 1.5-3.34Z"/>
+          <circle cx="6.8" cy="8.2" r=".5" fill="currentColor"/>
+          <circle cx="11" cy="8.2" r=".5" fill="currentColor"/>
+          <circle cx="14.4" cy="13.6" r=".5" fill="currentColor"/>
+          <circle cx="18" cy="13.6" r=".5" fill="currentColor"/>
+        </svg>
+        微信一键登录
+      </button>
+
+      <!-- 分隔 -->
+      <div class="divider"><span>或</span></div>
+
+      <!-- 手机号验证码登录 -->
+      <div class="phone-form">
+        <div class="in-wrap">
+          <span class="ic">
+            <!-- smartphone -->
+            <svg viewBox="0 0 24 24"><rect x="5" y="2" width="14" height="20" rx="2.5"/><path d="M11 18h2"/></svg>
+          </span>
+          <input class="input" type="tel" inputmode="numeric" maxlength="11" placeholder="请输入手机号" value="">
+        </div>
+
+        <div class="code-row">
+          <div class="in-wrap">
+            <span class="ic">
+              <!-- shield-check -->
+              <svg viewBox="0 0 24 24"><path d="M20 13c0 5-3.5 7.5-7.66 8.95a1 1 0 0 1-.67-.01C7.5 20.5 4 18 4 13V6a1 1 0 0 1 1-1c2 0 4.5-1.2 6.24-2.72a1.17 1.17 0 0 1 1.52 0C14.51 3.81 17 5 19 5a1 1 0 0 1 1 1Z"/><path d="m9 12 2 2 4-4"/></svg>
+            </span>
+            <input class="input" type="text" inputmode="numeric" maxlength="6" placeholder="验证码" value="">
+          </div>
+          <button class="get-code">获取验证码</button>
+        </div>
+
+        <button class="btn btn-primary submit-btn">登录</button>
+      </div>
+
+      <!-- 用户协议 -->
+      <div class="agree">
+        <span class="cbx on">
+          <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        </span>
+        <span class="agree-txt">
+          我已阅读并同意<a>《用户协议》</a><a>《隐私政策》</a>，并授权驿小站获取微信头像、昵称用于登录。
+        </span>
+      </div>
+
+    </div>
+
+  </div>
+
+  <!-- 底部安全提示 -->
+  <div class="foot-note">
+    <!-- lock -->
+    <svg viewBox="0 0 24 24"><rect x="3" y="11" width="18" height="11" rx="2"/><path d="M7 11V7a5 5 0 0 1 10 0v4"/></svg>
+    全程加密 · 信息安全受保护
+  </div>
+
+</div>
+</body>
+</html>

@@ -1,0 +1,329 @@
+<!-- @dsCard group="user-app" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>取件码 · 驿小站</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题 · 全屏平铺）
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100vh}
+body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;font-size:14px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.link{color:var(--primary);font-weight:600;cursor:pointer}
+.btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s;white-space:nowrap}
+.btn:hover{border-color:#D6DBE4;background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.blue{background:var(--primary-soft);color:var(--primary)}
+.tag.green{background:var(--ok-soft);color:var(--ok)}
+.tag.amber{background:var(--warn-soft);color:var(--warn)}
+
+/* ===========================================================
+   本页特有 · 移动端竖屏 · 取件码出示
+   =========================================================== */
+body{background:#E8EDF5;display:flex;justify-content:center;padding:0}
+.phone{width:390px;min-height:844px;margin:0 auto;background:linear-gradient(180deg,#EBF1FE 0%,#F0F4FA 220px,#F7F8FA 100%);position:relative;display:flex;flex-direction:column;overflow:hidden}
+
+/* 状态栏 */
+.statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:14px;font-weight:600;color:var(--text);flex-shrink:0}
+.statusbar .time{letter-spacing:.02em}
+.statusbar .ind{display:flex;align-items:center;gap:6px}
+.statusbar .ind svg{width:16px;height:16px;color:var(--text)}
+.statusbar .ind .batt{font-weight:600;font-size:12.5px}
+
+/* 标题栏 */
+.titlebar{height:48px;display:flex;align-items:center;padding:0 12px;flex-shrink:0}
+.titlebar .back{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--text)}
+.titlebar .back:hover{background:rgba(255,255,255,.6)}
+.titlebar .back svg{width:22px;height:22px}
+.titlebar h1{font-size:17px;font-weight:700;letter-spacing:.01em;margin-left:2px}
+.titlebar .spacer{flex:1}
+.titlebar .help{width:38px;height:38px;border-radius:50%;display:grid;place-items:center;cursor:pointer;color:var(--muted)}
+.titlebar .help:hover{background:rgba(255,255,255,.6)}
+.titlebar .help svg{width:20px;height:20px}
+
+/* 内容滚动区 */
+.scroll{flex:1;padding:8px 18px 26px;display:flex;flex-direction:column;gap:16px}
+
+/* 取件凭证大卡 */
+.voucher{background:var(--surface);border-radius:24px;box-shadow:0 18px 44px rgba(59,110,246,.16),0 2px 8px rgba(16,24,40,.05);overflow:hidden;position:relative}
+.voucher .vh{padding:20px 22px 14px;display:flex;align-items:center;gap:11px}
+.voucher .vh .vlogo{width:40px;height:40px;border-radius:12px;background:var(--primary);color:#fff;display:grid;place-items:center;flex-shrink:0;box-shadow:0 6px 14px rgba(59,110,246,.32)}
+.voucher .vh .vlogo svg{width:21px;height:21px}
+.voucher .vh .vstore b{font-size:16px;font-weight:700;display:block;letter-spacing:.01em}
+.voucher .vh .vstore .vsub{font-size:11.5px;color:var(--muted);margin-top:2px;display:flex;align-items:center;gap:6px}
+.voucher .vh .spacer{flex:1}
+
+/* 取件码区 */
+.codezone{padding:6px 22px 18px;text-align:center;position:relative}
+.codezone .clab{font-size:12.5px;color:var(--muted);font-weight:600;letter-spacing:.16em;margin-bottom:6px;display:flex;align-items:center;justify-content:center;gap:7px}
+.codezone .clab .ln{height:1px;width:26px;background:var(--border)}
+.codezone .bigcode{font-size:58px;font-weight:800;color:var(--primary);letter-spacing:.06em;line-height:1.05;font-variant-numeric:tabular-nums;text-shadow:0 4px 16px rgba(59,110,246,.18)}
+.codezone .bigcode .sep{color:#C2D2FB;font-weight:600;margin:0 2px}
+
+/* 虚线分隔 + 半圆缺口 */
+.tear{position:relative;height:24px;display:flex;align-items:center}
+.tear::before,.tear::after{content:"";position:absolute;top:50%;transform:translateY(-50%);width:24px;height:24px;border-radius:50%;background:#F7F8FA}
+.tear::before{left:-12px}.tear::after{right:-12px}
+.tear .dash{flex:1;border-top:2px dashed var(--border);margin:0 18px}
+
+/* 二维码区 */
+.qrzone{padding:20px 22px 12px;text-align:center}
+.qrwrap{width:204px;height:204px;margin:0 auto;background:#fff;border:1px solid var(--border-2);border-radius:18px;display:grid;place-items:center;box-shadow:inset 0 0 0 6px #fff,0 2px 10px rgba(16,24,40,.06);position:relative}
+.qrwrap svg{width:180px;height:180px;display:block}
+.qrwrap .qrlogo{position:absolute;width:42px;height:42px;border-radius:11px;background:#fff;display:grid;place-items:center;box-shadow:0 2px 8px rgba(16,24,40,.18)}
+.qrwrap .qrlogo i{width:30px;height:30px;border-radius:8px;background:var(--primary);color:#fff;display:grid;place-items:center}
+.qrwrap .qrlogo i svg{width:17px;height:17px}
+
+/* 货位标签 */
+.slot{margin:16px 22px 4px;background:var(--primary-soft);border-radius:14px;padding:13px 16px;display:flex;align-items:center;gap:12px}
+.slot .si{width:36px;height:36px;border-radius:10px;background:var(--primary);color:#fff;display:grid;place-items:center;flex-shrink:0}
+.slot .si svg{width:19px;height:19px}
+.slot .stxt{flex:1;text-align:left}
+.slot .stxt .slab{font-size:11.5px;color:var(--primary-700);font-weight:600;opacity:.85}
+.slot .stxt .sval{font-size:20px;font-weight:800;color:var(--primary-700);letter-spacing:.04em;font-variant-numeric:tabular-nums;margin-top:1px}
+.slot .schip{font-size:11px;font-weight:700;color:var(--primary);background:#fff;border-radius:8px;padding:5px 9px;display:flex;align-items:center;gap:5px}
+.slot .schip svg{width:13px;height:13px}
+
+/* 出示提示 */
+.hint{margin:8px 22px 22px;text-align:center;font-size:12.5px;color:var(--muted);display:flex;align-items:center;justify-content:center;gap:7px;font-weight:500}
+.hint svg{width:15px;height:15px;color:var(--primary)}
+
+/* 包裹信息卡 */
+.pkg{background:var(--surface);border:1px solid var(--border);border-radius:18px;box-shadow:var(--shadow);overflow:hidden}
+.pkg .ph{padding:14px 18px;border-bottom:1px solid var(--border-2);display:flex;align-items:center;gap:9px;font-size:14px;font-weight:700}
+.pkg .ph svg{width:17px;height:17px;color:var(--primary)}
+.pkg .pb{padding:6px 18px 12px}
+.pkg .row{display:flex;align-items:center;justify-content:space-between;padding:11px 0;border-bottom:1px solid var(--border-2)}
+.pkg .row:last-child{border-bottom:none}
+.pkg .row .k{font-size:13px;color:var(--muted);display:flex;align-items:center;gap:8px}
+.pkg .row .k svg{width:15px;height:15px;color:var(--muted)}
+.pkg .row .v{font-size:13.5px;font-weight:600;color:var(--text);font-variant-numeric:tabular-nums;display:flex;align-items:center;gap:7px}
+.pkg .row .v .courier{width:20px;height:20px;border-radius:6px;background:#FEEFEA;color:#E8541B;display:grid;place-items:center;font-size:10px;font-weight:800;font-style:normal}
+
+/* 底部小提示 */
+.foot{display:flex;align-items:center;justify-content:center;gap:18px;padding:4px 0 8px;flex-wrap:wrap}
+.foot .ft{display:flex;align-items:center;gap:6px;font-size:12px;color:var(--muted);font-weight:500}
+.foot .ft svg{width:14px;height:14px;color:var(--accent)}
+.foot .ft.b{cursor:pointer}
+.foot .ft.b:hover{color:var(--primary)}
+.foot .ft.b:hover svg{color:var(--primary)}
+.foot .dot{width:3px;height:3px;border-radius:50%;background:#CBD5E1}
+</style>
+</head>
+<body>
+<div class="phone">
+
+  <!-- 状态栏 -->
+  <div class="statusbar">
+    <span class="time tnum">9:41</span>
+    <span class="ind">
+      <svg viewBox="0 0 24 24" fill="currentColor" stroke="none"><path d="M2 17h2v4H2zm4-3h2v7H6zm4-4h2v11h-2zm4-4h2v15h-2zm4-4h2v19h-2z"/></svg>
+      <svg viewBox="0 0 24 24"><path d="M5 13a10 10 0 0 1 14 0"/><path d="M8.5 16.5a5 5 0 0 1 7 0"/><path d="M2 8.82a15 15 0 0 1 20 0"/><line x1="12" y1="20" x2="12.01" y2="20"/></svg>
+      <span class="batt">100%</span>
+      <svg viewBox="0 0 24 24"><rect x="2" y="7" width="18" height="10" rx="2.2"/><line x1="22" y1="11" x2="22" y2="13"/><rect x="4" y="9" width="13" height="6" rx="1" fill="currentColor" stroke="none"/></svg>
+    </span>
+  </div>
+
+  <!-- 标题栏 -->
+  <div class="titlebar">
+    <div class="back" aria-label="返回">
+      <svg viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg>
+    </div>
+    <h1>取件码</h1>
+    <div class="spacer"></div>
+    <div class="help" aria-label="帮助">
+      <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"/><line x1="12" y1="17" x2="12.01" y2="17"/></svg>
+    </div>
+  </div>
+
+  <div class="scroll">
+
+    <!-- 取件凭证大卡 -->
+    <div class="voucher">
+      <!-- 门店 -->
+      <div class="vh">
+        <div class="vlogo">
+          <svg viewBox="0 0 24 24"><path d="M3 9 12 2l9 7"/><path d="M5 9v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/><path d="M9 21v-7h6v7"/></svg>
+        </div>
+        <div class="vstore">
+          <b>城南综合驿站</b>
+          <span class="vsub">编号 CN-0731</span>
+        </div>
+        <div class="spacer"></div>
+        <span class="tag green"><span class="d"></span>营业中</span>
+      </div>
+
+      <!-- 超大取件码 -->
+      <div class="codezone">
+        <div class="clab"><span class="ln"></span>取 件 码<span class="ln"></span></div>
+        <div class="bigcode tnum">8<span class="sep">-</span>2<span class="sep">-</span>1043</div>
+      </div>
+
+      <!-- 撕裂分隔线 -->
+      <div class="tear"><span class="dash"></span></div>
+
+      <!-- 二维码 -->
+      <div class="qrzone">
+        <div class="qrwrap">
+          <svg viewBox="0 0 25 25" shape-rendering="crispEdges">
+            <rect width="25" height="25" fill="#ffffff"/>
+            <g fill="#1E293B">
+              <!-- 三个定位角 -->
+              <!-- 左上 -->
+              <rect x="0" y="0" width="7" height="7"/>
+              <rect x="1" y="1" width="5" height="5" fill="#ffffff"/>
+              <rect x="2" y="2" width="3" height="3" fill="#1E293B"/>
+              <!-- 右上 -->
+              <rect x="18" y="0" width="7" height="7"/>
+              <rect x="19" y="1" width="5" height="5" fill="#ffffff"/>
+              <rect x="20" y="2" width="3" height="3" fill="#1E293B"/>
+              <!-- 左下 -->
+              <rect x="0" y="18" width="7" height="7"/>
+              <rect x="1" y="19" width="5" height="5" fill="#ffffff"/>
+              <rect x="2" y="20" width="3" height="3" fill="#1E293B"/>
+              <!-- 定位/对齐图案 -->
+              <rect x="20" y="20" width="1" height="1"/><rect x="22" y="20" width="1" height="1"/>
+              <rect x="20" y="22" width="1" height="1"/><rect x="22" y="22" width="1" height="1"/>
+              <rect x="21" y="21" width="1" height="1"/>
+              <!-- 时序线 -->
+              <rect x="8" y="6" width="1" height="1"/><rect x="10" y="6" width="1" height="1"/><rect x="12" y="6" width="1" height="1"/><rect x="14" y="6" width="1" height="1"/><rect x="16" y="6" width="1" height="1"/>
+              <rect x="6" y="8" width="1" height="1"/><rect x="6" y="10" width="1" height="1"/><rect x="6" y="12" width="1" height="1"/><rect x="6" y="14" width="1" height="1"/><rect x="6" y="16" width="1" height="1"/>
+              <!-- 数据区随机方块 -->
+              <rect x="9" y="0" width="1" height="1"/><rect x="11" y="0" width="1" height="1"/><rect x="13" y="0" width="1" height="1"/><rect x="16" y="0" width="1" height="1"/>
+              <rect x="8" y="1" width="1" height="1"/><rect x="10" y="1" width="1" height="1"/><rect x="14" y="1" width="1" height="1"/><rect x="15" y="1" width="1" height="1"/><rect x="17" y="1" width="1" height="1"/>
+              <rect x="9" y="2" width="1" height="1"/><rect x="12" y="2" width="1" height="1"/><rect x="13" y="2" width="1" height="1"/><rect x="16" y="2" width="1" height="1"/>
+              <rect x="8" y="3" width="1" height="1"/><rect x="11" y="3" width="1" height="1"/><rect x="15" y="3" width="1" height="1"/><rect x="17" y="3" width="1" height="1"/>
+              <rect x="9" y="4" width="1" height="1"/><rect x="10" y="4" width="1" height="1"/><rect x="13" y="4" width="1" height="1"/><rect x="14" y="4" width="1" height="1"/><rect x="16" y="4" width="1" height="1"/>
+              <rect x="8" y="5" width="1" height="1"/><rect x="12" y="5" width="1" height="1"/><rect x="15" y="5" width="1" height="1"/><rect x="17" y="5" width="1" height="1"/>
+
+              <rect x="0" y="9" width="1" height="1"/><rect x="2" y="9" width="1" height="1"/><rect x="3" y="9" width="1" height="1"/><rect x="9" y="8" width="1" height="1"/><rect x="11" y="8" width="1" height="1"/><rect x="13" y="8" width="1" height="1"/><rect x="15" y="8" width="1" height="1"/><rect x="17" y="8" width="1" height="1"/><rect x="19" y="8" width="1" height="1"/><rect x="21" y="8" width="1" height="1"/><rect x="23" y="8" width="1" height="1"/><rect x="24" y="8" width="1" height="1"/>
+              <rect x="0" y="11" width="1" height="1"/><rect x="1" y="11" width="1" height="1"/><rect x="3" y="11" width="1" height="1"/><rect x="8" y="9" width="1" height="1"/><rect x="12" y="9" width="1" height="1"/><rect x="14" y="9" width="1" height="1"/><rect x="18" y="9" width="1" height="1"/><rect x="20" y="9" width="1" height="1"/><rect x="22" y="9" width="1" height="1"/><rect x="24" y="9" width="1" height="1"/>
+              <rect x="0" y="13" width="1" height="1"/><rect x="2" y="13" width="1" height="1"/><rect x="9" y="10" width="1" height="1"/><rect x="11" y="10" width="1" height="1"/><rect x="13" y="10" width="1" height="1"/><rect x="16" y="10" width="1" height="1"/><rect x="19" y="10" width="1" height="1"/><rect x="21" y="10" width="1" height="1"/><rect x="23" y="10" width="1" height="1"/>
+              <rect x="1" y="15" width="1" height="1"/><rect x="3" y="15" width="1" height="1"/><rect x="8" y="11" width="1" height="1"/><rect x="10" y="11" width="1" height="1"/><rect x="14" y="11" width="1" height="1"/><rect x="17" y="11" width="1" height="1"/><rect x="20" y="11" width="1" height="1"/><rect x="22" y="11" width="1" height="1"/><rect x="24" y="11" width="1" height="1"/>
+              <rect x="0" y="16" width="1" height="1"/><rect x="2" y="16" width="1" height="1"/><rect x="9" y="12" width="1" height="1"/><rect x="12" y="12" width="1" height="1"/><rect x="15" y="12" width="1" height="1"/><rect x="18" y="12" width="1" height="1"/><rect x="21" y="12" width="1" height="1"/><rect x="23" y="12" width="1" height="1"/>
+              <rect x="8" y="13" width="1" height="1"/><rect x="10" y="13" width="1" height="1"/><rect x="13" y="13" width="1" height="1"/><rect x="16" y="13" width="1" height="1"/><rect x="19" y="13" width="1" height="1"/><rect x="22" y="13" width="1" height="1"/><rect x="24" y="13" width="1" height="1"/>
+              <rect x="9" y="14" width="1" height="1"/><rect x="11" y="14" width="1" height="1"/><rect x="14" y="14" width="1" height="1"/><rect x="17" y="14" width="1" height="1"/><rect x="20" y="14" width="1" height="1"/><rect x="23" y="14" width="1" height="1"/>
+              <rect x="8" y="15" width="1" height="1"/><rect x="12" y="15" width="1" height="1"/><rect x="15" y="15" width="1" height="1"/><rect x="18" y="15" width="1" height="1"/><rect x="21" y="15" width="1" height="1"/><rect x="24" y="15" width="1" height="1"/>
+
+              <!-- 第16行水平时序延伸 -->
+              <rect x="18" y="16" width="1" height="1"/><rect x="20" y="16" width="1" height="1"/><rect x="22" y="16" width="1" height="1"/><rect x="24" y="16" width="1" height="1"/>
+
+              <!-- 下半部数据区 -->
+              <rect x="9" y="17" width="1" height="1"/><rect x="11" y="17" width="1" height="1"/><rect x="13" y="17" width="1" height="1"/><rect x="16" y="17" width="1" height="1"/><rect x="18" y="17" width="1" height="1"/><rect x="20" y="17" width="1" height="1"/><rect x="23" y="17" width="1" height="1"/>
+              <rect x="8" y="18" width="1" height="1"/><rect x="10" y="18" width="1" height="1"/><rect x="12" y="18" width="1" height="1"/><rect x="15" y="18" width="1" height="1"/><rect x="17" y="18" width="1" height="1"/><rect x="24" y="18" width="1" height="1"/>
+              <rect x="9" y="19" width="1" height="1"/><rect x="11" y="19" width="1" height="1"/><rect x="14" y="19" width="1" height="1"/><rect x="16" y="19" width="1" height="1"/><rect x="18" y="19" width="1" height="1"/><rect x="23" y="19" width="1" height="1"/>
+              <rect x="8" y="20" width="1" height="1"/><rect x="10" y="20" width="1" height="1"/><rect x="13" y="20" width="1" height="1"/><rect x="15" y="20" width="1" height="1"/><rect x="17" y="20" width="1" height="1"/><rect x="24" y="20" width="1" height="1"/>
+              <rect x="9" y="21" width="1" height="1"/><rect x="12" y="21" width="1" height="1"/><rect x="14" y="21" width="1" height="1"/><rect x="16" y="21" width="1" height="1"/><rect x="18" y="21" width="1" height="1"/><rect x="23" y="21" width="1" height="1"/>
+              <rect x="8" y="22" width="1" height="1"/><rect x="11" y="22" width="1" height="1"/><rect x="13" y="22" width="1" height="1"/><rect x="15" y="22" width="1" height="1"/><rect x="17" y="22" width="1" height="1"/><rect x="24" y="22" width="1" height="1"/>
+              <rect x="9" y="23" width="1" height="1"/><rect x="10" y="23" width="1" height="1"/><rect x="12" y="23" width="1" height="1"/><rect x="16" y="23" width="1" height="1"/><rect x="18" y="23" width="1" height="1"/><rect x="20" y="23" width="1" height="1"/><rect x="23" y="23" width="1" height="1"/>
+              <rect x="8" y="24" width="1" height="1"/><rect x="11" y="24" width="1" height="1"/><rect x="14" y="24" width="1" height="1"/><rect x="15" y="24" width="1" height="1"/><rect x="17" y="24" width="1" height="1"/><rect x="19" y="24" width="1" height="1"/><rect x="24" y="24" width="1" height="1"/>
+            </g>
+          </svg>
+          <div class="qrlogo">
+            <i><svg viewBox="0 0 24 24"><path d="M3 9 12 2l9 7"/><path d="M5 9v11a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V9"/></svg></i>
+          </div>
+        </div>
+      </div>
+
+      <!-- 货位标签 -->
+      <div class="slot">
+        <div class="si">
+          <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        </div>
+        <div class="stxt">
+          <div class="slab">货位</div>
+          <div class="sval tnum">A-12-3</div>
+        </div>
+        <span class="schip">
+          <svg viewBox="0 0 24 24"><path d="M9 11a3 3 0 1 0 6 0a3 3 0 0 0-6 0"/><path d="M17.657 16.657 13.414 20.9a2 2 0 0 1-2.827 0l-4.244-4.243a8 8 0 1 1 11.314 0z"/></svg>
+          A 区 12 排
+        </span>
+      </div>
+
+      <!-- 出示提示 -->
+      <div class="hint">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4"/><path d="M12 8h.01"/></svg>
+        向驿站店员出示此码即可取件
+      </div>
+    </div>
+
+    <!-- 包裹信息 -->
+    <div class="pkg">
+      <div class="ph">
+        <svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>
+        包裹信息
+      </div>
+      <div class="pb">
+        <div class="row">
+          <span class="k">
+            <svg viewBox="0 0 24 24"><path d="M14 18V6a2 2 0 0 0-2-2H4a2 2 0 0 0-2 2v11a1 1 0 0 0 1 1h2"/><path d="M15 18H9"/><path d="M19 18h2a1 1 0 0 0 1-1v-3.65a1 1 0 0 0-.22-.62l-3.48-4.35A1 1 0 0 0 17.52 8H14"/><circle cx="17" cy="18" r="2"/><circle cx="7" cy="18" r="2"/></svg>
+            快递公司
+          </span>
+          <span class="v"><span class="courier">中</span>中通快递</span>
+        </div>
+        <div class="row">
+          <span class="k">
+            <svg viewBox="0 0 24 24"><rect x="3" y="5" width="18" height="14" rx="2"/><path d="M7 9v6"/><path d="M11 9v6"/><path d="M15 9v6"/><path d="M19 9v6"/></svg>
+            运单尾号
+          </span>
+          <span class="v tnum">**** 7798</span>
+        </div>
+        <div class="row">
+          <span class="k">
+            <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><polyline points="12 6 12 12 16 14"/></svg>
+            入库时间
+          </span>
+          <span class="v tnum">06-18 09:12</span>
+        </div>
+        <div class="row">
+          <span class="k">
+            <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+            状态
+          </span>
+          <span class="v"><span class="tag blue"><span class="d"></span>待取件</span></span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 底部小提示 -->
+    <div class="foot">
+      <span class="ft b">
+        <svg viewBox="0 0 24 24"><path d="M14.5 4h-5L7 7H4a2 2 0 0 0-2 2v9a2 2 0 0 0 2 2h16a2 2 0 0 0 2-2V9a2 2 0 0 0-2-2h-3l-2.5-3z"/><circle cx="12" cy="13" r="3"/></svg>
+        截图保存
+      </span>
+      <span class="dot"></span>
+      <span class="ft">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2"/><path d="M12 20v2"/><path d="m4.93 4.93 1.41 1.41"/><path d="m17.66 17.66 1.41 1.41"/><path d="M2 12h2"/><path d="M20 12h2"/><path d="m6.34 17.66-1.41 1.41"/><path d="m19.07 4.93-1.41 1.41"/></svg>
+        屏幕已自动调亮
+      </span>
+    </div>
+
+  </div>
+</div>
+</body>
+</html>
