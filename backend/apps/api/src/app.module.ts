@@ -9,6 +9,7 @@ import { RedisService } from './core/redis/redis.service';
 import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
 import { PermissionGuard } from './modules/identity/permission.guard';
+import { ParcelModule } from './modules/parcel/parcel.module';
 import { StationModule } from './modules/station/station.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 
@@ -16,6 +17,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
     IdentityModule,
+    ParcelModule,
     StationModule,
     TenantModule,
   ],
