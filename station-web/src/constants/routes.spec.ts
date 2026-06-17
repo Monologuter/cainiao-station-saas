@@ -6,6 +6,7 @@ import CouponsView from "@/views/CouponsView.vue";
 import BillingSettingsView from "@/views/BillingSettingsView.vue";
 import ReviewsView from "@/views/ReviewsView.vue";
 import StatisticsView from "@/views/StatisticsView.vue";
+import { isPublicRoutePath } from "@/router";
 import { availableRoutes, stationRouteDefs } from "./routes";
 
 describe("station route definitions", () => {
@@ -85,5 +86,10 @@ describe("station route definitions", () => {
       stationRouteDefs.find((route) => route.code === "billing-settings")
         ?.component,
     ).toBe(BillingSettingsView);
+  });
+
+  it("treats onboarding application as a public route", () => {
+    expect(isPublicRoutePath("/onboarding/apply")).toBe(true);
+    expect(isPublicRoutePath("/workbench")).toBe(false);
   });
 });

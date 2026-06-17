@@ -4,9 +4,15 @@ import { getStoredToken } from '@/api/http';
 import { availableRoutes } from '@/constants/routes';
 import { useAuthStore } from '@/stores/auth';
 import LoginView from '@/views/LoginView.vue';
+import OnboardingApplyView from '@/views/OnboardingApplyView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 
 const dynamicRouteNames = new Set<string>();
+const publicRoutePaths = new Set(['/login', '/onboarding/apply']);
+
+export function isPublicRoutePath(path: string) {
+  return publicRoutePaths.has(path);
+}
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -15,6 +21,12 @@ export const router = createRouter({
       path: '/login',
       name: 'Login',
       component: LoginView,
+    },
+    {
+      path: '/onboarding/apply',
+      name: 'OnboardingApply',
+      component: OnboardingApplyView,
+      meta: { public: true },
     },
     {
       path: '/',
@@ -61,6 +73,9 @@ router.beforeEach(async (to) => {
   const token = getStoredToken();
   if (to.path === '/login') {
     return token ? '/workbench' : true;
+  }
+  if (isPublicRoutePath(to.path)) {
+    return true;
   }
   if (!token) {
     return {
