@@ -8,5 +8,10 @@ describe('user-app pages', () => {
     expect(paths).toContain('pages/ship/index');
     expect(paths).toContain('pages/ship-orders/index');
     expect(paths).toContain('pages/tracking/index');
+    expect(paths).toContain('pages/member/index');
+    expect(paths).toContain('pages/member/checkin');
+    expect(paths).toContain('pages/member/coupons');
+    expect(paths).toContain('pages/member/reviews');
+    expect(paths).toContain('pages/member/complaints');
   });
 });

@@ -41,6 +41,42 @@
       "style": {
         "navigationBarTitleText": "物流追踪"
       }
+    },
+    {
+      "path": "pages/member/index",
+      "style": {
+        "navigationBarTitleText": "会员中心"
+      }
+    },
+    {
+      "path": "pages/member/checkin",
+      "style": {
+        "navigationBarTitleText": "每日签到"
+      }
+    },
+    {
+      "path": "pages/member/points",
+      "style": {
+        "navigationBarTitleText": "积分明细"
+      }
+    },
+    {
+      "path": "pages/member/coupons",
+      "style": {
+        "navigationBarTitleText": "我的券包"
+      }
+    },
+    {
+      "path": "pages/member/reviews",
+      "style": {
+        "navigationBarTitleText": "我的评价"
+      }
+    },
+    {
+      "path": "pages/member/complaints",
+      "style": {
+        "navigationBarTitleText": "投诉进度"
+      }
     }
   ],
   "globalStyle": {

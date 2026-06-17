@@ -32,6 +32,7 @@ function goCode() {
       <button class="primary-btn" type="button" @click="goParcels">查看全部包裹</button>
       <button class="mini-btn" type="button" @click="uni.navigateTo({ url: '/pages/ship/index' })">在线寄件</button>
       <button class="mini-btn ghost" type="button" @click="uni.navigateTo({ url: '/pages/ship-orders/index' })">我的寄件</button>
+      <button class="mini-btn ghost" type="button" @click="uni.navigateTo({ url: '/pages/member/index' })">会员中心</button>
     </view>
     <view v-for="item in parcel.list" :key="item.id" class="mobile-card parcel-card">
       <text class="parcel-code">{{ item.pickupCode }}</text>
