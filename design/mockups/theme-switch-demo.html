@@ -1,0 +1,190 @@
+<!-- @dsCard group="主题切换" -->
+<!DOCTYPE html>
+<html lang="zh-CN" data-theme="blue">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>菜鸟驿站 · 三主题实时切换</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&family=Plus+Jakarta+Sans:wght@400;500;600;700;800&family=Space+Grotesk:wght@500;600;700&family=JetBrains+Mono:wght@500;700&display=swap" rel="stylesheet" />
+<style>
+  /* ============ 主题 Token ============ */
+  :root[data-theme="blue"]{
+    --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+    --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+    --text:#1E293B;--muted:#64748B;--border:#E8EBF0;
+    --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--accent:#10B981;--accent-soft:#E7F8F1;
+    --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+    --radius:12px;--radius-sm:9px;--shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+    --font:'Inter','PingFang SC',system-ui,sans-serif;--font-head:var(--font);--font-num:var(--font);--glow:none;
+  }
+  :root[data-theme="dark"]{
+    --bg:#0B0F1A;--surface:#131A2A;--surface-2:#0F1626;
+    --side-bg:#0C111E;--side-fg:#C7D2E0;--side-mut:#5B6B82;--side-on-bg:linear-gradient(135deg,#22D3EE,#0EA5C4);--side-on-fg:#04121A;--side-line:#1B2436;
+    --text:#E6EDF7;--muted:#8595AD;--border:#1E2A40;
+    --primary:#22D3EE;--primary-fg:#04121A;--primary-soft:rgba(34,211,238,.12);--accent:#34D399;--accent-soft:rgba(52,211,153,.12);
+    --ok:#34D399;--ok-soft:rgba(52,211,153,.12);--warn:#FBBF24;--warn-soft:rgba(251,191,36,.12);--danger:#FB7185;--danger-soft:rgba(251,113,133,.12);
+    --radius:12px;--radius-sm:9px;--shadow:0 0 0 1px rgba(34,211,238,.08),0 10px 28px rgba(0,0,0,.45);
+    --font:'Inter','PingFang SC',system-ui,sans-serif;--font-head:'Space Grotesk',var(--font);--font-num:'JetBrains Mono',var(--font);--glow:0 0 16px rgba(34,211,238,.5);
+  }
+  :root[data-theme="mint"]{
+    --bg:#F1FAF6;--surface:#FFFFFF;--surface-2:#F6FBF9;
+    --side-bg:#FFFFFF;--side-fg:#4B5563;--side-mut:#9AA7B2;--side-on-bg:#E3F7F0;--side-on-fg:#15A07E;--side-line:#EEF4F1;
+    --text:#243240;--muted:#6B7A87;--border:#E7EFEB;
+    --primary:#19B894;--primary-fg:#fff;--primary-soft:#E3F7F0;--accent:#5B9BF3;--accent-soft:#E9F1FE;
+    --ok:#10A37F;--ok-soft:#E3F7F0;--warn:#E08A2B;--warn-soft:#FCEFD9;--danger:#E2603F;--danger-soft:#FCEAE4;
+    --radius:20px;--radius-sm:14px;--shadow:0 8px 22px rgba(25,184,148,.10),0 2px 8px rgba(31,45,61,.05);
+    --font:'Plus Jakarta Sans','PingFang SC',system-ui,sans-serif;--font-head:var(--font);--font-num:var(--font);--glow:none;
+  }
+  *{box-sizing:border-box;margin:0;padding:0}
+  body{font-family:var(--font);background:var(--bg);color:var(--text);width:1440px;transition:background .3s,color .3s}
+  :root[data-theme="dark"] body{background:var(--bg) radial-gradient(circle at 1px 1px,rgba(34,211,238,.06) 1px,transparent 0) 0 0/26px 26px}
+  :root[data-theme="mint"] body{background:linear-gradient(160deg,#F1FAF6,#F2F6FF)}
+  svg{stroke:currentColor;fill:none}
+  .app{display:grid;grid-template-columns:240px 1fr;min-height:920px}
+  /* sidebar */
+  .side{background:var(--side-bg);border-right:1px solid var(--side-line);padding:18px 14px;transition:background .3s}
+  .brand{display:flex;align-items:center;gap:11px;padding:6px 8px 18px}
+  .logo{width:38px;height:38px;border-radius:11px;background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;box-shadow:var(--glow)}
+  .brand b{font-size:16px;font-weight:700;color:var(--text);font-family:var(--font-head)}.brand span{font-size:11px;color:var(--side-mut)}
+  .nav{display:flex;flex-direction:column;gap:3px;margin-top:6px}
+  .nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--side-mut);font-size:13.5px;font-weight:500;text-decoration:none;cursor:pointer;transition:.2s}
+  .nav a:hover{background:var(--surface-2);color:var(--side-fg)}
+  .nav a.on{background:var(--side-on-bg);color:var(--side-on-fg);font-weight:600;box-shadow:var(--glow)}
+  .nav svg{width:18px;height:18px;stroke-width:2}
+  .nav .grp{font-size:10.5px;color:var(--side-mut);padding:14px 12px 6px;font-weight:700;letter-spacing:.06em}
+  /* main */
+  .main{padding:20px 26px}
+  .top{display:flex;align-items:center;justify-content:space-between;margin-bottom:20px}
+  .top h1{font-size:22px;font-weight:700;letter-spacing:-.01em;font-family:var(--font-head)}
+  .top .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+  .top-r{display:flex;align-items:center;gap:10px}
+  .seg{display:flex;background:var(--surface-2);border:1px solid var(--border);border-radius:10px;padding:3px;gap:2px}
+  .seg button{border:0;background:transparent;color:var(--muted);font-size:12.5px;font-weight:600;padding:6px 12px;border-radius:7px;cursor:pointer;font-family:var(--font);transition:.2s}
+  .seg button.on{background:var(--primary);color:var(--primary-fg);box-shadow:var(--glow)}
+  .search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius-sm);color:var(--muted);font-size:13px;width:220px}
+  .ibtn{width:38px;height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;position:relative;color:var(--muted)}
+  .ibtn .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--danger)}
+  .avatar{width:38px;height:38px;border-radius:var(--radius-sm);background:var(--primary);color:var(--primary-fg);display:grid;place-items:center;font-size:12.5px;font-weight:600}
+  /* kpis */
+  .kpis{display:grid;grid-template-columns:repeat(5,1fr);gap:14px;margin-bottom:16px}
+  .kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+  .kpi .lab{font-size:12.5px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+  .kpi .lab i{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+  .kpi .lab i svg{width:15px;height:15px}
+  .kpi .num{font-size:28px;font-weight:700;margin-top:10px;letter-spacing:-.02em;font-variant-numeric:tabular-nums;font-family:var(--font-num);text-shadow:var(--glow)}
+  .kpi .delta{font-size:11.5px;margin-top:4px;color:var(--ok);font-weight:600}
+  .kpi.warn .lab i{background:var(--warn-soft);color:var(--warn)}.kpi.warn .num{color:var(--warn)}
+  /* row */
+  .row{display:grid;grid-template-columns:1fr 322px;gap:14px}
+  .card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+  .card .hd{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)}
+  .card .hd h2{font-size:15px;font-weight:600;font-family:var(--font-head)}
+  .link{font-size:12.5px;color:var(--primary);font-weight:600;cursor:pointer}
+  table{width:100%;border-collapse:collapse}
+  th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:11px 18px;background:var(--surface-2)}
+  td{padding:12px 18px;font-size:13px;border-top:1px solid var(--border);font-variant-numeric:tabular-nums}
+  .code{font-weight:700;color:var(--primary);font-family:var(--font-num)}
+  .tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+  .tag.stored{background:var(--primary-soft);color:var(--primary)}.tag.picked{background:var(--ok-soft);color:var(--ok)}.tag.over{background:var(--danger-soft);color:var(--danger)}
+  .op{color:var(--primary);font-weight:600;font-size:12.5px;cursor:pointer}
+  .qa{display:flex;flex-direction:column;gap:12px;padding:16px}
+  .qbtn{display:flex;align-items:center;gap:12px;padding:15px;border-radius:var(--radius-sm);cursor:pointer;color:#fff;font-weight:600;font-size:15px;box-shadow:var(--glow)}
+  .qbtn.in{background:var(--primary);color:var(--primary-fg)}.qbtn.out{background:var(--accent)}
+  .qbtn svg{width:21px;height:21px;stroke-width:2.2}
+  .qbtn small{display:block;font-weight:400;font-size:11.5px;opacity:.9;margin-top:2px}
+  .bars{display:flex;align-items:flex-end;gap:9px;height:118px;padding:18px}
+  .bars .b{flex:1;background:var(--primary-soft);border-radius:6px 6px 0 0;position:relative}
+  .bars .b span{position:absolute;bottom:0;left:0;right:0;background:var(--primary);border-radius:6px 6px 0 0;box-shadow:var(--glow)}
+  .bars .b em{position:absolute;top:-17px;left:0;right:0;text-align:center;font-size:10px;color:var(--muted);font-style:normal;font-weight:600}
+</style>
+</head>
+<body>
+<div class="app">
+  <aside class="side">
+    <div class="brand">
+      <div class="logo"><svg width="20" height="20" viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg></div>
+      <div><b>驿小站</b><br><span>城南综合驿站</span></div>
+    </div>
+    <nav class="nav">
+      <a class="on"><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>工作台</a>
+      <div class="grp">代收业务</div>
+      <a><svg viewBox="0 0 24 24"><path d="M16 16v2a2 2 0 0 1-2 2H6a2 2 0 0 1-2-2V8"/><path d="M8 4h10a2 2 0 0 1 2 2v8"/><path d="m4 12 4-4 4 4"/></svg>扫码入库</a>
+      <a><svg viewBox="0 0 24 24"><path d="M21 10V8a2 2 0 0 0-1-1.7l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.7l7 4a2 2 0 0 0 2 0"/><path d="m7.5 4.2 9 5.3"/></svg>在库包裹</a>
+      <a><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>取件核销</a>
+      <a><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="m4.9 4.9 14.2 14.2"/></svg>异常件</a>
+      <div class="grp">网点管理</div>
+      <a><svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>货架库位</a>
+      <a><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m19 9-5 5-4-4-3 3"/></svg>经营统计</a>
+      <a><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>员工权限</a>
+    </nav>
+  </aside>
+  <main class="main">
+    <div class="top">
+      <div><h1>工作台</h1><div class="sub">2026年6月18日 周四 · 营业中</div></div>
+      <div class="top-r">
+        <div class="seg" id="seg">
+          <button data-t="blue" class="on">清爽蓝</button>
+          <button data-t="dark">科技暗</button>
+          <button data-t="mint">柔和薄荷</button>
+        </div>
+        <div class="search"><svg width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>取件码 / 手机号</div>
+        <div class="ibtn"><span class="dot"></span><svg width="18" height="18" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <div class="avatar">店长</div>
+      </div>
+    </div>
+
+    <div class="kpis">
+      <div class="kpi"><div class="lab"><i><svg viewBox="0 0 24 24"><path d="m4 12 4-4 4 4"/><path d="M8 4v12"/><path d="M16 8h4v12H4"/></svg></i>今日入库</div><div class="num">128</div><div class="delta">↑ 12% 较昨日</div></div>
+      <div class="kpi"><div class="lab"><i><svg viewBox="0 0 24 24"><path d="m20 12-4 4-4-4"/><path d="M16 20V8"/></svg></i>今日出库</div><div class="num">96</div><div class="delta">↑ 8% 较昨日</div></div>
+      <div class="kpi"><div class="lab"><i><svg viewBox="0 0 24 24"><path d="M21 8 12 3 3 8l9 5 9-5z"/><path d="M3 8v8l9 5 9-5V8"/></svg></i>在库待取</div><div class="num">342</div><div class="delta" style="color:var(--muted)">货位占用 71%</div></div>
+      <div class="kpi"><div class="lab"><i><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m22 4-10 10-3-3"/></svg></i>取件率</div><div class="num">89%</div><div class="delta">↑ 4% 较昨日</div></div>
+      <div class="kpi warn"><div class="lab"><i><svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg></i>滞留预警</div><div class="num">7</div><div class="delta" style="color:var(--warn)">超3天待催取</div></div>
+    </div>
+
+    <div class="row">
+      <div class="card">
+        <div class="hd"><h2>最近入库</h2><span class="link">查看全部 →</span></div>
+        <table>
+          <thead><tr><th>取件码</th><th>收件人</th><th>手机尾号</th><th>快递</th><th>货位</th><th>状态</th><th>操作</th></tr></thead>
+          <tbody>
+            <tr><td class="code">8-2-1043</td><td>王**</td><td>6688</td><td>中通</td><td>A-12-3</td><td><span class="tag stored">在库待取</span></td><td class="op">核销</td></tr>
+            <tr><td class="code">8-2-1042</td><td>李**</td><td>3421</td><td>圆通</td><td>A-12-2</td><td><span class="tag stored">在库待取</span></td><td class="op">核销</td></tr>
+            <tr><td class="code">8-1-0975</td><td>张**</td><td>1209</td><td>京东</td><td>B-04-7</td><td><span class="tag picked">已取件</span></td><td class="op">详情</td></tr>
+            <tr><td class="code">7-9-0820</td><td>陈**</td><td>5567</td><td>申通</td><td>C-01-1</td><td><span class="tag over">滞留3天</span></td><td class="op">催取</td></tr>
+            <tr><td class="code">8-2-1041</td><td>赵**</td><td>8890</td><td>韵达</td><td>A-11-9</td><td><span class="tag stored">在库待取</span></td><td class="op">核销</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <div style="display:flex;flex-direction:column;gap:14px">
+        <div class="card"><div class="qa">
+          <div class="qbtn in"><svg viewBox="0 0 24 24"><path d="M3 7V5a2 2 0 0 1 2-2h2M17 3h2a2 2 0 0 1 2 2v2M21 17v2a2 2 0 0 1-2 2h-2M7 21H5a2 2 0 0 1-2-2v-2M7 12h10"/></svg><div>扫码入库<small>扫码枪 / 手动录入</small></div></div>
+          <div class="qbtn out"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg><div>取件核销<small>取件码 / 手机尾号</small></div></div>
+        </div></div>
+        <div class="card">
+          <div class="hd"><h2>近7天入库趋势</h2></div>
+          <div class="bars">
+            <div class="b"><em>98</em><span style="height:52%"></span></div>
+            <div class="b"><em>112</em><span style="height:62%"></span></div>
+            <div class="b"><em>87</em><span style="height:46%"></span></div>
+            <div class="b"><em>134</em><span style="height:74%"></span></div>
+            <div class="b"><em>120</em><span style="height:66%"></span></div>
+            <div class="b"><em>105</em><span style="height:58%"></span></div>
+            <div class="b"><em>128</em><span style="height:71%"></span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </main>
+</div>
+<script>
+  const root=document.documentElement, seg=document.getElementById('seg');
+  const saved=localStorage.getItem('cn-theme'); if(saved) setTheme(saved);
+  seg.addEventListener('click',e=>{const b=e.target.closest('button'); if(b) setTheme(b.dataset.t);});
+  function setTheme(t){
+    root.setAttribute('data-theme',t);
+    localStorage.setItem('cn-theme',t);
+    seg.querySelectorAll('button').forEach(x=>x.classList.toggle('on',x.dataset.t===t));
+  }
+</script>
+</body>
+</html>
