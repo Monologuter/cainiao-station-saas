@@ -1,7 +1,7 @@
 export const PAY_CHANNEL = Symbol('PAY_CHANNEL');
 
 export interface PayRequest {
-  bizType: 'SHIP_ORDER';
+  bizType: 'SHIP_ORDER' | 'SUBSCRIPTION_INVOICE';
   bizId: string;
   amount: number;
   idempotencyKey: string;

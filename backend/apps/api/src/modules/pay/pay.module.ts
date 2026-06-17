@@ -12,6 +12,6 @@ import { PayService } from './pay.service';
     TenantPrismaService,
     { provide: PAY_CHANNEL, useClass: MockPayChannel },
   ],
-  exports: [PayService],
+  exports: [PayService, PAY_CHANNEL],
 })
 export class PayModule {}
