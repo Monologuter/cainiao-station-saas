@@ -3,7 +3,12 @@ import { groupPermissions } from './perms';
 
 describe('permission metadata', () => {
   it('groups backend permission codes for staff roles page', () => {
-    const groups = groupPermissions(['parcel:read', 'parcel:pickup', 'station:manage']);
+    const groups = groupPermissions([
+      'parcel:read',
+      'parcel:pickup',
+      'station:manage',
+      'shipping:read',
+    ]);
 
     expect(groups).toEqual([
       {
@@ -16,6 +21,10 @@ describe('permission metadata', () => {
       {
         module: '门店',
         items: [{ code: 'station:manage', name: '货架库位管理' }],
+      },
+      {
+        module: '寄件',
+        items: [{ code: 'shipping:read', name: '查看寄件单' }],
       },
     ]);
   });

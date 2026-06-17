@@ -76,8 +76,7 @@ const MENU_GROUPS: MenuGroup[] = [
         title: '寄件管理',
         path: '/shipping',
         icon: 'Truck',
-        disabled: true,
-        badge: 'P2',
+        perm: 'shipping:read',
       },
       {
         code: 'statistics',

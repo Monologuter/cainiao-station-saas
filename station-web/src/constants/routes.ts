@@ -78,6 +78,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     name: 'Shipping',
     path: 'shipping',
     title: '寄件管理',
+    perm: 'shipping:read',
     component: PlaceholderView,
   },
   {
