@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { EventBusModule } from './core/event-bus/event-bus.module';
 import { ContextInterceptor } from './core/http/context.interceptor';
 import { PrismaService } from './core/prisma/prisma.service';
 import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
@@ -10,6 +11,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
 import { PermissionGuard } from './modules/identity/permission.guard';
 import { InboundModule } from './modules/inbound/inbound.module';
+import { NotifyModule } from './modules/notify/notify.module';
 import { ParcelModule } from './modules/parcel/parcel.module';
 import { StationModule } from './modules/station/station.module';
 import { TenantModule } from './modules/tenant/tenant.module';
@@ -17,8 +19,10 @@ import { TenantModule } from './modules/tenant/tenant.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    EventBusModule,
     IdentityModule,
     InboundModule,
+    NotifyModule,
     ParcelModule,
     StationModule,
     TenantModule,

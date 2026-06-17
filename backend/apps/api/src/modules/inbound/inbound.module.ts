@@ -1,5 +1,4 @@
 import { Module } from '@nestjs/common';
-import { EventBus } from '../../core/event-bus/event-bus';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisLockService } from '../../core/redis/redis-lock.service';
@@ -21,7 +20,6 @@ import { PickupCodeService } from './pickup-code.service';
     TenantPrismaService,
     RedisService,
     RedisLockService,
-    EventBus,
   ],
   exports: [InboundService, PickupCodeService],
 })

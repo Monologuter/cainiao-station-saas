@@ -71,6 +71,26 @@ async function main() {
       create: { userId: admin.id, roleId: superRole.id },
     });
 
+    for (const template of [
+      {
+        code: 'PARCEL_STORED',
+        channel: 'IN_APP' as const,
+        content: '您的包裹已到{station}，取件码{code}，库位{slot}。',
+      },
+      {
+        code: 'PARCEL_STORED',
+        channel: 'SMS' as const,
+        content: '【菜鸟驿站】您的包裹已到{station}，取件码{code}，库位{slot}。',
+      },
+    ]) {
+      const exists = await tx.notifyTemplate.findFirst({
+        where: { tenantId: null, code: template.code, channel: template.channel },
+      });
+      if (!exists) {
+        await tx.notifyTemplate.create({ data: template });
+      }
+    }
+
     const tenantDailyPerms = await tx.permission.findMany({
       where: {
         code: {

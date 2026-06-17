@@ -50,6 +50,17 @@ enum ParcelEventType {
   RETURNED
 }
 
+enum NotifyChannelType {
+  IN_APP
+  SMS
+}
+
+enum NotificationStatus {
+  PENDING
+  SENT
+  FAILED
+}
+
 model Tenant {
   id           String       @id @default(uuid()) @db.Uuid
   name         String
@@ -63,6 +74,8 @@ model Tenant {
   slots        Slot[]
   parcels      Parcel[]
   parcelEvents ParcelEvent[]
+  notifications Notification[]
+  notifyTemplates NotifyTemplate[]
 }
 
 model Station {
@@ -148,6 +161,7 @@ model Parcel {
   station           Station       @relation(fields: [stationId], references: [id])
   slot              Slot?         @relation(fields: [slotId], references: [id])
   events            ParcelEvent[]
+  notifications     Notification[]
 
   @@index([tenantId, stationId, status])
   @@index([tenantId, receiverPhone])
@@ -170,6 +184,46 @@ model ParcelEvent {
 
   @@index([tenantId, parcelId, createdAt])
   @@map("parcel_events")
+}
+
+model Notification {
+  id            String             @id @default(uuid()) @db.Uuid
+  tenantId      String             @map("tenant_id") @db.Uuid
+  parcelId      String?            @map("parcel_id") @db.Uuid
+  receiverPhone String             @map("receiver_phone")
+  channel       NotifyChannelType
+  templateCode  String             @map("template_code")
+  content       String
+  status        NotificationStatus @default(PENDING)
+  dedupKey      String             @map("dedup_key")
+  sentAt        DateTime?          @map("sent_at")
+  error         String?
+  createdAt     DateTime           @default(now()) @map("created_at")
+  updatedAt     DateTime           @updatedAt @map("updated_at")
+  deletedAt     DateTime?          @map("deleted_at")
+  tenant        Tenant             @relation(fields: [tenantId], references: [id])
+  parcel        Parcel?            @relation(fields: [parcelId], references: [id])
+
+  @@unique([tenantId, dedupKey])
+  @@index([tenantId, parcelId])
+  @@index([tenantId, receiverPhone])
+  @@map("notifications")
+}
+
+model NotifyTemplate {
+  id        String            @id @default(uuid()) @db.Uuid
+  tenantId  String?           @map("tenant_id") @db.Uuid
+  code      String
+  channel   NotifyChannelType
+  content   String
+  enabled   Boolean           @default(true)
+  createdAt DateTime          @default(now()) @map("created_at")
+  updatedAt DateTime          @updatedAt @map("updated_at")
+  deletedAt DateTime?         @map("deleted_at")
+  tenant    Tenant?           @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, code, channel])
+  @@map("notify_templates")
 }
 
 model User {
