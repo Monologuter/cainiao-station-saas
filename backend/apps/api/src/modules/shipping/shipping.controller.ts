@@ -1,5 +1,6 @@
 import { Body, Controller, Post } from '@nestjs/common';
 import { RequirePermission } from '../identity/decorators';
+import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
 import { ShippingService } from './shipping.service';
 
@@ -11,5 +12,11 @@ export class ShippingController {
   @Post('quote')
   quote(@Body() dto: QuoteDto) {
     return this.shipping.quote(dto);
+  }
+
+  @RequirePermission('shipping:create')
+  @Post('orders')
+  createOrder(@Body() dto: CreateShipOrderDto) {
+    return this.shipping.createOrder(dto);
   }
 }
