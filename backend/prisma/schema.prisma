@@ -172,6 +172,32 @@ enum CouponObtainedVia {
   CHECKIN_REWARD
 }
 
+enum ReviewTargetType {
+  PICKUP
+  SHIP
+}
+
+enum ReviewStatus {
+  PUBLISHED
+  REPLIED
+  HIDDEN
+}
+
+enum ComplaintType {
+  DAMAGE
+  LOST
+  SERVICE
+  WRONG
+  OTHER
+}
+
+enum ComplaintStatus {
+  PENDING
+  PROCESSING
+  RESOLVED
+  CLOSED
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -199,6 +225,8 @@ model Member {
   pointRecords          PointRecord[]
   coupons               Coupon[]
   checkins              MemberCheckin[]
+  reviews               Review[]
+  complaints            Complaint[]
 
   @@index([level])
   @@map("members")
@@ -288,6 +316,67 @@ model Coupon {
   @@map("coupons")
 }
 
+model Review {
+  id            String           @id @default(uuid()) @db.Uuid
+  tenantId      String           @map("tenant_id") @db.Uuid
+  stationId     String           @map("station_id") @db.Uuid
+  memberId      String           @map("member_id") @db.Uuid
+  consumerPhone String           @map("consumer_phone") @db.VarChar(20)
+  targetType    ReviewTargetType @map("target_type")
+  refType       String           @map("ref_type") @db.VarChar(32)
+  refId         String           @map("ref_id") @db.VarChar(64)
+  rating        Int              @db.SmallInt
+  tags          String[]         @default([])
+  content       String?          @db.VarChar(500)
+  images        String[]         @default([])
+  status        ReviewStatus     @default(PUBLISHED)
+  replyContent  String?          @map("reply_content") @db.VarChar(500)
+  repliedBy     String?          @map("replied_by") @db.Uuid
+  repliedAt     DateTime?        @map("replied_at")
+  hiddenBy      String?          @map("hidden_by") @db.Uuid
+  hiddenAt      DateTime?        @map("hidden_at")
+  hideReason    String?          @map("hide_reason") @db.VarChar(500)
+  createdAt     DateTime         @default(now()) @map("created_at")
+  updatedAt     DateTime         @updatedAt @map("updated_at")
+  deletedAt     DateTime?        @map("deleted_at")
+  tenant        Tenant           @relation(fields: [tenantId], references: [id])
+  station       Station          @relation(fields: [stationId], references: [id])
+  member        Member           @relation(fields: [memberId], references: [id])
+
+  @@unique([tenantId, refType, refId, memberId])
+  @@index([tenantId, stationId, createdAt])
+  @@index([tenantId, rating])
+  @@map("reviews")
+}
+
+model Complaint {
+  id            String          @id @default(uuid()) @db.Uuid
+  tenantId      String          @map("tenant_id") @db.Uuid
+  stationId     String          @map("station_id") @db.Uuid
+  memberId      String          @map("member_id") @db.Uuid
+  consumerPhone String          @map("consumer_phone") @db.VarChar(20)
+  type          ComplaintType
+  refType       String?         @map("ref_type") @db.VarChar(32)
+  refId         String?         @map("ref_id") @db.VarChar(64)
+  content       String          @db.VarChar(1000)
+  images        String[]        @default([])
+  status        ComplaintStatus @default(PENDING)
+  handleNote    String?         @map("handle_note") @db.VarChar(1000)
+  handledBy     String?         @map("handled_by") @db.Uuid
+  handledAt     DateTime?       @map("handled_at")
+  createdAt     DateTime        @default(now()) @map("created_at")
+  updatedAt     DateTime        @updatedAt @map("updated_at")
+  deletedAt     DateTime?       @map("deleted_at")
+  tenant        Tenant          @relation(fields: [tenantId], references: [id])
+  station       Station         @relation(fields: [stationId], references: [id])
+  member        Member          @relation(fields: [memberId], references: [id])
+
+  @@index([tenantId, stationId, status])
+  @@index([tenantId, memberId, status])
+  @@index([tenantId, createdAt])
+  @@map("complaints")
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
@@ -311,6 +400,8 @@ model Tenant {
   exceptionTickets     ExceptionTicket[]
   couponTemplates      CouponTemplate[]
   coupons              Coupon[]
+  reviews              Review[]
+  complaints           Complaint[]
 }
 
 model Station {
@@ -325,6 +416,8 @@ model Station {
   parcels    Parcel[]
   shipOrders ShipOrder[]
   exceptions ExceptionTicket[]
+  reviews    Review[]
+  complaints Complaint[]
 
   @@index([tenantId])
 }
