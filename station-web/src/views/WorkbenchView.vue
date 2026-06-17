@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
 import {
   BadgeCheck,
   Box,
@@ -6,27 +7,52 @@ import {
   PackageCheck,
   ScanLine,
 } from 'lucide-vue-next';
+import { overviewApi, overviewToKpis, type DashboardKpi } from '@/api/analytics';
+import { listParcelsApi, parcelStatusMeta, type ParcelItem } from '@/api/parcel';
 
-const kpis = [
-  { label: '今日入库', value: '128', delta: '↑ 12% 较昨日', icon: ScanLine },
-  { label: '今日出库', value: '96', delta: '↑ 8% 较昨日', icon: PackageCheck },
-  { label: '在库待取', value: '342', delta: '货位占用 71%', icon: Box },
-  { label: '取件率', value: '89%', delta: '↑ 4% 较昨日', icon: BadgeCheck },
-  { label: '滞留预警', value: '7', delta: '超3天待催取', icon: ClockAlert, warn: true },
-];
+const iconMap = [ScanLine, PackageCheck, Box, BadgeCheck, ClockAlert];
+const kpis = ref<DashboardKpi[]>(overviewToKpis({
+  inboundToday: 0,
+  pickedToday: 0,
+  inStock: 0,
+  pickupRate: 0,
+  overdueCount: 0,
+  notifyToday: 0,
+}));
+const recent = ref<ParcelItem[]>([]);
 
-const rows = [
-  ['8-2-1043', '王**', '6688', '中通', 'A-12-3', '在库待取'],
-  ['8-2-1042', '李**', '3421', '圆通', 'A-12-2', '在库待取'],
-  ['8-1-0975', '张**', '1209', '京东', 'B-04-7', '已取件'],
-  ['7-9-0820', '陈**', '5567', '申通', 'C-01-1', '滞留3天'],
-  ['8-2-1041', '赵**', '8890', '韵达', 'A-11-9', '在库待取'],
-];
+const decoratedKpis = computed(() =>
+  kpis.value.map((item, index) => ({
+    ...item,
+    icon: iconMap[index],
+  })),
+);
+
+onMounted(async () => {
+  const [overview, parcels] = await Promise.all([
+    overviewApi(),
+    listParcelsApi({ status: 'STORED', page: 1, size: 5 }),
+  ]);
+  kpis.value = overviewToKpis(overview);
+  recent.value = parcels.list;
+});
+
+function formatTime(value?: string | null) {
+  if (!value) {
+    return '-';
+  }
+  return new Date(value).toLocaleString('zh-CN', {
+    month: '2-digit',
+    day: '2-digit',
+    hour: '2-digit',
+    minute: '2-digit',
+  });
+}
 </script>
 
 <template>
   <section class="kpi-row">
-    <article v-for="item in kpis" :key="item.label" class="kpi" :class="{ warn: item.warn }">
+    <article v-for="item in decoratedKpis" :key="item.label" class="kpi" :class="{ warn: item.warn }">
       <div class="lab">
         <i><component :is="item.icon" /></i>
         {{ item.label }}
@@ -46,31 +72,34 @@ const rows = [
         <thead>
           <tr>
             <th>取件码</th>
-            <th>收件人</th>
+            <th>运单号</th>
             <th>手机尾号</th>
             <th>快递</th>
             <th>货位</th>
             <th>状态</th>
-            <th>操作</th>
+            <th>入库时间</th>
           </tr>
         </thead>
         <tbody>
-          <tr v-for="row in rows" :key="row[0]">
-            <td class="code">{{ row[0] }}</td>
-            <td>{{ row[1] }}</td>
-            <td>{{ row[2] }}</td>
-            <td>{{ row[3] }}</td>
-            <td>{{ row[4] }}</td>
+          <tr v-for="parcel in recent" :key="parcel.id">
+            <td class="code">{{ parcel.pickupCode ?? '-' }}</td>
+            <td>{{ parcel.waybillNo }}</td>
+            <td>{{ parcel.receiverPhoneTail }}</td>
+            <td>{{ parcel.carrier ?? '-' }}</td>
+            <td>{{ parcel.slot?.code ?? '-' }}</td>
             <td>
-              <span class="tag" :class="row[5] === '已取件' ? 'green' : row[5].startsWith('滞留') ? 'red' : 'blue'">
+              <span class="tag" :class="parcelStatusMeta(parcel.status).tag">
                 <span class="d"></span>
-                {{ row[5] }}
+                {{ parcelStatusMeta(parcel.status).label }}
               </span>
             </td>
-            <td><span class="op">详情</span></td>
+            <td>{{ formatTime(parcel.storedAt) }}</td>
           </tr>
         </tbody>
       </table>
+      <div v-if="recent.length === 0" class="empty compact-empty">
+        <p>暂无最近入库。</p>
+      </div>
     </div>
 
     <aside class="quick-panel">
