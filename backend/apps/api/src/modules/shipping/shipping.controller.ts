@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
 import { ApiCode, BizError } from '../../core/http/api-code';
+import { LogisticsService } from '../logistics/logistics.service';
 import { PayService } from '../pay/pay.service';
 import { CurrentUser, RequirePermission } from '../identity/decorators';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
@@ -37,6 +38,7 @@ class ListShipOrdersQuery {
 export class ShippingController {
   constructor(
     private readonly shipping: ShippingService,
+    private readonly logistics: LogisticsService,
     private readonly pay: PayService,
   ) {}
 
@@ -75,5 +77,11 @@ export class ShippingController {
       throw new BizError(ApiCode.BAD_REQUEST, '缺少支付幂等键');
     }
     return this.pay.payShipOrder(id, idempotencyKey, user);
+  }
+
+  @RequirePermission('shipping:collect')
+  @Post('orders/:id/collect')
+  collectOrder(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.logistics.collectShipOrder(id, user);
   }
 }
