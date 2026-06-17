@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { EventBus } from '../../core/event-bus/event-bus';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { NotifyChannelType } from './notify-channel';
 import { TemplateRenderer } from './template-renderer';
@@ -36,6 +37,7 @@ export class NotifyService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly renderer: TemplateRenderer,
+    private readonly eventBus: EventBus,
   ) {}
 
   async notifyParcelStored(payload: ParcelStoredNotification) {
@@ -48,7 +50,7 @@ export class NotifyService {
       });
       const dedupKey = `${payload.parcelId}:ParcelStored:${channel}`;
 
-      await this.tenantPrisma.withTenant((tx) =>
+      const notification = await this.tenantPrisma.withTenant<any>((tx) =>
         tx.notification.upsert({
           where: {
             tenantId_dedupKey: {
@@ -70,6 +72,12 @@ export class NotifyService {
           },
         }),
       );
+      await this.publishSmsSent(
+        channel,
+        payload,
+        dedupKey,
+        notification.sentAt,
+      );
     }
   }
 
@@ -84,7 +92,7 @@ export class NotifyService {
       });
       const dedupKey = `${payload.parcelId}:ParcelOverdue:${payload.level}:${channel}`;
 
-      await this.tenantPrisma.withTenant((tx) =>
+      const notification = await this.tenantPrisma.withTenant<any>((tx) =>
         tx.notification.upsert({
           where: {
             tenantId_dedupKey: {
@@ -106,6 +114,31 @@ export class NotifyService {
           },
         }),
       );
+      await this.publishSmsSent(
+        channel,
+        payload,
+        dedupKey,
+        notification.sentAt,
+      );
     }
+  }
+
+  private async publishSmsSent(
+    channel: NotifyChannelType,
+    payload: { tenantId: string; stationId: string },
+    dedupKey: string,
+    sentAt?: Date | null,
+  ) {
+    if (channel !== 'SMS') {
+      return;
+    }
+    await this.eventBus.publish(
+      EventBus.createEvent('SmsNotificationSent', {
+        tenantId: payload.tenantId,
+        stationId: payload.stationId,
+        usageEventId: `notify:${payload.tenantId}:${dedupKey}`,
+        sentAt: (sentAt ?? new Date()).toISOString(),
+      }),
+    );
   }
 }

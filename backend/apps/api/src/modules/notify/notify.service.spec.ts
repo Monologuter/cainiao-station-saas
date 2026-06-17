@@ -40,7 +40,8 @@ describe('NotifyService', () => {
         content: `${channel}:${vars.code}:${vars.slot}`,
       })),
     } as any;
-    const service = new NotifyService(tenantPrisma, renderer);
+    const eventBus = { publish: jest.fn() };
+    const service = new NotifyService(tenantPrisma, renderer, eventBus as any);
 
     await service.notifyParcelStored({
       parcelId: 'p1',
@@ -61,6 +62,16 @@ describe('NotifyService', () => {
       status: 'SENT',
       dedupKey: 'p1:ParcelStored:IN_APP',
     });
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'SmsNotificationSent',
+        payload: expect.objectContaining({
+          tenantId: 't1',
+          stationId: 's1',
+          usageEventId: 'notify:t1:p1:ParcelStored:SMS',
+        }),
+      }),
+    );
   });
 
   it('dedups repeated ParcelStored notifications by dedup key', async () => {
@@ -77,7 +88,9 @@ describe('NotifyService', () => {
     const renderer = {
       render: jest.fn(async () => ({ content: 'ok' })),
     } as any;
-    const service = new NotifyService(tenantPrisma, renderer);
+    const service = new NotifyService(tenantPrisma, renderer, {
+      publish: jest.fn(),
+    } as any);
 
     await service.notifyParcelStored({
       parcelId: 'p1',
@@ -113,7 +126,9 @@ describe('NotifyService', () => {
         content: `${code}:${channel}:${vars.daysOverdue}`,
       })),
     } as any;
-    const service = new NotifyService(tenantPrisma, renderer);
+    const service = new NotifyService(tenantPrisma, renderer, {
+      publish: jest.fn(),
+    } as any);
 
     await service.notifyParcelOverdue({
       parcelId: 'p1',
