@@ -1,16 +1,29 @@
 import { defineStore } from 'pinia';
-import { loginApi, meApi, type AuthUser } from '@/api/auth';
+import {
+  loginApi,
+  meApi,
+  menusApi,
+  permissionsApi,
+  type AuthUser,
+  type MenuGroup,
+} from '@/api/auth';
 import { clearStoredToken, getStoredToken, setStoredToken } from '@/api/http';
 
 interface AuthState {
   token: string;
   user: AuthUser | null;
+  perms: string[];
+  menus: MenuGroup[];
+  routesReady: boolean;
 }
 
 export const useAuthStore = defineStore('auth', {
   state: (): AuthState => ({
     token: getStoredToken() ?? '',
     user: null,
+    perms: [],
+    menus: [],
+    routesReady: false,
   }),
   getters: {
     isLoggedIn: (state) => Boolean(state.token),
@@ -20,6 +33,7 @@ export const useAuthStore = defineStore('auth', {
       const result = await loginApi({ username, password });
       this.token = result.accessToken;
       this.user = result.user;
+      this.routesReady = false;
       setStoredToken(result.accessToken);
       return result;
     },
@@ -27,12 +41,25 @@ export const useAuthStore = defineStore('auth', {
       if (!this.token) {
         return null;
       }
-      this.user = await meApi();
+      const [user, perms, menus] = await Promise.all([
+        meApi(),
+        permissionsApi(),
+        menusApi(),
+      ]);
+      this.user = user;
+      this.perms = perms;
+      this.menus = menus;
       return this.user;
+    },
+    hasPerm(code: string) {
+      return this.perms.includes(code);
     },
     logout() {
       this.token = '';
       this.user = null;
+      this.perms = [];
+      this.menus = [];
+      this.routesReady = false;
       clearStoredToken();
     },
   },

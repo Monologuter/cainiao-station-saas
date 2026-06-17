@@ -1,8 +1,12 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import DefaultLayout from '@/layouts/DefaultLayout.vue';
 import { getStoredToken } from '@/api/http';
+import { availableRoutes } from '@/constants/routes';
+import { useAuthStore } from '@/stores/auth';
 import LoginView from '@/views/LoginView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
+
+const dynamicRouteNames = new Set<string>();
 
 export const router = createRouter({
   history: createWebHistory(),
@@ -14,6 +18,7 @@ export const router = createRouter({
     },
     {
       path: '/',
+      name: 'Root',
       component: DefaultLayout,
       redirect: '/workbench',
       children: [
@@ -28,7 +33,31 @@ export const router = createRouter({
   ],
 });
 
-router.beforeEach((to) => {
+export function addDynamicRoutes(perms: string[]) {
+  for (const route of availableRoutes(perms)) {
+    if (router.hasRoute(route.name)) {
+      continue;
+    }
+    router.addRoute('Root', {
+      path: route.path,
+      name: route.name,
+      component: route.component,
+      meta: { title: route.title, perm: route.perm },
+    });
+    dynamicRouteNames.add(route.name);
+  }
+}
+
+export function resetDynamicRoutes() {
+  for (const name of dynamicRouteNames) {
+    if (router.hasRoute(name)) {
+      router.removeRoute(name);
+    }
+  }
+  dynamicRouteNames.clear();
+}
+
+router.beforeEach(async (to) => {
   const token = getStoredToken();
   if (to.path === '/login') {
     return token ? '/workbench' : true;
@@ -39,5 +68,27 @@ router.beforeEach((to) => {
       query: { redirect: to.fullPath },
     };
   }
+
+  const auth = useAuthStore();
+  if (!auth.routesReady) {
+    try {
+      await auth.loadProfile();
+      addDynamicRoutes(auth.perms);
+      auth.routesReady = true;
+      return { ...to, replace: true };
+    } catch {
+      auth.logout();
+      resetDynamicRoutes();
+      return {
+        path: '/login',
+        query: { redirect: to.fullPath },
+      };
+    }
+  }
+
+  if (typeof to.meta.perm === 'string' && !auth.hasPerm(to.meta.perm)) {
+    return '/workbench';
+  }
+
   return true;
 });

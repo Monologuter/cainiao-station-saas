@@ -1,0 +1,88 @@
+import type { Component } from 'vue';
+import WorkbenchView from '@/views/WorkbenchView.vue';
+import PlaceholderView from '@/views/PlaceholderView.vue';
+
+export interface StationRouteDef {
+  code: string;
+  name: string;
+  path: string;
+  title: string;
+  perm?: string;
+  component: Component;
+}
+
+export const stationRouteDefs: StationRouteDef[] = [
+  {
+    code: 'workbench',
+    name: 'Workbench',
+    path: 'workbench',
+    title: '工作台',
+    component: WorkbenchView,
+  },
+  {
+    code: 'inbound',
+    name: 'Inbound',
+    path: 'inbound',
+    title: '扫码入库',
+    perm: 'parcel:inbound',
+    component: PlaceholderView,
+  },
+  {
+    code: 'parcels',
+    name: 'Parcels',
+    path: 'parcels',
+    title: '在库包裹',
+    perm: 'parcel:read',
+    component: PlaceholderView,
+  },
+  {
+    code: 'pickup',
+    name: 'Pickup',
+    path: 'pickup',
+    title: '取件核销',
+    perm: 'parcel:pickup',
+    component: PlaceholderView,
+  },
+  {
+    code: 'shelves',
+    name: 'Shelves',
+    path: 'shelves',
+    title: '货架库位',
+    perm: 'station:manage',
+    component: PlaceholderView,
+  },
+  {
+    code: 'staff-roles',
+    name: 'StaffRoles',
+    path: 'staff-roles',
+    title: '员工权限',
+    perm: 'station:manage',
+    component: PlaceholderView,
+  },
+  {
+    code: 'settings',
+    name: 'Settings',
+    path: 'settings',
+    title: '门店设置',
+    perm: 'station:manage',
+    component: PlaceholderView,
+  },
+  {
+    code: 'shipping',
+    name: 'Shipping',
+    path: 'shipping',
+    title: '寄件管理',
+    component: PlaceholderView,
+  },
+  {
+    code: 'statistics',
+    name: 'Statistics',
+    path: 'statistics',
+    title: '经营统计',
+    component: PlaceholderView,
+  },
+];
+
+export function availableRoutes(perms: string[]) {
+  return stationRouteDefs.filter((route) => !route.perm || perms.includes(route.perm));
+}

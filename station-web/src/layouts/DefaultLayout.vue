@@ -2,6 +2,7 @@
 import {
   BadgeCheck,
   Bell,
+  Building2,
   ChartNoAxesColumn,
   ChevronRight,
   LayoutDashboard,
@@ -10,28 +11,37 @@ import {
   Search,
   Settings,
   Store,
+  TriangleAlert,
   Truck,
   UsersRound,
   Warehouse,
 } from 'lucide-vue-next';
+import { computed } from 'vue';
+import { useRoute } from 'vue-router';
+import type { Component } from 'vue';
 import { useAppStore, stationThemes, type StationTheme } from '@/stores/app';
+import { useAuthStore } from '@/stores/auth';
 
 const app = useAppStore();
+const auth = useAuthStore();
+const route = useRoute();
 
-const businessMenus = [
-  { title: '工作台', path: '/workbench', icon: LayoutDashboard, active: true },
-  { title: '扫码入库', path: '/inbound', icon: ScanLine },
-  { title: '在库包裹', path: '/parcels', icon: PackageSearch },
-  { title: '取件核销', path: '/pickup', icon: BadgeCheck },
-];
+const iconMap: Record<string, Component> = {
+  LayoutDashboard,
+  ScanLine,
+  PackageSearch,
+  BadgeCheck,
+  TriangleAlert,
+  Warehouse,
+  Truck,
+  ChartNoAxesColumn,
+  UsersRound,
+  Settings,
+  Store,
+  Building2,
+};
 
-const stationMenus = [
-  { title: '货架库位', path: '/shelves', icon: Warehouse },
-  { title: '寄件管理', path: '/shipping', icon: Truck, badge: 'P2' },
-  { title: '经营统计', path: '/statistics', icon: ChartNoAxesColumn, badge: 'P2' },
-  { title: '员工权限', path: '/staff-roles', icon: UsersRound },
-  { title: '门店设置', path: '/settings', icon: Settings },
-];
+const menuGroups = computed(() => auth.menus);
 
 const themeLabels: Record<StationTheme, string> = {
   blue: '清爽蓝',
@@ -55,22 +65,19 @@ const themeLabels: Record<StationTheme, string> = {
       </div>
 
       <nav class="nav">
-        <RouterLink
-          v-for="item in businessMenus"
-          :key="item.path"
-          :to="item.path"
-          :class="{ on: item.active }"
-        >
-          <component :is="item.icon" />
-          {{ item.title }}
-        </RouterLink>
-
-        <div class="grp">网点管理</div>
-        <RouterLink v-for="item in stationMenus" :key="item.path" :to="item.path">
-          <component :is="item.icon" />
-          {{ item.title }}
-          <span v-if="item.badge" class="badge">{{ item.badge }}</span>
-        </RouterLink>
+        <template v-for="group in menuGroups" :key="group.group">
+          <div class="grp">{{ group.group }}</div>
+          <RouterLink
+            v-for="item in group.items"
+            :key="item.code"
+            :to="item.disabled ? route.fullPath : item.path"
+            :class="{ on: route.path === item.path, disabled: item.disabled }"
+          >
+            <component :is="iconMap[item.icon] ?? LayoutDashboard" />
+            {{ item.title }}
+            <span v-if="item.badge" class="badge">{{ item.badge }}</span>
+          </RouterLink>
+        </template>
       </nav>
 
       <div class="side-foot">

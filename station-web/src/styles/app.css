@@ -27,6 +27,16 @@
   box-shadow: var(--glow);
 }
 
+.nav a.disabled {
+  opacity: 0.58;
+  cursor: not-allowed;
+}
+
+.nav a.disabled:hover {
+  color: var(--side-mut);
+  background: transparent;
+}
+
 .kpi-row {
   display: grid;
   grid-template-columns: repeat(5, minmax(0, 1fr));
@@ -182,4 +192,9 @@
 .login-submit:disabled {
   cursor: not-allowed;
   opacity: 0.72;
+}
+
+.placeholder-page .empty {
+  align-items: flex-start;
+  padding: 28px;
 }
