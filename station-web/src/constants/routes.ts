@@ -3,6 +3,8 @@ import InboundView from '@/views/InboundView.vue';
 import ParcelsView from '@/views/ParcelsView.vue';
 import PickupView from '@/views/PickupView.vue';
 import ShelvesView from '@/views/ShelvesView.vue';
+import SettingsView from '@/views/SettingsView.vue';
+import StaffRolesView from '@/views/StaffRolesView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
 
@@ -61,7 +63,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: 'staff-roles',
     title: '员工权限',
     perm: 'station:manage',
-    component: PlaceholderView,
+    component: StaffRolesView,
   },
   {
     code: 'settings',
@@ -69,7 +71,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: 'settings',
     title: '门店设置',
     perm: 'station:manage',
-    component: PlaceholderView,
+    component: SettingsView,
   },
   {
     code: 'shipping',
