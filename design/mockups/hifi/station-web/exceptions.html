@@ -1,0 +1,544 @@
+<!-- @dsCard group="station-web" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>异常件处理 · 城南综合驿站 · 驿小站</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题 · 全屏平铺）
+   所有页面内联本文件内容到 <style>，保证视觉一致。
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100vh}
+body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;font-size:14px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.link{color:var(--primary);font-weight:600;cursor:pointer}
+
+/* ---------- 全屏平铺布局 ---------- */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--side-line);padding:16px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px}
+.brand .logo{width:38px;height:38px;border-radius:11px;background:var(--primary);color:#fff;display:grid;place-items:center}
+.brand b{font-size:16px;font-weight:700}.brand span{font-size:11px;color:var(--side-mut)}
+.nav{display:flex;flex-direction:column;gap:2px;overflow:auto}
+.nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--side-mut);font-size:13.5px;font-weight:500;cursor:pointer;transition:.18s}
+.nav a:hover{background:var(--surface-2);color:var(--side-fg)}
+.nav a.on{background:var(--side-on-bg);color:var(--side-on-fg);font-weight:600}
+.nav a svg{width:18px;height:18px}
+.nav a .badge{margin-left:auto;font-size:11px;font-weight:700;background:var(--danger);color:#fff;border-radius:20px;padding:1px 7px}
+.nav .grp{font-size:10.5px;color:var(--side-mut);padding:14px 12px 6px;font-weight:700;letter-spacing:.05em}
+.side-foot{margin-top:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;display:flex;align-items:center;gap:9px;cursor:pointer}
+.side-foot .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.side-foot b{font-size:13px;font-weight:600}.side-foot span{font-size:11px;color:var(--muted)}
+.main{padding:20px 26px;min-width:0}
+
+/* ---------- 顶栏 ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:16px}
+.top h1{font-size:21px;font-weight:700;letter-spacing:-.01em}
+.top .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.top-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius-sm);color:var(--muted);font-size:13px;min-width:220px}
+.ibtn{width:38px;height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;position:relative;color:var(--muted)}
+.ibtn .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.avatar{height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px 0 6px;cursor:pointer}
+.avatar i{width:28px;height:28px;border-radius:7px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;font-style:normal}
+.avatar b{font-size:13px;font-weight:600}
+
+/* ---------- 页头 / 工具条 ---------- */
+.page-hd{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;gap:16px}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.page-hd h1{font-size:20px;font-weight:700}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+
+/* ---------- 按钮 ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s;white-space:nowrap}
+.btn:hover{border-color:#D6DBE4;background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-accent:hover{filter:brightness(.96)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-lg{height:44px;padding:0 20px;font-size:14.5px}
+.btn-sm{height:30px;padding:0 11px;font-size:12.5px}
+
+/* ---------- 表单 ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12.5px;font-weight:600;color:var(--text)}
+.field label .req{color:var(--danger);margin-left:2px}
+.input,.select,textarea.input{height:38px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-size:13.5px;font-family:var(--font);color:var(--text);background:var(--surface);outline:none;transition:.18s;width:100%}
+textarea.input{height:auto;padding:10px 12px;resize:vertical}
+.input:focus,.select:focus,textarea.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.input::placeholder{color:#A7AFBC}
+.select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.switch{width:40px;height:22px;border-radius:20px;background:#CBD5E1;position:relative;cursor:pointer;transition:.2s}
+.switch.on{background:var(--primary)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on::after{left:20px}
+
+/* ---------- 卡片 / KPI ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card>.hd{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)}
+.card>.hd h2{font-size:15px;font-weight:600}
+.card>.bd{padding:18px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.kpi .lab{font-size:12.5px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+.kpi .lab i{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.kpi .lab i svg{width:15px;height:15px}
+.kpi .num{font-size:28px;font-weight:700;margin-top:10px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi .delta{font-size:11.5px;margin-top:4px;color:var(--ok);font-weight:600}
+
+/* ---------- 表格 ---------- */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:12px 18px;background:var(--surface-2);white-space:nowrap}
+tbody td{padding:13px 18px;font-size:13px;border-top:1px solid var(--border-2);font-variant-numeric:tabular-nums}
+tbody tr:hover{background:var(--surface-2)}
+.code{font-weight:700;color:var(--primary)}
+.op{color:var(--primary);font-weight:600;font-size:12.5px;cursor:pointer}
+.op+.op{margin-left:14px}
+.op.danger{color:var(--danger)}
+
+/* ---------- 标签 / 徽章 ---------- */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.blue{background:var(--primary-soft);color:var(--primary)}
+.tag.green{background:var(--ok-soft);color:var(--ok)}
+.tag.red{background:var(--danger-soft);color:var(--danger)}
+.tag.amber{background:var(--warn-soft);color:var(--warn)}
+.tag.gray{background:#F1F5F9;color:#64748B}
+.tag.purple{background:var(--purple-soft);color:var(--purple)}
+
+/* ---------- 标签页 / 分页 ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs .tab{padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs .tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:14px 18px}
+.pager .pg{min-width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;font-size:13px;cursor:pointer;background:var(--surface)}
+.pager .pg.on{background:var(--primary);border-color:var(--primary);color:#fff}
+
+/* ---------- 进度条 / 弹窗 / 抽屉 ---------- */
+.progress{height:6px;border-radius:6px;background:#EAEEF3;overflow:hidden}
+.progress span{display:block;height:100%;background:var(--primary);border-radius:6px}
+.mask{position:fixed;inset:0;background:rgba(15,23,42,.4);display:grid;place-items:center;z-index:50}
+.modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:560px;max-width:92vw;overflow:hidden}
+.modal>.hd{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.modal>.hd h3{font-size:16px;font-weight:700}
+.modal>.bd{padding:22px}
+.modal>.ft{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--border);background:var(--surface-2)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:94vw;background:var(--surface);box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column}
+
+/* ---------- 空状态 ---------- */
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:48px;color:var(--muted)}
+.empty svg{width:40px;height:40px;opacity:.5}
+
+/* ---------- 本页特有 ---------- */
+.kpi-row{display:grid;grid-template-columns:repeat(4,1fr);gap:16px;margin-bottom:18px}
+.kpi.warn .lab i{background:var(--warn-soft);color:var(--warn)}
+.kpi.warn .num{color:var(--warn)}
+.kpi.info .lab i{background:var(--info-soft);color:var(--info)}
+.kpi.ok .lab i{background:var(--ok-soft);color:var(--ok)}
+.kpi .delta.down{color:var(--danger)}
+.toolbar .select{width:auto;min-width:148px}
+.toolbar .tb-search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:0 12px;height:38px;border-radius:var(--radius-sm);color:var(--muted);min-width:240px}
+.toolbar .tb-search svg{width:16px;height:16px}
+.toolbar .tb-search input{border:0;outline:0;font-size:13.5px;font-family:var(--font);color:var(--text);background:transparent;width:100%}
+.toolbar .date{display:flex;align-items:center;gap:8px}
+.toolbar .date .input{width:auto;min-width:150px}
+.upload{border:1.5px dashed var(--border);border-radius:var(--radius-sm);background:var(--surface-2);padding:20px;display:flex;flex-direction:column;align-items:center;gap:7px;color:var(--muted);cursor:pointer;text-align:center;transition:.18s}
+.upload:hover{border-color:var(--primary);color:var(--primary);background:var(--primary-soft)}
+.upload svg{width:24px;height:24px}
+.upload b{font-size:13px;font-weight:600;color:var(--text)}
+.upload span{font-size:11.5px}
+.modal>.bd .field+.field{margin-top:16px}
+.modal .x{cursor:pointer;color:var(--muted);width:34px;height:34px;border-radius:8px;display:grid;place-items:center;transition:.18s}
+.modal .x:hover{background:var(--surface-2);color:var(--text)}
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- ===== 侧栏 ===== -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">
+        <svg width="22" height="22" viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+      </div>
+      <div>
+        <b>驿小站</b><br>
+        <span>城南综合驿站</span>
+      </div>
+    </div>
+
+    <nav class="nav">
+      <div class="grp">代收业务</div>
+      <a>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="7" rx="1"/><rect x="14" y="3" width="7" height="7" rx="1"/><rect x="14" y="14" width="7" height="7" rx="1"/><rect x="3" y="14" width="7" height="7" rx="1"/></svg>
+        工作台
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><rect x="3" y="4" width="18" height="16" rx="2"/><path d="M7 8v8M11 8v8M15 8v8M18 8v8"/></svg>
+        扫码入库
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>
+        在库包裹
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>
+        取件核销
+      </a>
+      <a class="on">
+        <svg viewBox="0 0 24 24"><path d="M10.29 3.86 1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/><path d="M12 9v4M12 17h.01"/></svg>
+        异常件
+        <span class="badge">7</span>
+      </a>
+
+      <div class="grp">网点管理</div>
+      <a>
+        <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><path d="M3 9h18M3 15h18M9 3v18M15 3v18"/></svg>
+        货架库位
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><rect x="2" y="7" width="20" height="14" rx="2"/><path d="M16 7V5a2 2 0 0 0-2-2h-4a2 2 0 0 0-2 2v2"/></svg>
+        寄件管理
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><path d="m7 14 4-4 3 3 5-6"/></svg>
+        经营统计
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87M16 3.13a4 4 0 0 1 0 7.75"/></svg>
+        员工权限
+      </a>
+      <a>
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 1 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 1 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 1 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 1 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>
+        门店设置
+      </a>
+    </nav>
+
+    <div class="side-foot">
+      <span class="dot"></span>
+      <div>
+        <b>城南综合驿站</b><br>
+        <span>门店编号 CN-0731</span>
+      </div>
+      <svg style="margin-left:auto;width:16px;height:16px;color:var(--muted)" viewBox="0 0 24 24"><path d="m8 9 4-4 4 4M16 15l-4 4-4-4"/></svg>
+    </div>
+  </aside>
+
+  <!-- ===== 主区 ===== -->
+  <main class="main">
+
+    <!-- 顶栏 -->
+    <header class="top">
+      <div>
+        <h1>异常件处理</h1>
+        <div class="sub">2026年6月18日 周四 · 营业中 · 破损 / 错件 / 无主件统一登记与跟进</div>
+      </div>
+      <div class="top-r">
+        <div class="search">
+          <svg width="16" height="16" viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          取件码 / 手机号 / 运单号
+        </div>
+        <div class="ibtn">
+          <svg width="18" height="18" viewBox="0 0 24 24"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg>
+          <span class="dot"></span>
+        </div>
+        <div class="avatar">
+          <i>店</i>
+          <b>店长</b>
+        </div>
+      </div>
+    </header>
+
+    <!-- KPI -->
+    <section class="kpi-row">
+      <div class="kpi warn">
+        <div class="lab"><i><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 6v6l4 2"/></svg></i>待处理</div>
+        <div class="num">7</div>
+        <div class="delta down">▲ 较昨日 +2 件，需尽快跟进</div>
+      </div>
+      <div class="kpi info">
+        <div class="lab"><i><svg viewBox="0 0 24 24"><path d="M21 12a9 9 0 1 1-6.219-8.56"/></svg></i>处理中</div>
+        <div class="num">3</div>
+        <div class="delta">已联系快递，等待回复</div>
+      </div>
+      <div class="kpi ok">
+        <div class="lab"><i><svg viewBox="0 0 24 24"><path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"/><path d="m9 11 3 3L22 4"/></svg></i>今日已解决</div>
+        <div class="num">12</div>
+        <div class="delta">解决率 92.3%，环比上升</div>
+      </div>
+      <div class="kpi">
+        <div class="lab"><i><svg viewBox="0 0 24 24"><path d="M3 3v18h18"/><rect x="7" y="10" width="3" height="8"/><rect x="12" y="6" width="3" height="12"/><rect x="17" y="13" width="3" height="5"/></svg></i>本月异常</div>
+        <div class="num">58</div>
+        <div class="delta">占本月入库量 0.7%</div>
+      </div>
+    </section>
+
+    <!-- 状态标签 -->
+    <div class="tabs">
+      <div class="tab on">全部 <span class="muted tnum">(58)</span></div>
+      <div class="tab">待处理 <span class="muted tnum">(7)</span></div>
+      <div class="tab">处理中 <span class="muted tnum">(3)</span></div>
+      <div class="tab">已解决 <span class="muted tnum">(48)</span></div>
+    </div>
+
+    <!-- 工具条 -->
+    <div class="toolbar">
+      <select class="select">
+        <option>异常类型：全部</option>
+        <option>破损</option>
+        <option>错件</option>
+        <option>无主件</option>
+        <option>拒收</option>
+        <option>超大件</option>
+      </select>
+      <div class="tb-search">
+        <svg viewBox="0 0 24 24"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+        <input placeholder="搜索异常编号 / 取件码 / 上报人">
+      </div>
+      <div class="date">
+        <input class="input" type="text" value="2026-06-11" readonly>
+        <span class="muted">至</span>
+        <input class="input" type="text" value="2026-06-18" readonly>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn">
+        <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="m7 10 5 5 5-5M12 15V3"/></svg>
+        导出
+      </button>
+      <button class="btn btn-primary" onclick="document.getElementById('mk').style.display='grid'">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        新建异常上报
+      </button>
+    </div>
+
+    <!-- 表格 -->
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>异常编号</th>
+            <th>关联取件码</th>
+            <th>异常类型</th>
+            <th>快递</th>
+            <th>上报时间</th>
+            <th>上报人</th>
+            <th>状态</th>
+            <th style="text-align:right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td class="code">EX-260618-019</td>
+            <td class="tnum">CN-8842</td>
+            <td><span class="tag red"><span class="d"></span>破损</span></td>
+            <td>顺丰速运</td>
+            <td class="tnum">06-18 09:12</td>
+            <td>店长</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260618-018</td>
+            <td class="tnum">CN-8831</td>
+            <td><span class="tag purple"><span class="d"></span>错件</span></td>
+            <td>中通快递</td>
+            <td class="tnum">06-18 08:47</td>
+            <td>王**</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260618-017</td>
+            <td class="tnum">—</td>
+            <td><span class="tag gray"><span class="d"></span>无主件</span></td>
+            <td>圆通速递</td>
+            <td class="tnum">06-18 08:20</td>
+            <td>李**</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260618-015</td>
+            <td class="tnum">CN-8809</td>
+            <td><span class="tag blue"><span class="d"></span>拒收</span></td>
+            <td>韵达快递</td>
+            <td class="tnum">06-18 07:58</td>
+            <td>店长</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260618-014</td>
+            <td class="tnum">CN-8796</td>
+            <td><span class="tag amber"><span class="d"></span>超大件</span></td>
+            <td>京东物流</td>
+            <td class="tnum">06-18 07:35</td>
+            <td>赵**</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260617-031</td>
+            <td class="tnum">CN-8771</td>
+            <td><span class="tag red"><span class="d"></span>破损</span></td>
+            <td>申通快递</td>
+            <td class="tnum">06-17 18:42</td>
+            <td>王**</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260617-029</td>
+            <td class="tnum">CN-8760</td>
+            <td><span class="tag purple"><span class="d"></span>错件</span></td>
+            <td>极兔速递</td>
+            <td class="tnum">06-17 17:09</td>
+            <td>店长</td>
+            <td><span class="tag amber"><span class="d"></span>待处理</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260617-026</td>
+            <td class="tnum">CN-8743</td>
+            <td><span class="tag blue"><span class="d"></span>拒收</span></td>
+            <td>顺丰速运</td>
+            <td class="tnum">06-17 15:51</td>
+            <td>李**</td>
+            <td><span class="tag blue"><span class="d"></span>处理中</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260617-022</td>
+            <td class="tnum">—</td>
+            <td><span class="tag gray"><span class="d"></span>无主件</span></td>
+            <td>中通快递</td>
+            <td class="tnum">06-17 14:18</td>
+            <td>赵**</td>
+            <td><span class="tag blue"><span class="d"></span>处理中</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260617-018</td>
+            <td class="tnum">CN-8702</td>
+            <td><span class="tag amber"><span class="d"></span>超大件</span></td>
+            <td>京东物流</td>
+            <td class="tnum">06-17 11:34</td>
+            <td>店长</td>
+            <td><span class="tag blue"><span class="d"></span>处理中</span></td>
+            <td style="text-align:right"><span class="op" onclick="document.getElementById('mk').style.display='grid'">处理</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260617-011</td>
+            <td class="tnum">CN-8689</td>
+            <td><span class="tag red"><span class="d"></span>破损</span></td>
+            <td>圆通速递</td>
+            <td class="tnum">06-17 09:26</td>
+            <td>王**</td>
+            <td><span class="tag green"><span class="d"></span>已解决</span></td>
+            <td style="text-align:right"><span class="op">查看</span><span class="op">详情</span></td>
+          </tr>
+          <tr>
+            <td class="code">EX-260616-044</td>
+            <td class="tnum">CN-8651</td>
+            <td><span class="tag purple"><span class="d"></span>错件</span></td>
+            <td>韵达快递</td>
+            <td class="tnum">06-16 16:03</td>
+            <td>李**</td>
+            <td><span class="tag green"><span class="d"></span>已解决</span></td>
+            <td style="text-align:right"><span class="op">查看</span><span class="op">详情</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager">
+        <span class="muted" style="margin-right:auto;font-size:12.5px">共 58 条 · 每页 12 条</span>
+        <span class="pg"><svg width="15" height="15" viewBox="0 0 24 24"><path d="m15 18-6-6 6-6"/></svg></span>
+        <span class="pg on">1</span>
+        <span class="pg">2</span>
+        <span class="pg">3</span>
+        <span class="pg">4</span>
+        <span class="pg">5</span>
+        <span class="pg"><svg width="15" height="15" viewBox="0 0 24 24"><path d="m9 18 6-6-6-6"/></svg></span>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- ===== 处理异常件 弹窗 ===== -->
+<div class="mask" id="mk" style="display:grid">
+  <div class="modal">
+    <div class="hd">
+      <h3>处理异常件</h3>
+      <div class="x" onclick="document.getElementById('mk').style.display='none'">
+        <svg width="18" height="18" viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+    <div class="bd">
+      <div style="display:flex;align-items:center;gap:10px;padding:12px 14px;background:var(--danger-soft);border-radius:var(--radius-sm);margin-bottom:18px">
+        <span class="tag red"><span class="d"></span>破损</span>
+        <span style="font-weight:700">EX-260618-019</span>
+        <span class="muted" style="font-size:12.5px">关联取件码 CN-8842 · 顺丰速运 · 上报人 店长</span>
+      </div>
+
+      <div class="field">
+        <label>处理方式 <span class="req">*</span></label>
+        <select class="select">
+          <option>联系快递</option>
+          <option>退回</option>
+          <option>重新入库</option>
+          <option>作废</option>
+        </select>
+      </div>
+
+      <div class="field">
+        <label>处理备注</label>
+        <textarea class="input" rows="3" placeholder="请填写处理经过、与快递沟通结果或客户诉求…"></textarea>
+      </div>
+
+      <div class="field">
+        <label>上传凭证</label>
+        <div class="upload">
+          <svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M17 8 12 3 7 8M12 3v12"/></svg>
+          <b>点击上传或拖拽图片到此处</b>
+          <span>支持破损照片 / 沟通记录截图，单张不超过 5MB</span>
+        </div>
+      </div>
+    </div>
+    <div class="ft">
+      <button class="btn" onclick="document.getElementById('mk').style.display='none'">取消</button>
+      <button class="btn btn-primary" onclick="document.getElementById('mk').style.display='none'">
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>
+        确认处理
+      </button>
+    </div>
+  </div>
+</div>
+
+</body>
+</html>
