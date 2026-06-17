@@ -215,6 +215,135 @@
   margin-bottom: 18px;
 }
 
+.shipping-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.shipping-kpis .kpi .num span {
+  color: var(--muted);
+  font-size: 14px;
+  font-weight: 600;
+}
+
+.kpi .lab i.purple {
+  color: var(--purple);
+  background: var(--purple-soft);
+}
+
+.kpi .lab i.green {
+  color: var(--ok);
+  background: var(--ok-soft);
+}
+
+.shipping-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 340px;
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.shipping-form {
+  display: grid;
+  gap: 16px;
+}
+
+.shipping-form .full {
+  grid-column: 1 / -1;
+}
+
+.address-card {
+  display: grid;
+  gap: 12px;
+  padding: 14px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface-2);
+}
+
+.address-hd {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.address-hd b {
+  font-size: 14px;
+}
+
+.shipping-item-grid {
+  align-items: end;
+}
+
+.shipping-actions {
+  gap: 10px;
+  justify-content: flex-end;
+  padding-top: 2px;
+}
+
+.quote-list {
+  display: grid;
+  gap: 10px;
+}
+
+.quote-card {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 8px 12px;
+  width: 100%;
+  min-height: 72px;
+  padding: 13px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  transition: 0.18s;
+}
+
+.quote-card:hover,
+.quote-card.on {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.quote-main {
+  display: grid;
+  gap: 3px;
+}
+
+.quote-main b {
+  font-size: 14px;
+}
+
+.quote-main small {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.quote-price {
+  color: var(--primary);
+  font-size: 18px;
+  font-weight: 800;
+  font-variant-numeric: tabular-nums;
+}
+
+.shipping-drawer {
+  width: 540px;
+}
+
+.drawer-actions {
+  display: flex;
+  gap: 10px;
+  margin-bottom: 18px;
+}
+
 .pickup-scan {
   border-color: var(--accent);
   color: var(--accent);
@@ -517,6 +646,10 @@
   width: 150px;
 }
 
+.right {
+  text-align: right;
+}
+
 .op-btn {
   border: 0;
   background: transparent;
@@ -642,6 +775,11 @@
   }
 
   .pickup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shipping-kpis,
+  .shipping-grid {
     grid-template-columns: 1fr;
   }
 

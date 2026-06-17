@@ -4,6 +4,7 @@ import ParcelsView from '@/views/ParcelsView.vue';
 import PickupView from '@/views/PickupView.vue';
 import ShelvesView from '@/views/ShelvesView.vue';
 import SettingsView from '@/views/SettingsView.vue';
+import ShippingView from '@/views/ShippingView.vue';
 import StaffRolesView from '@/views/StaffRolesView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
@@ -79,7 +80,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: 'shipping',
     title: '寄件管理',
     perm: 'shipping:read',
-    component: PlaceholderView,
+    component: ShippingView,
   },
   {
     code: 'statistics',
