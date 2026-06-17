@@ -1,0 +1,100 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType {
+  PLATFORM
+  STAFF
+}
+
+enum RoleScope {
+  PLATFORM
+  TENANT
+}
+
+enum TenantStatus {
+  ACTIVE
+  SUSPENDED
+  CLOSED
+}
+
+model Tenant {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  ownerName    String
+  contactPhone String
+  status       TenantStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  users        User[]
+  stations     Station[]
+}
+
+model Station {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  name      String
+  code      String
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId])
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String?    @map("tenant_id") @db.Uuid
+  type         UserType
+  username     String
+  passwordHash String
+  phone        String?
+  status       String     @default("active")
+  createdAt    DateTime   @default(now())
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  roles        UserRole[]
+
+  @@unique([tenantId, username])
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String?          @map("tenant_id") @db.Uuid
+  code        String
+  name        String
+  scope       RoleScope
+  isBuiltin   Boolean          @default(false)
+  users       UserRole[]
+  permissions RolePermission[]
+
+  @@unique([tenantId, code])
+}
+
+model Permission {
+  id     String           @id @default(uuid()) @db.Uuid
+  code   String           @unique
+  name   String
+  module String
+  roles  RolePermission[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+
+  @@id([roleId, permissionId])
+}
