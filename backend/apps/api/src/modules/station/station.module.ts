@@ -5,6 +5,7 @@ import { RedisLockService } from '../../core/redis/redis-lock.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { ShelfController } from './shelf.controller';
 import { SlotAllocatorService } from './slot-allocator.service';
+import { SlotReleaseSubscriber } from './slot-release.subscriber';
 import { SlotService } from './slot.service';
 import { StationController } from './station.controller';
 import { StationService } from './station.service';
@@ -15,6 +16,7 @@ import { StationService } from './station.service';
     StationService,
     SlotService,
     SlotAllocatorService,
+    SlotReleaseSubscriber,
     PrismaService,
     TenantPrismaService,
     RedisService,
