@@ -1,0 +1,66 @@
+import { Injectable } from '@nestjs/common';
+import { RedisService } from '../../core/redis/redis.service';
+import { ANALYTICS_KEY_TTL_SECONDS, analyticsKeys } from './keys';
+
+export interface IncrementMetricInput {
+  tenantId: string;
+  stationId: string;
+  metric: string;
+  by?: number;
+  eventId: string;
+  at: Date;
+}
+
+export interface AdjustStoredInput {
+  tenantId: string;
+  stationId: string;
+  delta: 1 | -1;
+}
+
+@Injectable()
+export class MetricsService {
+  constructor(private readonly redis: RedisService) {}
+
+  async incr(input: IncrementMetricInput) {
+    const date = this.toDateKey(input.at);
+    const dedupKey = analyticsKeys.dedup(date);
+    const client = this.redis.getClient();
+    const inserted = await client.sadd(dedupKey, input.eventId);
+    await client.expire(dedupKey, ANALYTICS_KEY_TTL_SECONDS);
+    if (inserted === 0) {
+      return { skipped: true, value: null };
+    }
+
+    const by = input.by ?? 1;
+    const countKey = analyticsKeys.count(input.tenantId, input.stationId, date);
+    const platformKey = analyticsKeys.platformCount(date);
+    const stationRankKey = analyticsKeys.stationRank(
+      input.tenantId,
+      input.metric,
+      date,
+    );
+
+    const value = await client.hincrby(countKey, input.metric, by);
+    await Promise.all([
+      client.expire(countKey, ANALYTICS_KEY_TTL_SECONDS),
+      client.hincrby(platformKey, input.metric, by),
+      client.expire(platformKey, ANALYTICS_KEY_TTL_SECONDS),
+      client.zincrby(stationRankKey, by, input.stationId),
+    ]);
+
+    return { skipped: false, value };
+  }
+
+  adjustStored(input: AdjustStoredInput) {
+    return this.redis
+      .getClient()
+      .incrby(
+        analyticsKeys.stored(input.tenantId, input.stationId),
+        input.delta,
+      );
+  }
+
+  private toDateKey(date: Date) {
+    return date.toISOString().slice(0, 10);
+  }
+}
