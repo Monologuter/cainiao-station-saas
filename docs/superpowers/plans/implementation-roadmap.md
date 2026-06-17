@@ -44,23 +44,26 @@
 | 编号 | 周期 | 主题 | 主要上下文 | 依赖 | 状态 | 建议顺序 |
 |---|---|---|---|---|---|---|
 | **P1-1** | P1 MVP | 后端地基（多租户/RLS/JWT/RBAC/统一响应） | core, tenant, identity | — | ✅ 已详写（见专档） | 1 |
-| **P1-2** | P1 MVP | 驿站核心闭环（货架库位+包裹状态机+入库+取件+通知） | station, parcel, inbound, pickup, notify | P1-1 | ⬜ 待展开 | 2 |
-| **P1-3** | P1 MVP | 前端接入（station-web 工作台 + user-app 查件取件 + 基础统计） | 前端三端 + analytics(基础) | P1-2 | ⬜ 待展开 | 3 |
-| **P2-1** | P2 增强 | 寄件与物流（下单/选快递/定价 + 模拟支付 + 模拟轨迹） | shipping, pay, logistics | P1-2 | ⬜ 待展开 | 4 |
-| **P2-2** | P2 增强 | 滞留与异常（定时滞留扫描+分级催取 + 异常件工单） | parcel, notify, exceptions, (BullMQ) | P1-2 | ⬜ 待展开 | 5 |
-| **P2-3** | P2 增强 | 会员与评价（积分/优惠券 + 评价投诉） | member, review | P1-2, P2-1 | ⬜ 待展开 | 6 |
-| **P2-4** | P2 增强 | 运营大屏（指标聚合 + Socket.IO 实时 + 报表导出） | analytics | P1-2（+P2-1/2/3 数据源更全） | ⬜ 待展开 | 7 |
-| **P3-1** | P3 商业化 | 订阅计费（套餐/订阅/账单/用量计量，月费+用量混合） | billing | P1-1, P2-4 | ⬜ 待展开 | 8 |
-| **P3-2** | P3 商业化 | 自助入驻审核（申请→审核→开通 + admin 端） | tenant, admin-web | P1-1, P3-1 | ⬜ 待展开 | 9 |
-| **P3-3** | P3 商业化 | 平台运营后台完善（多门店监控 + 审计 + 系统配置/字典/渠道开关） | audit, admin-web, config | P3-2 | ⬜ 待展开 | 10 |
-| **P3-4** | P3 商业化 | 工程化加固（限流熔断 + 多级缓存 + 可观测性 + ShedLock 多实例防重） | 横切/基础设施 | P2-2（定时任务）, P3-* | ⬜ 待展开 | 11 |
-| **P4-1** | P4 智能化 | OCR 面单识别入库（ai-service + OcrProvider 接真） | ai, inbound | P1-2, P3-4 | ⬜ 待展开 | 12 |
-| **P4-2** | P4 智能化 | 大模型智能客服（ai-service + 知识库） | ai | P1-3, P4-1 | ⬜ 待展开 | 13 |
-| **P4-3** | P4 智能化 | 智能库位推荐与包裹量预测 | ai, station, analytics | P2-4, P4-1 | ⬜ 待展开 | 14 |
-| **P4-4** | P4 智能化 | 接真实外部服务（腾讯云短信/微信支付/物流 API/小程序订阅消息） | notify, pay, logistics 适配层 | P2-1, P3-4 | ⬜ 待展开 | 15 |
+| **P1-2** | P1 MVP | 驿站核心闭环（货架库位+包裹状态机+入库+取件+通知） | station, parcel, inbound, pickup, notify | P1-1 | ✅ 已详写 | 2 |
+| **P1-3** | P1 MVP | 前端接入（station-web 工作台 + user-app 查件取件 + 基础统计） | 前端三端 + analytics(基础) | P1-2 | ✅ 已详写 | 3 |
+| **P2-1** | P2 增强 | 寄件与物流（下单/选快递/定价 + 模拟支付 + 模拟轨迹） | shipping, pay, logistics | P1-2 | ✅ 已详写 | 4 |
+| **P2-2** | P2 增强 | 滞留与异常（定时滞留扫描+分级催取 + 异常件工单） | parcel, notify, exceptions, (BullMQ) | P1-2 | ✅ 已详写 | 5 |
+| **P2-3** | P2 增强 | 会员与评价（积分/优惠券 + 评价投诉） | member, review | P1-2, P2-1 | ✅ 已详写 | 6 |
+| **P2-4** | P2 增强 | 运营大屏（指标聚合 + Socket.IO 实时 + 报表导出） | analytics | P1-2（+P2-1/2/3 数据源更全） | ✅ 已详写 | 7 |
+| **P3-1** | P3 商业化 | 订阅计费（套餐/订阅/账单/用量计量，月费+用量混合） | billing | P1-1, P2-4 | ✅ 已详写 | 8 |
+| **P3-2** | P3 商业化 | 自助入驻审核（申请→审核→开通 + admin 端） | tenant, admin-web | P1-1, P3-1 | ✅ 已详写 | 9 |
+| **P3-3** | P3 商业化 | 平台运营后台完善（多门店监控 + 审计 + 系统配置/字典/渠道开关） | audit, admin-web, config | P3-2 | ✅ 已详写 | 10 |
+| **P3-4** | P3 商业化 | 工程化加固（限流熔断 + 多级缓存 + 可观测性 + ShedLock 多实例防重） | 横切/基础设施 | P2-2（定时任务）, P3-* | ✅ 已详写 | 11 |
+| **P4-1** | P4 智能化 | OCR 面单识别入库（ai-service + OcrProvider 接真） | ai, inbound | P1-2, P3-4 | ✅ 已详写 | 12 |
+| **P4-2** | P4 智能化 | 大模型智能客服（ai-service + 知识库） | ai | P1-3, P4-1 | ✅ 已详写 | 13 |
+| **P4-3** | P4 智能化 | 智能库位推荐与包裹量预测 | ai, station, analytics | P2-4, P4-1 | ✅ 已详写 | 14 |
+| **P4-4** | P4 智能化 | 接真实外部服务（腾讯云短信/微信支付/物流 API/小程序订阅消息） | notify, pay, logistics 适配层 | P2-1, P3-4 | ✅ 已详写 | 15 |
 
-> 状态图例：✅ 已完成详细计划 · ⬜ 待展开为逐步 TDD 计划。
+> 状态图例：✅ 每个 plan 都有独立详细文档 `docs/superpowers/plans/2026-06-18-<plan-id>-*.md`。
+> 其中 **P1-1 为逐步 TDD 代码级计划**；**P1-2 起为设计级详细文档**（架构/数据模型/接口/流程/任务/验收），执行某 plan 时再展开为逐步 TDD。
 > 建议顺序为默认线性路径；P2 内部 / P4 内部部分 plan 可并行（见各 plan 依赖）。
+>
+> **详细文档索引**：P1-2 `…-p1-2-station-core` · P1-3 `…-p1-3-frontend-integration` · P2-1 `…-p2-1-shipping-logistics` · P2-2 `…-p2-2-overdue-exceptions` · P2-3 `…-p2-3-member-reviews` · P2-4 `…-p2-4-analytics-dashboard` · P3-1 `…-p3-1-billing-subscription` · P3-2 `…-p3-2-tenant-onboarding` · P3-3 `…-p3-3-platform-admin` · P3-4 `…-p3-4-engineering-hardening` · P4-1 `…-p4-1-ocr-inbound` · P4-2 `…-p4-2-ai-assistant` · P4-3 `…-p4-3-smart-slot-forecast` · P4-4 `…-p4-4-real-integrations`
 
 ---
 

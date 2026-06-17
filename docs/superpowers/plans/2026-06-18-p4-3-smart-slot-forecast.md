@@ -1,0 +1,310 @@
+# P4-3 智能库位推荐与包裹量预测（Smart Slot & Forecast）· 详细设计
+
+> 设计级别文档（不含完整实现代码，只给接口签名 / 数据结构 / 评分公式 / 流程）。
+> 技术栈锁定：ai-service Python（FastAPI · pandas / statsmodels 起步，可升级 ML）做评分与时序预测；后端 NestJS + TypeScript · Prisma · PostgreSQL 16（RLS）· Redis 7 做接入、缓存、降级；前端 station-web（Element Plus + ECharts）。
+> 上游规格：`docs/superpowers/specs/cainiao-station-platform-design.md`（§5 station / inbound / ocr·ai / analytics · §6 数据模型 · §7 适配层 · §9 横切 · §10 入库流程）；路线图：`docs/superpowers/plans/implementation-roadmap.md`（P4-3）；复用历史数据基建：`2026-06-18-p2-4-analytics-dashboard.md`（`metric_daily` / 货架热力 / 滞留榜）；接入点上游：`2026-06-18-p1-2-station-core.md`（`slot-allocator.service`）。
+
+---
+
+## 1. 目标 · 周期 · 依赖
+
+### 1.1 目标
+把 P1-2 的规则化库位分配升级为**智能推荐**，并新增**包裹量预测**，两条链路均**可降级回落**，核心闭环（入库 / 排班）永不被 AI 卡住。
+
+- **智能库位推荐**：入库时按「取件频率 / 时段 / 包裹大小 / 取件动线路径」给货位评分，推荐**最优空闲库位**，缩短店员存取路径、把高频/小件放在近门易取位。替换/增强 P1-2 的 `allocateSlot` 顺序分配。
+- **包裹量预测**：基于 analytics 历史入库量，预测未来区间（按天 / 按时段）入库量，辅助店长**排班与备货（备货=货位预留 / 耗材）**。
+
+### 1.2 范围边界
+- **属于本期**：ai-service `/slot/recommend` 与 `/forecast/volume` 两接口（规则+统计模型起步）；后端 `slot-allocator` 接入推荐并保留规则回退；库位热度聚合（`slot_heat_daily`）与预测结果落库（`volume_forecasts`）；预测定时任务；后端推荐/预测查询接口；station-web 货架热力+推荐位提示、预测曲线看板；集成冒烟。
+- **不属于本期**：取件人脸/动线传感真实采集（用既有取件事件代理动线）；货位物理改造；深度 ML（LSTM/XGBoost，留升级位）；跨门店调拨建议；与 P3-1 计费/排班系统的写回联动（仅出预测，不自动改排班）。
+- **明确替换**：P1-2 `slot-allocator.service` 的「取首个空闲位」策略被推荐评分替换；**接口签名与并发锁不变**，仅换选位策略，调用方（inbound）零改动。
+
+### 1.3 周期
+预估 **6 人日**（路线图 P4-3 量级，5 Task）。任务分解见 §8。
+
+### 1.4 依赖
+| 依赖项 | 来源 | 用途 |
+|---|---|---|
+| `slot-allocator.service`（接口 + Redis 锁 + 乐观锁 + 规则分配） | P1-2 station | **被增强**的接入点；推荐失败的回退实现 |
+| `slots / shelves / stations` 明细表（位编码、坐标、状态、尺寸档） | P1-2 station | 候选位、动线坐标、容量约束 |
+| `parcels / parcel_events`（入库/取件时间、手机号、尺寸） | P1-2 parcel | 取件频率/时段/尺寸/在库时长特征 |
+| `metric_daily` / 货架热力 / 滞留榜（按租户·门店·日聚合） | P2-4 analytics | 库位热度与包裹量预测的历史输入 |
+| ai-service（FastAPI 工程、`AiProvider` 抽象、env 开关、熔断降级） | P4-1 OCR | 部署/调用骨架与降级范式复用 |
+| RLS / `AsyncLocalStorage` / Prisma 事务注入 | P1-foundation | 租户隔离 + 平台 bypass |
+| Redis 客户端 | P1-foundation | 推荐缓存、库位锁、预测结果缓存 |
+| BullMQ + 分布式锁（ShedLock 等价） | P2-2 / P3-4 | 预测定时任务多实例防重 |
+| 进程内 `EventBus`（订阅幂等） | P1-foundation | 订阅取件事件刷新库位热度 |
+
+> 历史数据越全推荐/预测越准；P2-4 已就绪即可起步，P4-3 不改 analytics 聚合骨架，仅**读** + 新增两张自有聚合/结果表。
+
+---
+
+## 2. 涉及上下文与模块（station / ai-service / analytics 协作）
+
+三方分工：**ai-service 出策略（评分/预测，无状态、可降级）**；**station 落地（接入分配、缓存、回退、并发安全）**；**analytics 供历史数据（只读）**。AI 永远是「建议者」，最终选位与落库由 station 权威决定。
+
+| 上下文 | 目录 | 本期职责 | 自有/新增表 | 输入 |
+|---|---|---|---|---|
+| **ai-service** | `ai-service/app/slot/`、`ai-service/app/forecast/` | 库位评分 `/slot/recommend`、时序预测 `/forecast/volume`；规则+统计模型；自身无状态 | 无（结果由 station/analytics 落库） | 后端传入的候选位+特征 / 历史序列 |
+| **station** | `backend/src/station/` | `slot-allocator` 接入推荐+回退；库位热度聚合；推荐结果缓存；订阅取件事件 | `slot_heat_daily`（库位热度） | ai-service 推荐 + `slots`/`parcel_events` |
+| **analytics** | `backend/src/analytics/` | 提供历史入库量序列查询；落预测结果；预测看板查询 | `volume_forecasts`（预测结果） | `metric_daily` + ai-service 预测 |
+
+### 2.1 模块文件职责（设计视图）
+```
+ai-service/app/
+├── slot/
+│   ├── router.py            # POST /slot/recommend
+│   ├── scorer.py            # 评分模型：加权打分 + 排序（§5.1）
+│   └── schemas.py           # SlotRecommendRequest/Response（特征/候选/推荐）
+├── forecast/
+│   ├── router.py            # POST /forecast/volume
+│   ├── models.py            # 移动平均 / Holt-Winters 选择器 + 兜底（§5.2）
+│   └── schemas.py           # ForecastRequest/Response（序列/区间/预测点）
+└── common/health.py         # /health（后端探活，决定降级）
+
+backend/src/station/
+├── slot-allocator.service.ts     # 【增强】recommendSlot()→调 ai，失败回退 allocateSlot()
+├── slot-recommender.client.ts    # 调 ai-service /slot/recommend；超时/熔断→null
+├── slot-heat.service.ts          # 维护 slot_heat_daily；订阅 ParcelPickedUp 刷新
+└── slot-heat.processor.ts        # 定时重算库位热度（BullMQ）
+
+backend/src/analytics/
+├── forecast.client.ts            # 调 ai-service /forecast/volume；失败→简单移动平均兜底
+├── forecast.service.ts           # 取历史序列→调预测→落 volume_forecasts；查询读模型
+└── forecast.processor.ts         # 定时预测任务（按门店，BullMQ + 分布式锁）
+```
+
+---
+
+## 3. 数据模型
+
+> 约定沿用 §6：`id(uuid)` / `tenant_id`（建 RLS Policy + 联合索引）/ `created_at·updated_at` / `created_by`。两张均为**派生表**，可整表重算，丢失不影响业务真值（真值在 `parcels`/`metric_daily`）。
+
+### 3.1 `slot_heat_daily`（库位热度，station 自有）
+按「库位 × 日」聚合取件/占用行为，喂给推荐评分的「取件频率/时段」特征。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | PK |
+| `tenant_id` | uuid | RLS |
+| `station_id` | uuid | 门店 |
+| `slot_id` | uuid | 库位 |
+| `stat_date` | date | 统计日 |
+| `pick_count` | int | 当日该位取件次数（动线热度核心） |
+| `store_count` | int | 当日占用次数 |
+| `avg_dwell_minutes` | int | 平均在库时长（越短=周转越快=越该用近位） |
+| `hour_histogram` | jsonb | 24 维取件时段直方图（时段特征） |
+
+- 唯一键 `(tenant_id, slot_id, stat_date)`；索引 `(tenant_id, station_id, stat_date)`。
+- 派生：`slot_score_cache`（库位静态热度分）可常驻 Redis Hash `slotheat:{station_id}`，避免每次入库实时聚合，定时任务刷新。
+
+### 3.2 `volume_forecasts`（包裹量预测结果，analytics 自有）
+落每次预测的产出，供看板查询与误差回算（误差=实际−预测）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | PK |
+| `tenant_id` | uuid | RLS |
+| `station_id` | uuid | 门店 |
+| `target_date` | date | 被预测日 |
+| `granularity` | enum | `DAY` / `HOUR`（按天/按时段） |
+| `predicted_volume` | int | 预测入库量（HOUR 时配 `hour_breakdown`） |
+| `hour_breakdown` | jsonb? | 时段粒度的 24 维预测（DAY 为 null） |
+| `method` | enum | `MA`(移动平均)/`HOLT_WINTERS`/`FALLBACK_MEAN`（实际所用） |
+| `lower_bound` `upper_bound` | int | 预测区间（置信带，看板画带） |
+| `actual_volume` | int? | T 日后回填实际值，用于算 MAPE |
+| `generated_at` | timestamptz | 预测生成时刻（同 target 可多版本，取最新） |
+
+- 唯一键 `(tenant_id, station_id, target_date, granularity, generated_at)`；查询索引 `(tenant_id, station_id, target_date)`。
+
+---
+
+## 4. 接口与 API
+
+### 4.1 库位推荐（替换/增强 P1-2 `allocateSlot`）
+
+**station 内部服务签名（调用方 inbound 零改动）**
+```ts
+// slot-allocator.service.ts —— 对外签名保持 P1-2 不变，内部策略升级
+async allocateSlot(parcel: ParcelForAlloc): Promise<SlotAssignment>
+// 内部新增私有：recommendSlot(parcel) → 候选评分排序 → 取最优空闲位
+// 失败/降级 → 回落 P1-2 ruleAllocate(parcel)（顺序取首个空闲位）
+// 全程不变：Redis 锁 SETNX slot:{id} + slots.version 乐观锁，撞位重选下一推荐位
+
+interface ParcelForAlloc {
+  tenantId: string; stationId: string;
+  phoneTail: string;          // 取件频率画像 key（按手机号历史取件行为）
+  sizeClass: 'S' | 'M' | 'L'; // 尺寸档（大件优先底层/外侧）
+  inboundAt: Date;            // 时段特征
+}
+interface SlotAssignment {
+  slotId: string; slotCode: string;
+  source: 'AI' | 'RULE_FALLBACK'; // 可观测：本次走推荐还是回退
+  score?: number;                 // AI 命中分（回退为空）
+}
+```
+
+**ai-service 接口**
+```
+POST /slot/recommend
+Req:  { stationId, parcel:{ phoneTail, sizeClass, inboundHour },
+        candidates:[ { slotId, slotCode, sizeCapacity, distanceRank,
+                       heat:{ pickCount7d, hourHistogram } } ] }
+Resp: { recommendations:[ { slotId, score, reasons:[...] } ],  // 降序
+        modelVersion }                                          // 评分排序后的候选
+```
+- station 只把**空闲候选位 + 已聚合特征**传入，ai-service **无状态、不查库**；推荐回来后 station 再加锁占位（撞位则取列表下一位）。
+
+### 4.2 包裹量预测
+
+**ai-service 接口**
+```
+POST /forecast/volume
+Req:  { stationId, granularity:'DAY'|'HOUR',
+        history:[ { date, volume, hourBreakdown? } ],  // analytics 喂的历史序列
+        horizon: 7 }                                    // 预测未来 N 天
+Resp: { forecasts:[ { targetDate, predicted, lower, upper, hourBreakdown? } ],
+        method:'MA'|'HOLT_WINTERS'|'FALLBACK_MEAN' }
+```
+
+**后端查询接口（station-web 看板）**
+```
+GET /station/slots/heatmap?stationId=&date=     # 货架热力（slot_heat_daily / Redis）
+GET /analytics/forecast/volume?stationId=&from=&to=&granularity=
+                                                # 读 volume_forecasts，含区间与（回填后）误差
+POST /analytics/forecast/run?stationId=         # 手动触发一次预测（运营/店长，幂等）
+```
+- 权限：`station:slot:read` / `analytics:forecast:read|run`；门店 scope 过滤（店员仅 `staff_stations`）；RLS 兜底租户隔离。
+
+---
+
+## 5. 关键逻辑
+
+### 5.1 库位推荐评分模型（取件频率 / 时段 / 大小 / 路径）
+对每个**空闲候选位**算加权分，降序取首个可占位者。四个归一化到 [0,1] 的子分加权求和：
+
+```
+score = w_freq·S_freq + w_time·S_time + w_size·S_size + w_path·S_path
+默认权重 w_path=0.4, w_freq=0.3, w_time=0.2, w_size=0.1（store config 可调）
+```
+- **S_path（动线路径，权重最高）**：库位到取件台/门口的距离名次（`distanceRank`，由 `slots` 区-排-层-位坐标预计算）。近位得分高 → 高周转包裹放近门，缩短店员往返。
+- **S_freq（取件频率）**：用 `phoneTail` 的历史取件画像估「预计在库时长」——常来快取的客户/小件 → 倾向近位易取位；预计久放 → 让给里位。冷启动该客户无历史时 S_freq=0.5 中性。
+- **S_time（时段）**：结合 `inboundHour` 与候选位 `hourHistogram`，避开「该位历史在某时段被频繁存取造成拥堵」的冲突；错峰加分。
+- **S_size（大小）**：`sizeClass` 与 `sizeCapacity` 匹配——L 件优先底层/外侧大格（取放省力且避免压损），S 件可塞小格提高密度；不匹配（大件入小格）直接置该位不可选。
+- 输出带 `reasons`（如「近门动线 / 小件高密 / 错峰」）供前端提示与可解释。
+
+### 5.2 包裹量预测方法（移动平均 / 时序模型）
+ai-service 按**数据量自适应选模**，逐级降级，保证永远有输出：
+
+| 历史天数 | 选用方法 | 说明 |
+|---|---|---|
+| ≥ 28 天且有周节律 | `HOLT_WINTERS`（季节性指数平滑，周期=7） | 捕捉「周一/周末」高峰，给区间带 |
+| 7–27 天 | `MA`（加权移动平均，近 7 日加权） | 平滑近期趋势 |
+| < 7 天 / 全空 | `FALLBACK_MEAN`（历史均值或全 0 兜底） | 冷启动，区间放宽 |
+
+- HOUR 粒度：先预测日总量，再按近 N 日 `hour_histogram` 占比拆 24 时段。
+- 输出 `lower/upper`（如 ±1.5σ 或经验系数），看板画置信带。
+- 误差回算：T 日后由 analytics 回填 `actual_volume`，算 **MAPE**（见 §9）滚动监控，超阈值告警（提示模型退化）。
+
+### 5.3 与 P1-2 规则分配的可降级切换（核心稳健性）
+**触发回退的任一条件 → 立即走 P1-2 `ruleAllocate`，入库流程零阻塞：**
+1. ai-service 不可达 / 超时（默认 800ms）/ 5xx → 熔断器打开期间直接回退（复用 P4-1 熔断范式）。
+2. 推荐列表为空，或推荐位全部已被并发占走（撞位重试耗尽）。
+3. env 开关 `SLOT_RECOMMEND_PROVIDER=mock|ai` 置 mock，或 store 级灰度未开。
+- 切换对调用方透明（`allocateSlot` 签名不变）；`SlotAssignment.source` 标记本次来源，供 analytics 统计 AI 命中占比。
+- 预测侧降级：`forecast.client` 调 ai 失败 → 后端本地**简单移动平均**兜底直接落 `volume_forecasts(method=FALLBACK_MEAN)`，看板仍有曲线。
+
+### 5.4 冷启动
+- **新门店/新库位**：无 `slot_heat_daily` → S_freq/S_time 取中性 0.5，仅 S_path+S_size 起作用（即「近门 + 尺寸匹配」的合理默认），随取件事件积累自动增强。
+- **新客户**（phoneTail 无取件史）：S_freq 中性，不惩罚。
+- **预测冷启动**：历史 < 7 天走 `FALLBACK_MEAN`，区间放宽并在看板标「数据不足，仅供参考」。
+
+---
+
+## 6. 业务流程
+
+### 6.1 入库时推荐库位（替换 P1-2 选位步骤）
+```
+扫码/录入运单+手机号 → parcel(PENDING)
+  → inbound 调 station.allocateSlot(parcel)         # 签名不变
+      → 查空闲候选位 + 装配特征（slot_heat 缓存 + phoneTail 画像）
+      → slot-recommender.client → ai-service /slot/recommend   # 800ms 超时
+      → 得推荐排序 → 取首个空闲位，Redis 锁 + 乐观锁占位
+          ├─ 占位成功 → 返回 SlotAssignment(source=AI)
+          ├─ 撞位 → 取下一推荐位重试（上限 N 次）
+          └─ 任一降级条件命中 → ruleAllocate()（顺序首空位，source=RULE_FALLBACK）
+  → 生成取件码 → STORED → ParcelStored（流程其余不变）
+取件核销时：ParcelPickedUp → slot-heat.service 累加该位 pick_count/hour_histogram/dwell
+```
+
+### 6.2 定时预测供排班/备货
+```
+BullMQ 定时（每日凌晨，分布式锁单实例）按门店：
+  forecast.service → analytics 取近 90 日入库量序列（metric_daily）
+    → forecast.client → ai-service /forecast/volume(horizon=7)（失败→本地 MA 兜底）
+    → 落 volume_forecasts（DAY + HOUR）
+  → station-web 预测看板展示未来 7 日曲线 + 时段高峰 + 区间带
+  → 店长据此排班/备货（本期仅展示，不自动写排班）
+每日另一任务：回填昨日 actual_volume → 滚动算 MAPE
+slot-heat.processor 定时重算 slot_heat_daily → 刷新 Redis slotheat:{station_id}
+```
+
+---
+
+## 7. 前端（station-web）
+
+> 遵守 MEMORY/UI 规范：全屏平铺、Element Plus、ECharts、清爽蓝默认；改动前对齐既有货架页与统计页原型。
+
+### 7.1 货架库位页 —— 推荐提示 + 热力
+- 入库结果区显示**推荐位编码 + 来源标签**（「智能推荐」绿标 / 「规则分配」灰标）+ `reasons` 短语（近门/小件高密/错峰），店员可一眼理解为何放这。
+- 货架可视化叠加**热力色**（`GET /slots/heatmap`）：取件频次越高越暖色，直观看哪排是「黄金动线位」；支持按日期切换。
+
+### 7.2 统计页 —— 预测曲线
+- 折线图：近 7 日实际 + 未来 7 日预测，预测段画**置信区间带**（lower/upper 阴影）。
+- 时段热力条：HOUR 粒度展示明日各时段预计入库高峰，辅助排班。
+- 角标显示当前 `method` 与滚动 MAPE；数据不足时显「仅供参考」。
+- 「立即重算」按钮 → `POST /analytics/forecast/run`。
+
+---
+
+## 8. 任务分解
+
+| # | Task | 关键产物 | 验收要点 |
+|---|---|---|---|
+| 1 | **库位推荐服务（ai-service）** | `/slot/recommend` + `scorer.py` 加权评分排序 + mock 回退；schemas | 给定占用态/特征返回合理降序推荐的接口测绿；空候选返回空列表 |
+| 2 | **分配器接入推荐（station）** | `slot-recommender.client`（超时/熔断）+ `slot-allocator` 优先推荐、回退 `ruleAllocate`、撞位重试；`SlotAssignment.source` | 推荐位被占/ai 不可用正确回退、不撞位、入库零阻塞的单测绿；签名不变调用方无改动 |
+| 3 | **库位热度聚合（station）** | `slot_heat_daily`+RLS + 订阅 `ParcelPickedUp` 刷新 + `slot-heat.processor` 重算 + Redis 缓存 + `/slots/heatmap` | 取件后热度累加幂等、热力接口与明细一致、缓存刷新的单测绿 |
+| 4 | **包裹量预测服务 + 落库（ai-service + analytics）** | `/forecast/volume`（MA/Holt-Winters/兜底自适应）+ `volume_forecasts`+RLS + `forecast.service/client`（失败本地 MA 兜底）+ `forecast.processor`（定时+锁）+ 查询/重算接口 + actual 回填与 MAPE | 历史驱动预测、空数据兜底、降级仍出曲线、多实例单跑、MAPE 回算的测绿 |
+| 5 | **前端 + 集成冒烟** | station-web 推荐提示+货架热力+预测曲线看板；`test/smart-slot-forecast.e2e-spec.ts`（入库走推荐位→回退验证→预测接口/看板） | 智能分配与预测链路 e2e 绿、降级可用、看板可视化 |
+
+---
+
+## 9. 验收标准（推荐命中 / 预测误差指标）
+
+**库位推荐**
+- 入库分配在 ai 可用时走推荐（`source=AI`），不可用/撞位/灰度关时**自动回落规则**且入库不失败、不撞位（并发锁保持 P1-2 不变）。
+- AI 命中占比可观测（`SlotAssignment.source` 统计）；推荐位较规则位**平均动线名次更优**（离线对比：推荐位 `distanceRank` 均值 ≤ 规则位）。
+- 评分含路径/频率/时段/大小四因子，大件入小格被排除，前端展示 `reasons`。
+
+**包裹量预测**
+- 有历史时由历史驱动、空数据有兜底；降级路径仍产出 `volume_forecasts` 与看板曲线。
+- 误差指标：滚动 **MAPE ≤ 30%**（数据充足门店，验收基线，非硬 SLA），冷启动门店标注「仅供参考」不计入。
+- 预测带区间（lower/upper）、可手动重算、actual 回填后可回算误差。
+
+**通用**
+- 两张派生表带 RLS + 租户隔离；定时任务多实例只跑一次；订阅幂等；e2e 冒烟绿、测试全绿。
+
+---
+
+## 10. 依赖与风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| ai-service 抖动/不可用 | 入库分配/预测受阻 | 强制降级（§5.3）：推荐回 P1-2 规则、预测回本地 MA；熔断 800ms 超时；入库永不阻塞 |
+| 历史数据少/脏（新店、P2-4 刚上线） | 预测/热度不准 | 冷启动中性默认（§5.4）；自适应选模兜底；看板标注数据不足 |
+| 动线/取件频率无真实传感 | 评分代理信号偏差 | 用 `slots` 坐标算 `distanceRank`、用 `parcel_events` 取件行为代理，权重 store 可调，先规则后 ML |
+| 推荐与并发占位竞争 | 撞位/分配失败 | 沿用 P1-2 Redis 锁 + 乐观锁 + 撞位取下一推荐位重试，最终回退规则 |
+| 派生表与真值漂移 | 热度/误差失真 | 两表均可整表重算（定时 + 手动），真值始终在 `parcels`/`metric_daily` |
+| 模型退化（MAPE 上升） | 排班误导 | 滚动 MAPE 监控告警，超阈降级回 MA，看板透出当前 method 与误差 |
+
+**外部依赖**：P2-4（历史统计 `metric_daily` / 货架热力）、P4-1（ai-service 工程与熔断降级范式）、P1-2（`slot-allocator` 接入点与并发锁）、P1-foundation（RLS / Redis / BullMQ / 分布式锁 / EventBus）。

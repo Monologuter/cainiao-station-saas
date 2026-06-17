@@ -1,0 +1,470 @@
+# P3-1 订阅计费（Billing · Subscription / Invoice / Usage）详细设计
+
+> 版本 v1.0（2026-06-18）｜ 配套《设计方案（整合版）v2.0》§1.3/§3/§5(billing)/§6/§7(pay)、《UI 设计规范》(套餐配置/订阅与账单页)、《实现计划总表》P3-1
+> 本文为**设计级文档**：给出数据模型、接口契约、领域事件、关键逻辑（混合计费算法）、业务流程、前端与任务分解。
+> **不写完整实现代码**，仅在必要处给签名、表结构、状态流转、规则表与伪逻辑。
+> 实现时由子代理据此展开为逐步 TDD 计划（粒度对齐 `2026-06-18-p1-foundation.md`）。
+
+---
+
+## 1. 目标 / 周期 / 依赖
+
+### 1.1 目标
+在 P1/P2 之上落地 **SaaS 变现底座**，把「按门店月费订阅 + 超额用量加费」从设计承诺变成可运行、可对账、可联动停用的计费系统：
+
+1. **套餐（plans，平台级）**：基础 / 标准 / 旗舰三档，每档 = 月费 + 一组**基础额度**（短信条数、包裹量、门店数）+ 一组**超额单价**。平台运营在 `admin-web` 维护。
+2. **订阅（subscriptions，租户级）**：租户/门店绑定一个套餐，按月账期（billing cycle）滚动；生命周期 `开通 → 续费 → 到期 → 暂停/欠费 → 取消`。
+3. **用量计量（usage_records，租户级）**：各上下文（首期 `notify` 发短信）在动作发生时 **meter 打点**，按「订阅 × 账期 × 计量项」累加；事件驱动、幂等。
+4. **账单（invoices，租户级）**：账期结束由 BullMQ 定时任务 **出账**——`月费 + Σ(超额计量项 × 超额单价)`，生成 `invoices`（含明细行）；支付走 **pay 适配层**（模拟 / 微信支付）。
+5. **欠费联动**：账单逾期未付 → 发 `TenantStatusChanged(suspended)` 停用租户；付清后恢复 `active`。
+
+> 一句话计费公式：`应付 = 套餐月费 + Σ_计量项 max(0, 周期用量 − 基础额度) × 超额单价`。
+
+### 1.2 周期
+P3 商业化期 · 建议顺序第 8（关键路径 `… → P2-4 → P3-1 → P3-2 → …`）。是 P3-2 自助入驻「开通即起订阅」的前置，是 P4-4 短信/支付接真「用量回流计费」的接收方。预估 8 个工作单位。
+
+### 1.3 依赖
+| 依赖 | 来源 | 用到什么 |
+|---|---|---|
+| P1-1 | 后端地基 | RLS 多租户、`TenantPrismaService`、平台 bypass、JWT、RBAC（`@RequirePermission`/`v-perm`、`roles.scope=platform\|tenant`）、统一响应 `{code,message,data}`/全局异常/`api-code`、`EventBus`、审计 |
+| P1-1 | tenant | `tenants` 表与状态机（`active/suspended/closed`）、`TenantStatusChanged` 事件契约（本期作为**发布方**复用） |
+| P2-1 | pay 适配层 | `PayChannel` 接口 + `MockPayChannel`（模拟支付）+ `WechatPayChannel`（降级保留）；`payments` 表；支付回调/幂等 |
+| P2-1 | notify | `NotificationRequested` / 发送结果事件 —— 本期作为短信**用量来源**订阅消费 |
+| P2-4 | analytics | 用量/计数基础设施（Redis 计数、事件增量统计）可复用做用量看板；不强绑定 |
+| Redis 7 / BullMQ | 基础设施 | 出账 repeatable job、到期检查 job、worker、分布式锁（防重） |
+| 解耦先行 | P3-4 | 本期自带轻量分布式锁（ShedLock 等价占位）；P3-4 统一收口加固，接口预留可平滑替换 |
+
+> 隐性验收（贯穿）：`plans` **平台级**（无 `tenant_id`，RLS bypass 仅平台超管可写）；`subscriptions/invoices/usage_records` **带 `tenant_id` + RLS Policy + `FORCE ROW LEVEL SECURITY` + 联合索引**；新事件订阅方幂等；出账/到期 job 多实例防重；混合计费有边界单测；收尾 e2e 冒烟；测试全绿；频繁提交。
+
+---
+
+## 2. 涉及上下文与模块
+
+| 上下文 | 角色 | 本期新增/改动（设计级） |
+|---|---|---|
+| `billing`（新） | 计费域核心 | `plan.service`/`subscription.service`/`usage.service`/`invoice.service` + 出账&到期定时 job + 表 `plans/subscriptions/invoices/usage_records` |
+| `tenant` | 租户生命周期 | 本期作为 `TenantStatusChanged` **发布触发源**（欠费→suspended、付清→active）；`tenant` 订阅方已存在（停用/恢复登录与写限制），复用不改 |
+| `notify` | 用量来源 | 发短信成功时 **meter 打点**（订阅其发送结果事件，或在 `MockSmsChannel` 成功回调里 `usage.meter`）；不改通知主流程 |
+| `pay` | 支付出口 | 复用 `PayChannel`：账单发起支付（模拟/微信），回调置账单 `PAID`；新增「订阅缴费」业务封装，不改适配层接口 |
+| `core/queue` | 定时基础设施 | 注册出账队列 + 到期检查队列 + repeatable job + `DistributedLock`（与 P2-2 同一套，复用/对齐） |
+| `admin-web` | 前端（平台） | 套餐配置页（`plans.html`）、订阅与账单页（`billing.html`） |
+| `station-web` | 前端（租户） | 门店设置内「我的订阅/账单/用量」视图（复用 `settings.html` 标签页或新增子页） |
+
+### 2.1 后端文件职责（锁定，便于展开）
+```
+backend/src/billing/
+├── billing.module.ts               # 装配 service + controller + 订阅者 + job
+├── plan/
+│   ├── plan.service.ts             # 套餐 CRUD（平台级）、额度/单价定义、上/下架
+│   └── plan.controller.ts          # 平台套餐 REST（仅 platform scope）
+├── subscription/
+│   ├── subscription.service.ts     # 开通/续费/到期/暂停/取消、账期推进
+│   ├── subscription.aggregate.ts   # 订阅状态机（守卫合法流转）
+│   └── subscription.controller.ts  # 平台 + 租户两视角 REST
+├── usage/
+│   ├── usage.service.ts            # meter 打点累加（按 订阅×账期×metric，幂等）
+│   ├── usage.metric.ts             # 计量项枚举 + 单位定义（纯）
+│   └── subscribers/sms-usage.subscriber.ts  # 订阅 notify 短信发送结果 → meter
+├── invoice/
+│   ├── invoice.service.ts          # 出账（月费+超额）、查询、标记已付/逾期
+│   ├── billing-calculator.ts       # 纯函数：混合计费算法（额度/超额/明细行）
+│   ├── invoice.aggregate.ts        # 账单状态机
+│   └── invoice.controller.ts       # 平台 + 租户两视角 REST
+├── jobs/
+│   ├── invoice-run.processor.ts    # 出账定时 worker（到账期的订阅批量出账，锁防重）
+│   └── expiry-check.processor.ts   # 到期检查 worker（将到期发 SubscriptionExpiring；逾期未付→欠费停用）
+└── pay/
+    └── subscription-pay.service.ts # 账单→PayChannel 发起支付、回调置 PAID、触发恢复
+```
+
+---
+
+## 3. 数据模型
+
+> 约定（设计 §6）：业务表含 `id(uuid)`、`created_at/updated_at/deleted_at(软删)`、`created_by`。`plans` **平台级**（无 `tenant_id`）；其余三表 **含 `tenant_id` + RLS Policy + 联合索引**。金额一律 **`bigint` 分（cent）** 存储，避免浮点；币种默认 `CNY`。
+
+### 3.1 `plans`（套餐，平台级）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid PK | |
+| `code` | varchar UQ | 套餐编码（`BASIC/STANDARD/FLAGSHIP`），稳定引用键 |
+| `name` | varchar | 显示名（基础版/标准版/旗舰版） |
+| `monthly_price` | bigint | 月费（分） |
+| `currency` | char(3) | 默认 `CNY` |
+| `quotas` | jsonb | 基础额度，结构 `{ sms:int, parcels:int, stations:int }`（计量项→额度，0=无额度全额超额，-1=不限量） |
+| `overage_prices` | jsonb | 超额单价，结构 `{ sms:分/条, parcels:分/件, stations:分/店 }` |
+| `billing_period` | enum `BillingPeriod` | `MONTHLY`（首期仅月付；预留 `YEARLY`） |
+| `status` | enum `PlanStatus` | `DRAFT/ACTIVE/ARCHIVED`（已订阅的套餐不可删，只可 `ARCHIVED` 停止新订） |
+| `sort` | int | 展示排序 |
+| `description` | text null | 卖点说明 |
+
+> `quotas`/`overage_prices` 用 jsonb 而非纵表：计量项是平台级固定枚举（§6.1），档位少、读多写少，jsonb 简化出账读取；计量项扩展只加 key，无需迁表。**RLS**：平台级表，写仅 `app.bypass_rls='on'`（平台超管）；租户只读「`ACTIVE`」套餐（通过专用只读接口，不直读表）。
+
+### 3.2 `subscriptions`（订阅，租户级）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid PK | |
+| `tenant_id` | uuid | 租户隔离键（RLS） |
+| `station_id` | uuid null | 计费单位=门店（设计 §3：门店月费订阅）；单门店租户可空，多门店一店一订阅 |
+| `plan_id` | uuid FK→plans | 当前套餐（续费换档落新值；历史账单已快照不受影响） |
+| `status` | enum `SubscriptionStatus` | `TRIALING/ACTIVE/PAST_DUE/SUSPENDED/CANCELED/EXPIRED`（§6.4） |
+| `current_period_start` | timestamptz | 当前账期起（含） |
+| `current_period_end` | timestamptz | 当前账期止（出账锚点；到此触发出账+滚动下一期） |
+| `next_billing_at` | timestamptz | 下次出账时间（= period_end；索引供 job 扫描） |
+| `auto_renew` | bool | 是否自动续费（默认 true；false 到期转 `EXPIRED`） |
+| `started_at` | timestamptz | 首次开通时间 |
+| `canceled_at` | timestamptz null | 取消时间 |
+| `plan_snapshot` | jsonb | 开通/续费时套餐快照（`monthly_price/quotas/overage_prices`），**出账以快照为准**，避免改套餐影响在途账期 |
+
+> 索引：`(tenant_id, status)`、`(next_billing_at)`（出账扫描）、`(tenant_id, station_id)` 唯一活跃订阅约束（同门店同时仅一条非终态订阅）。计费单位为门店与设计 §3「Tenant=计费单位、Station 1~N」一致：账单聚合到租户、计量到订阅（门店）。
+
+### 3.3 `usage_records`（用量计量，租户级）
+> 设计取舍：**按 (订阅, 账期, 计量项) 一行累加**（聚合行，非每次打点一行），出账直接读、用量看板直接展示；打点高频但只 `UPDATE … SET counter = counter + n`，避免行爆炸。审计级明细（每条短信）由 `notifications`/`audit_logs` 承载，不在本表。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid PK | |
+| `tenant_id` | uuid | RLS |
+| `subscription_id` | uuid FK→subscriptions | 归属订阅 |
+| `period_start` | timestamptz | 账期起（与订阅当期对齐；账期是计量桶的边界） |
+| `metric` | enum `UsageMetric` | `SMS/PARCELS/EXTRA_STATIONS`（§6.1） |
+| `quantity` | bigint | 周期累计用量（条/件/店） |
+| `last_event_at` | timestamptz | 最近一次打点时间 |
+
+> 唯一键 `UQ(subscription_id, period_start, metric)` —— meter 用 `INSERT … ON CONFLICT DO UPDATE quantity = quantity + :delta`（**upsert 累加**，天然并发安全 + 幂等去重见 §6.2）。
+> 幂等去重表/键：单独 `usage_dedup`（`event_id` UQ，TTL 清理）或复用 Redis SET（`usage:dedup:{eventId}`，PX=账期+缓冲），打点前判重，防同一短信发送事件重复投递重复计量。
+
+### 3.4 `invoices`（账单，租户级）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid PK | |
+| `tenant_id` | uuid | RLS |
+| `subscription_id` | uuid FK→subscriptions | 关联订阅 |
+| `code` | varchar | 友好账单号 `INV-yyyymm-序号`（租户内唯一） |
+| `period_start` / `period_end` | timestamptz | 出账账期 |
+| `status` | enum `InvoiceStatus` | `DRAFT/OPEN/PAID/OVERDUE/VOID`（§6.3） |
+| `base_amount` | bigint | 月费（分，来自订阅 `plan_snapshot`） |
+| `overage_amount` | bigint | 超额合计（分） |
+| `total_amount` | bigint | `base + overage`（应付，分） |
+| `currency` | char(3) | `CNY` |
+| `line_items` | jsonb | 明细行：`[{type:'BASE\|OVERAGE', metric?, quota?, used?, overage?, unitPrice?, amount}]` |
+| `issued_at` | timestamptz | 出账时间 |
+| `due_at` | timestamptz | 到期应付时间（出账 + 宽限期，如 +7d） |
+| `paid_at` | timestamptz null | 支付完成时间 |
+| `payment_id` | uuid null | 关联 `payments`（pay 适配层） |
+
+> 索引：`(tenant_id, status)`、`(subscription_id, period_start)` 唯一（**同订阅同账期只出一张账单** = 出账幂等键）、`(status, due_at)`（到期检查扫 `OPEN && due_at<now`）。
+> `line_items` 快照计费过程（额度/用量/超额/单价/金额），账单一经出账即不可变（改套餐不回溯），保证可对账、可追溯。
+
+### 3.5 关系与归属
+```
+plans(平台级,1) ──< subscriptions(租户级,N) ──< invoices(N)
+                                         └──< usage_records(N, 按账期×metric)
+tenant(1) ──< subscriptions(N)   ;   subscription.station_id → stations(门店=计费单位)
+invoice.payment_id → payments(pay 适配层)   ;   欠费 → TenantStatusChanged → tenant.status=suspended
+```
+- **平台级**：`plans`（所有租户共享只读、平台超管可写）。
+- **租户级（RLS 隔离）**：`subscriptions`/`invoices`/`usage_records`，全部带 `tenant_id`，租户视角只见自己，平台视角 bypass 跨租户聚合。
+- **计费单位**：订阅挂门店（`station_id`），账单/用量归订阅，对账归租户。
+
+---
+
+## 4. 接口与 API
+
+### 4.1 端点表
+> 统一前缀 `/api`；统一响应 `{code,message,data}`；均需 JWT；权限码 `module:action`。
+> 平台视角权限 `roles.scope=platform`（运营/财务），租户视角 `scope=tenant`（店长）。RLS 自动隔离租户数据，平台接口走 bypass。
+
+| 方法 | 路径 | 权限码 | 视角 | 说明 |
+|---|---|---|---|---|
+| **套餐（平台级）** | | | | |
+| GET | `/billing/plans` | `plan:read` | 平台/租户 | 套餐列表（租户视角仅 `ACTIVE`，只读选购用） |
+| POST | `/billing/plans` | `plan:write` | 平台 | 新建套餐（含额度/单价/月费） |
+| PUT | `/billing/plans/:id` | `plan:write` | 平台 | 编辑（已订阅档改价仅影响未来续费快照） |
+| POST | `/billing/plans/:id/archive` | `plan:write` | 平台 | 归档（停止新订，不影响存量） |
+| **订阅** | | | | |
+| POST | `/billing/subscriptions` | `subscription:write` | 平台/租户 | 开通订阅（绑门店+套餐，起首个账期） |
+| GET | `/billing/subscriptions` | `subscription:read` | 平台/租户 | 列表（平台跨租户筛选 status/plan/tenant；租户仅自己） |
+| GET | `/billing/subscriptions/:id` | `subscription:read` | 平台/租户 | 详情（含当期用量进度、套餐快照） |
+| POST | `/billing/subscriptions/:id/renew` | `subscription:write` | 平台/租户 | 续费（滚动下一账期；可同时换档） |
+| POST | `/billing/subscriptions/:id/change-plan` | `subscription:write` | 平台/租户 | 变更套餐（下账期生效，更新快照） |
+| POST | `/billing/subscriptions/:id/cancel` | `subscription:write` | 平台/租户 | 取消（到期不续 → `CANCELED`） |
+| POST | `/billing/subscriptions/:id/suspend` `…/resume` | `subscription:admin` | 平台 | 平台强制暂停/恢复 |
+| **用量** | | | | |
+| GET | `/billing/usage` | `usage:read` | 平台/租户 | 当期用量（按订阅×metric：用量/额度/超额预估） |
+| POST | `/billing/usage/meter` | `usage:meter` | 内部/平台 | **内部上报口**（各上下文 meter；正式走事件，本口供调试/补偿/接真回流） |
+| **账单** | | | | |
+| GET | `/billing/invoices` | `invoice:read` | 平台/租户 | 账单列表（筛选 status/period；账单 `.tag` 已付/逾期） |
+| GET | `/billing/invoices/:id` | `invoice:read` | 平台/租户 | 账单详情（明细行：月费 + 各超额项） |
+| POST | `/billing/invoices/:id/pay` | `invoice:pay` | 租户/平台 | 发起支付（走 `PayChannel`，模拟即时回调/微信预下单） |
+| POST | `/billing/invoices/run` | `invoice:run` | 平台 | 手动触发一次出账（幂等，正式靠定时 job） |
+| POST | `/billing/invoices/:id/void` | `invoice:admin` | 平台 | 作废（误出账冲正） |
+| **支付回调** | | | | |
+| POST | `/billing/pay/callback` | （验签免 JWT） | 外部 | pay 适配层回调入口：置账单 `PAID`、触发恢复（幂等） |
+
+### 4.2 服务接口签名（设计级，TS 伪签名）
+```ts
+// billing/plan/plan.service.ts
+createPlan(input: CreatePlanInput): Promise<PlanDto>;          // 含 quotas/overagePrices/monthlyPrice
+updatePlan(id: string, patch: UpdatePlanInput): Promise<PlanDto>;
+archivePlan(id: string): Promise<void>;
+listActivePlans(): Promise<PlanDto[]>;                          // 租户选购用（只读 ACTIVE）
+
+// billing/subscription/subscription.service.ts
+subscribe(input: SubscribeInput): Promise<SubscriptionDto>;    // {tenantId, stationId, planId} → 建订阅+首账期+快照
+renew(id: string, opts?: {planId?: string}): Promise<SubscriptionDto>;   // 滚动下一账期（可换档）
+changePlan(id: string, planId: string): Promise<SubscriptionDto>;        // 下账期生效
+cancel(id: string): Promise<SubscriptionDto>;                  // 到期不续
+suspend(id: string, reason: SuspendReason): Promise<void>;     // 欠费/平台强制 → SUSPENDED
+resume(id: string): Promise<void>;                             // 付清/解除 → ACTIVE
+rollPeriod(id: string, now: Date): Promise<void>;              // 出账后推进账期（period_start/end/next_billing_at）
+
+// billing/usage/usage.service.ts
+meter(input: MeterInput): Promise<void>;                       // {tenantId, subscriptionId, metric, quantity, eventId}
+                                                               // upsert 累加 + eventId 去重（幂等）
+getCurrentUsage(subscriptionId: string): Promise<UsageSnapshot>;  // 按 metric 返回 {used, quota, overage}
+
+// billing/invoice/invoice.service.ts
+generateInvoice(subscriptionId: string, period: Period): Promise<InvoiceDto>; // 出账：月费+超额，写明细；幂等(UQ)
+listInvoices(q: InvoiceQuery): Promise<Paginated<InvoiceDto>>;
+markPaid(invoiceId: string, paymentId: string): Promise<void>; // 回调置 PAID + 触发 resume
+markOverdue(invoiceId: string): Promise<void>;                 // 到期检查置 OVERDUE + 触发欠费停用
+
+// billing/invoice/billing-calculator.ts（纯函数，核心，易单测）
+calcInvoice(snapshot: PlanSnapshot, usage: UsageByMetric): InvoiceCalcResult;
+//  → { baseAmount, overageAmount, totalAmount, lineItems[] }
+
+// billing/pay/subscription-pay.service.ts
+payInvoice(invoiceId: string): Promise<PayInitResult>;         // 调 PayChannel.createPayment → 模拟即时/微信预下单
+handlePayCallback(payload: PayCallback): Promise<void>;        // 验签+幂等 → markPaid
+```
+
+---
+
+## 5. 领域事件
+
+> 进程内 `EventBus`（设计 §4.3）；订阅方**幂等**；演进期换 Redis Stream/Kafka，订阅方不变。本期 billing 既**发布**新事件，也**消费** notify 用量事件，并**触发**已有 `TenantStatusChanged`。
+
+| 事件 | 发布方 | payload（关键） | 订阅方 / 副作用 |
+|---|---|---|---|
+| `InvoiceGenerated`（新） | `invoice.generateInvoice` | `{tenantId, subscriptionId, invoiceId, code, periodStart, periodEnd, totalAmount, dueAt}` | `notify`：推送账单生成通知给店长；`analytics`（P2-4）：GMV/应收计数 |
+| `SubscriptionExpiring`（新） | `expiry-check.processor` | `{tenantId, subscriptionId, stationId, currentPeriodEnd, daysToExpiry}` | `notify`：到期续费提醒（分级 7d/3d/1d，去重）；前端账单页提示 |
+| `TenantStatusChanged`（复用，本期作发布方） | `subscription.suspend`（欠费）/ `subscription.resume`（付清） | `{tenantId, status: 'suspended'\|'active', reason: 'OVERDUE'}` | `tenant`：置租户状态（登录/写限制，P1-1 已订阅）；`notify`：停用/恢复告知；`analytics`：活跃租户数 |
+| `NotificationRequested` / 短信发送结果（**消费**，P2-1 既有） | `notify` 发送成功 | `{tenantId, stationId, channel:'SMS', count, eventId}` | `billing.sms-usage.subscriber` → `usage.meter(metric=SMS, quantity=count, eventId)` |
+
+**幂等键约定**：
+- 用量计量去重 = `eventId`（notify 每次发送的唯一事件 id；`usage.meter` 打点前查 `usage_dedup`/Redis，已存在则跳过，防重复投递重复计量）。
+- 出账幂等 = `UQ(subscription_id, period_start)`；`generateInvoice` 命中冲突则返回既有账单，不重复出账。
+- `TenantStatusChanged` 订阅幂等 = 租户已是目标状态则跳过（付清恢复时若租户非 suspended 不动）。
+
+> 不新增「欠费」专属事件，**复用 `TenantStatusChanged(suspended, reason=OVERDUE)`**，与设计 §3「租户生命周期：停用(suspended,欠费)→发 `TenantStatusChanged`」一致，订阅方按 `reason` 区分来源（欠费 vs 手动）。
+
+---
+
+## 6. 关键逻辑
+
+### 6.1 计量项定义（`UsageMetric`，平台级固定枚举）
+| metric | 单位 | 额度来源 | 超额来源 | 打点来源 |
+|---|---|---|---|---|
+| `SMS` 短信条数 | 条 | `plan.quotas.sms` | `overage_prices.sms` | `notify` 发短信成功（订阅发送结果事件 → meter） |
+| `PARCELS` 包裹量 | 件 | `quotas.parcels` | `overage_prices.parcels` | （预留）订阅 `ParcelStored` 计入库量；首期可关闭额度（-1 不限） |
+| `EXTRA_STATIONS` 额外门店 | 店 | `quotas.stations` | `overage_prices.stations` | **快照量**：账期内租户实际门店数 − 套餐含店数，出账时由 `station` 当前数计算（非事件累加，见下） |
+
+> `SMS`、`PARCELS` 为**累加型**（事件 meter 累加 quantity）；`EXTRA_STATIONS` 为**存量型**（出账时按当前门店数现算超出，不进 usage_records 累加，calc 直接读 station count）。calc 对两类统一成「used vs quota」处理（见 6.5）。
+
+### 6.2 用量打点（meter）与幂等
+- **打点入口**：各上下文不直连 billing 表，只发事件或调 `usage.meter` 内部接口。首期唯一活跃来源 = `notify` 发短信成功 → `sms-usage.subscriber` → `meter({metric:SMS, quantity:条数, eventId})`。
+- **归属订阅**：meter 入参带 `tenantId/stationId`，service 解析该门店当前活跃订阅 → 找到 `(subscriptionId, 当前 period_start)` 的 usage 桶。
+- **累加写**：`INSERT INTO usage_records(...) VALUES(...) ON CONFLICT (subscription_id, period_start, metric) DO UPDATE SET quantity = quantity + :delta, last_event_at = now()` —— 原子累加，**并发安全**。
+- **幂等**：打点前判 `eventId`（`usage_dedup` 唯一插入 / Redis `SET NX`），命中则直接 return。保证「同一条短信发送事件重复投递只计一次」（roadmap 任务 3 验收）。
+- **账期归桶**：用量永远落到「事件时刻所在订阅当前账期」的桶；账期滚动后新桶从 0 开始，旧桶冻结供历史账单复核。
+
+### 6.3 账单状态机
+```
+[DRAFT 草稿] ──出账落定──▶ [OPEN 待付] ──支付成功──▶ [PAID 已付]
+                              │
+                              │ 到期(due_at)未付
+                              ▼
+                          [OVERDUE 逾期] ──补付成功──▶ [PAID]
+（误出账：OPEN/OVERDUE ──作废──▶ [VOID]）
+```
+| 流转 | 守卫 | 副作用 |
+|---|---|---|
+| `→OPEN` | 出账计算完成、`UQ(sub,period)` 不冲突 | 发 `InvoiceGenerated`；notify 通知店长 |
+| `OPEN→PAID` | pay 回调验签通过、金额匹配 | 落 `paid_at/payment_id`；若订阅 `PAST_DUE/SUSPENDED` → `resume` + `TenantStatusChanged(active)` |
+| `OPEN→OVERDUE` | 到期检查 `due_at < now && 未付` | 订阅 → `PAST_DUE`；超宽限二次 → `suspend` + `TenantStatusChanged(suspended,OVERDUE)` |
+| `OVERDUE→PAID` | 补付成功 | 同 PAID + 恢复租户 |
+| `→VOID` | 平台冲正，未付 | 冻结，不计应收 |
+
+### 6.4 订阅状态机
+```
+            subscribe                 续费/付清
+[—] ───────────────▶ [ACTIVE] ◀───────────────┐
+                        │  │                    │
+              到期且不续 │  │ 出账逾期未付         │ 补付成功
+                        ▼  ▼                    │
+                 [EXPIRED] [PAST_DUE] ──超宽限──▶ [SUSPENDED] ──┘
+                        cancel→[CANCELED]
+```
+| 状态 | 进入 | 计费/访问影响 |
+|---|---|---|
+| `TRIALING` | （预留）试用开通 | 不出账或零额；首期可不启用 |
+| `ACTIVE` | 开通/续费/付清 | 正常计量+出账 |
+| `PAST_DUE` | 账单 `OVERDUE` 首次 | 仍可用，催付；继续计量 |
+| `SUSPENDED` | 逾期超宽限 → 欠费 | **发 `TenantStatusChanged(suspended)`**；租户登录/写受限（tenant 订阅方处理） |
+| `EXPIRED` | 到期 `auto_renew=false` | 停止计量，需重新订阅 |
+| `CANCELED` | 主动取消 | 到当期末停 |
+
+### 6.5 混合计费算法（核心，`calcInvoice` 纯函数）
+> 公式：`总额 = 月费 + Σ_metric max(0, used − quota) × unitPrice`。逐项生成明细行，便于对账与前端展示。
+
+```
+calcInvoice(snapshot, usage):
+  base = snapshot.monthlyPrice
+  lines = [ { type:'BASE', amount: base } ]
+  overage = 0
+  for metric in [SMS, PARCELS, EXTRA_STATIONS]:
+      quota     = snapshot.quotas[metric]            # -1=不限量, 0=无额度全超, n=含 n
+      used      = usage[metric]                       # 累加型读桶；EXTRA_STATIONS 现算门店数差
+      unitPrice = snapshot.overagePrices[metric]
+      if quota == -1: continue                        # 不限量，无超额
+      exceed = max(0, used - max(quota, 0))
+      amount = exceed * unitPrice
+      if exceed > 0:
+          lines.push({ type:'OVERAGE', metric, quota, used, overage:exceed, unitPrice, amount })
+          overage += amount
+  return { baseAmount: base, overageAmount: overage, totalAmount: base + overage, lineItems: lines }
+```
+**边界单测（roadmap 任务 4 验收）**：
+- 用量 = 0 → 仅月费，无超额行。
+- 用量**刚好用满**额度（`used == quota`）→ `exceed=0`，无超额（临界点）。
+- 用量超额（`used = quota + 1`）→ 一条超额行，金额 = `unitPrice`。
+- `quota = -1`（不限量）→ 任意用量均无超额。
+- `quota = 0`（无基础额度）→ 全量计费 `used × unitPrice`。
+- 多计量项混合（SMS 超、PARCELS 未超）→ 仅 SMS 出超额行，总额正确。
+- 金额用分（整数）计算，无浮点误差。
+
+### 6.6 出账周期定时任务（repeatable job + 防重）
+- **调度**：BullMQ repeatable job，固定 `jobId='invoice-run'` + cron（如每日 01:00）；固定 jobId 保证多实例注册不重复堆叠（与 P2-2 滞留扫描同套路）。
+- **扫描出账**：平台 bypass 下 `SELECT … WHERE status IN (ACTIVE,PAST_DUE) AND next_billing_at <= now` 分页取到期订阅 → 逐个进入对应租户上下文（`set_config app.tenant_id`）→ `generateInvoice(sub, 当期)` → 发 `InvoiceGenerated` → `rollPeriod`（推进 `period_start/end/next_billing_at`）。
+- **防重复执行**：worker 进入前 `distributedLock.tryLock('lock:invoice-run', ttl)`，拿不到锁 return（另一实例在跑）；锁用 Redis `SET key val NX PX ttl`（ShedLock 等价，复用 P2-2 / P3-4 收口）。
+- **出账幂等**：`generateInvoice` 受 `UQ(subscription_id, period_start)` 保护 —— 即便锁失效双跑，同账期也只生成一张账单；命中冲突返回既有。
+- **到期检查 job**：固定 `jobId='expiry-check'` + cron（如每日 09:00）：① 将到期订阅（`next_billing_at − now <= 7/3/1d`）发 `SubscriptionExpiring`（分级去重）；② 扫 `invoices WHERE status=OPEN AND due_at<now` → `markOverdue` → 订阅 `PAST_DUE`；③ 扫超宽限仍未付（`OVERDUE` 且 `due_at < now − 宽限`）→ `suspend` + `TenantStatusChanged(suspended,OVERDUE)`。
+
+### 6.7 欠费停用联动（与 tenant 衔接）
+```
+账单出账(OPEN) ──due_at 到──▶ OVERDUE ──超宽限未付──▶ subscription.suspend
+   └──────────────────────────────────────────────▶ 发 TenantStatusChanged(suspended, reason=OVERDUE)
+                                                          └─▶ tenant 订阅方：tenant.status=suspended（登录/写受限，P1-1 既有）
+补付成功(回调) ──▶ markPaid ──▶ subscription.resume ──▶ 发 TenantStatusChanged(active)
+                                                          └─▶ tenant 恢复 active
+```
+- **联动方向**：billing 是 `TenantStatusChanged(suspended/active, reason=OVERDUE)` 的发布源；tenant 是订阅方（复用 P1-1 已有的状态置位 + 登录/写门禁），billing **不直接写 tenants 表**（守「数据不串门」）。
+- **幂等**：付清恢复仅当租户当前因 OVERDUE 被停（避免覆盖平台手动停用的 `closed`）；停用前判租户非 `closed`。
+- **宽限期**：账单 `due_at = issued_at + 出账宽限(7d)`；逾期后再给二次宽限（如 +3d）才停用，可配置（系统配置项，P3-3 收口）。
+
+---
+
+## 7. 业务流程
+
+### 7.1 订阅 → 计量 → 出账 → 支付 → 续费/欠费停用（主链路）
+```
+① 开通    平台/入驻(P3-2) subscribe(tenant,station,plan)
+            → 建 subscriptions(ACTIVE) + plan_snapshot + 首账期(period_start=now, end=+1月)
+② 计量    notify 发短信成功 → 发送结果事件 → sms-usage.subscriber
+            → usage.meter(SMS, n, eventId) → usage_records upsert 累加（幂等）
+            （门店设置/包裹入库 → 预留 PARCELS/EXTRA_STATIONS）
+③ 出账    invoice-run job（账期末 next_billing_at 到）
+            → calcInvoice(snapshot, 当期usage) → generateInvoice → invoices(OPEN)
+            → 发 InvoiceGenerated → notify 通知店长 → rollPeriod 滚下一期
+④ 支付    店长在 station-web 账单页点「去支付」→ payInvoice
+            → PayChannel.createPayment（mock 即时回调 / 微信预下单+二维码）
+            → /billing/pay/callback 验签 → markPaid → invoices(PAID)
+            （若曾欠费停用：resume + TenantStatusChanged(active) 恢复）
+⑤a 续费   auto_renew=true：账期滚动自动起下一期；到期前 SubscriptionExpiring 提醒
+   或     店长/平台手动 renew（可换档）
+⑤b 欠费   账单到 due_at 未付 → 到期检查 markOverdue → PAST_DUE
+            → 超宽限仍未付 → suspend + TenantStatusChanged(suspended,OVERDUE)
+            → 租户停用（登录/写受限）→ 补付后恢复（回到④收尾）
+```
+
+### 7.2 套餐变更（change-plan）
+店长/平台选新套餐 → `changePlan` 仅更新「下账期生效快照」，当期不动（当期已按旧快照计量出账），下次 `rollPeriod` 时套用新 `plan_snapshot` —— 避免账期中途换价导致计费歧义。
+
+---
+
+## 8. 前端（admin-web 套餐配置 / 订阅与账单；station-web 我的订阅）
+
+> 遵循《UI 设计规范》：Element Plus + 三主题 token、全屏平铺、`tabular-nums` 金额、状态 `.tag`、`v-perm` 控权。对齐高保真 `admin-web/plans.html`、`admin-web/billing.html`。
+
+### 8.1 admin-web · 套餐配置（`plans.html`，权限 `plan:*`）
+- 三档套餐 `.card`（基础/标准/旗舰）卡片网格：月费大数 + 额度清单（短信/包裹/门店）+ 超额单价 + `状态.tag`（草稿/上架/已归档）。
+- 新建/编辑 `.modal` + `.form-grid`：月费 `.field`、`quotas` 三项额度 `.field`、`overage_prices` 三项单价 `.field`、上/下架 `.switch`。
+- 金额输入以元展示、提交转分；额度 `-1` 提供「不限量」勾选。
+
+### 8.2 admin-web · 订阅与账单（`billing.html`，权限 `subscription:read`/`invoice:read`）
+- 顶部平台级 `.kpi`：活跃订阅数 / 本月应收 GMV / 逾期账单数（`.kpi.warn`）/ 本月超额收入。
+- `.tabs`：订阅 / 账单 / 用量。
+  - **订阅** `.table-card`：租户·门店·套餐·状态 `.tag`（active/past_due/suspended/canceled）·当期到期日·操作（详情 `.drawer`/续费/暂停）。
+  - **账单** `.table-card`：账单号·租户·账期·月费·超额·应付·状态 `.tag`（待付蓝/已付绿/逾期红/作废灰）·`.pager`；详情展开明细行（月费 + 各超额项）。
+  - **用量** `.table-card`：按订阅×metric 的用量/额度/超额预估进度 `.progress`。
+- 工具条 `.toolbar`：手动出账（`invoice:run`）+ 筛选（状态/账期/租户）。
+
+### 8.3 station-web · 我的订阅/账单/用量（复用 `settings.html` 增子页或新页，权限 `subscription:read`/`invoice:read`，仅本租户）
+- 当前套餐卡：套餐名 + 月费 + 当期账期 + 下次出账日 + `续费/变更套餐` 按钮。
+- 用量进度卡：本期短信/包裹/门店 用量 vs 额度 `.progress`（接近额度转 `.warn`，预估超额费用）。
+- 账单 `.table-card`：账期·应付·状态 `.tag`·`去支付` `.btn-primary`（OPEN/OVERDUE 可点）→ 支付弹窗（模拟即时成功 / 微信二维码）。
+
+---
+
+## 9. 任务分解（有序，对齐 roadmap P3-1 九步，逐步 TDD）
+
+| # | 任务 | 产物 | 验收 |
+|---|---|---|---|
+| 1 | **套餐模型与管理** | `plans` 模型（平台级，含 `quotas/overage_prices`）+ RLS（写 bypass）+ `plan.service` CRUD/归档 | 套餐 CRUD + 归档单测绿；租户只读 ACTIVE |
+| 2 | **订阅生命周期** | `subscriptions` 表 + RLS + `subscription.service`/状态机（subscribe/renew/changePlan/cancel/suspend/resume）+ `plan_snapshot` + 账期推进 | 订阅状态流转 + 快照固化 + 唯一活跃约束单测绿 |
+| 3 | **用量计量** | `usage_records` 表 + RLS + `usage.service.meter`（upsert 累加 + eventId 去重）+ `sms-usage.subscriber` 订阅 notify | 发短信即计一次量、重复事件不重计、并发累加正确单测绿 |
+| 4 | **账单生成** | `invoices` 表 + RLS + `billing-calculator.calcInvoice`（纯）+ `invoice.service.generateInvoice`（写明细行，UQ 幂等） | §6.5 全部边界用例单测绿（满额/超额/不限量/无额度/混合/分计算） |
+| 5 | **出账定时任务** | `invoice-run` repeatable job + 分布式锁 + 按租户分组出账 + `rollPeriod` | 到账期自动出账、双实例只出一次、UQ 兜底集成测绿 |
+| 6 | **欠费联动租户状态** | `expiry-check` job（OVERDUE→PAST_DUE→超宽限 suspend）+ 发 `TenantStatusChanged(suspended/active)` + 付清 resume | 欠费后租户停用、付清恢复、幂等不误覆盖单测绿 |
+| 7 | **支付与计费接口** | `subscription-pay.service`（PayChannel：模拟/微信）+ 回调 markPaid + 全套 REST（平台/租户两视角 + 权限/隔离） | 支付回调置 PAID + 恢复；接口权限与 RLS 隔离正确集成测绿 |
+| 8 | **前端计费页** | `admin-web` 套餐配置 + 订阅与账单页；`station-web` 我的订阅/账单/用量页 | 平台管套餐/订阅、店长看账单用量+支付，`v-perm` 控权对齐高保真 |
+| 9 | **P3-1 e2e 冒烟** | `test/billing.e2e-spec.ts`：开通订阅→产生用量→出账→欠费停用→付清恢复 | 计费全链路 e2e 绿 |
+
+---
+
+## 10. 验收标准
+
+1. **混合计费正确**：`月费 + 超额` 算法有全部边界单测（刚好用满 / 超额 / 不限量 / 无额度 / 多项混合），金额用分整数无浮点误差，明细行可对账。
+2. **用量计量幂等**：事件驱动 meter，同一发送事件（`eventId`）重复投递只计一次；并发累加（upsert）结果正确。
+3. **出账可定时且防重**：repeatable job 到账期自动出账；分布式锁 + `UQ(sub,period)` 双保险，多实例只出一张账单。
+4. **欠费联动**：账单逾期→`PAST_DUE`→超宽限→`suspend` 并发 `TenantStatusChanged(suspended,OVERDUE)`，租户被停用（登录/写受限）；付清回调→`resume`→`TenantStatusChanged(active)` 恢复；联动幂等不误覆盖 `closed`。
+5. **归属与隔离**：`plans` 平台级（租户只读 ACTIVE）；`subscriptions/invoices/usage_records` 带 `tenant_id` + RLS，租户只见自己、平台 bypass 跨租户；接口权限按 `scope` 正确。
+6. **pay 适配层**：支付走 `PayChannel`，模拟即时成功 / 微信预下单可切换（配置开关），回调验签 + 幂等。
+7. **前端**：admin-web 可配套餐/管订阅看账单用量；station-web 店长可看本店订阅/账单/用量并发起支付；对齐高保真 `plans.html`/`billing.html`。
+8. **e2e 冒烟绿**：开通→用量→出账→欠费停用→付清恢复全链路通过。
+
+---
+
+## 11. 依赖与风险
+
+### 11.1 依赖回顾
+- **硬依赖**：P1-1（RLS/RBAC/EventBus/tenant 状态机与 `TenantStatusChanged` 契约/审计）、P2-1（`PayChannel` 适配层 + `payments` + notify 发送结果事件）。
+- **软依赖/复用**：P2-4（用量看板基础设施）、P2-2/P3-4（分布式锁与定时任务防重，本期自带占位、P3-4 收口）。
+- **被依赖**：P3-2 自助入驻「开通即 `subscribe`」、P4-4 短信/支付接真「用量回流 meter / 微信支付走真」。
+
+### 11.2 风险与对策
+| 风险 | 影响 | 对策 |
+|---|---|---|
+| 套餐改价影响在途账期 | 计费歧义、对账纠纷 | 订阅持 `plan_snapshot`、账单 `line_items` 快照；出账只读快照，改价仅未来续费生效 |
+| 出账定时多实例重复出账 | 重复扣费 | 分布式锁（防执行）+ `UQ(sub,period)`（防数据）双保险 |
+| 用量事件重复投递/丢失 | 计量偏差 | `eventId` 去重（重复防多计）；发送结果事件落库可对账补偿；`/usage/meter` 内部补偿口 |
+| `EXTRA_STATIONS` 计量口径（存量 vs 增量） | 门店数变动计费不准 | 出账时按当前门店数现算超出（存量型），不进累加桶；明确不溯及账期中途增减（取出账时点快照） |
+| 欠费停用误伤/恢复误覆盖 | 租户被错误停用或解封 | 联动判 `reason=OVERDUE`；恢复仅作用于因欠费停用、且租户非 `closed`；停用走二次宽限 |
+| 金额精度 | 财务错误 | 全程 `bigint` 分；展示层元/分转换；货币字段预留多币种 |
+| 支付回调安全 | 越权置已付 | 回调验签 + 金额匹配 + 幂等键（`payment_id`/账单号）；模拟通道也走同一回调路径校验 |
+| 计量项扩展（包裹/门店/未来 AI 调用） | 频繁迁表 | `quotas/overage_prices` jsonb + `UsageMetric` 枚举扩展，calc 按 metric 遍历，加项不改表结构 |
+
+---
+
+> 实现约束：后端 NestJS + TS + Prisma + PG16(RLS) + Redis/BullMQ；`plans` 平台级、`subscriptions/invoices/usage_records` 租户级带 RLS；金额分存储；计费核心 `calcInvoice` 为纯函数优先 TDD；出账/到期 job 复用分布式锁防重；pay 走 `PayChannel`（模拟/微信可切）。前端 Vue3 + Element Plus + 三主题 token，对齐 `admin-web/plans.html`、`admin-web/billing.html` 高保真。

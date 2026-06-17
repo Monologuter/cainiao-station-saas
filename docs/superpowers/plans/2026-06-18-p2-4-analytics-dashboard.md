@@ -1,0 +1,380 @@
+# P2-4 运营大屏（Analytics Dashboard）· 详细设计
+
+> 设计级别文档（不含完整实现代码，只给接口签名 / 数据结构 / 流程）。
+> 技术栈锁定：NestJS + TypeScript · Prisma · PostgreSQL 16（RLS）· Redis 7（计数 / ZSet 排行）· Socket.IO（实时大屏）· BullMQ（报表异步）· ECharts（前端）。
+> 上游规格：`docs/superpowers/specs/cainiao-station-platform-design.md`（§5 analytics / §9 横切 / §4.3 事件 / §3 多租户）；UI：`docs/superpowers/specs/cainiao-station-ui-design.md`（§8.1 经营统计页 / §8.2 平台总览）；路线图：`docs/superpowers/plans/implementation-roadmap.md`（P2-4）。
+
+---
+
+## 1. 目标 · 周期 · 依赖
+
+### 1.1 目标
+把经营数据可视化，覆盖三条链路：
+- **指标聚合**：订阅各领域事件做**增量统计**，Redis 计数 + ZSet 排行；离线兜底用明细表做**对账聚合**。
+- **实时大屏**：Socket.IO 按租户 / 平台房间推送到件与指标跳动，供门店值守与平台监控。
+- **报表导出**：区间报表查询 + 异步导出 CSV / Excel，落 file（MinIO）可下载。
+
+指标清单（本期口径）：**今日入库 / 今日出库 / 当前在库 / 取件率 / 滞留榜 / 货架热力 / 各门店对比**，以及近 7 日趋势。
+
+### 1.2 范围边界
+- **属于本期**：事件增量计数与排行、`GET /analytics/overview|trend|ranking|heatmap`、Socket.IO 网关（鉴权握手 + 房间 + 推送）、报表异步导出、`station-web` 经营统计页、`admin-web` 平台总览雏形、对账重算任务。
+- **不属于本期**：包裹量预测 / 智能库位（P4-3 复用本期历史数据）、计费用量计量（P3-1 复用本期事件计量基建）、跨租户深度下钻监控（P3-3 在本期跨租户汇总骨架上扩展）、自定义报表设计器、数据仓库 / OLAP 迁移。
+
+### 1.3 周期
+预估 **7 人日**（与路线图一致）。任务分解见 §9。
+
+### 1.4 依赖
+| 依赖项 | 来源 | 用途 |
+|---|---|---|
+| `ParcelStored / ParcelPickedUp / ParcelReturned / ParcelMarkedException / ParcelOverdueDetected` 事件 | P1-2 parcel/inbound/pickup、P2-2 滞留 | 增量计数主输入 |
+| `ShipOrderPaid / ShipOrderCreated` 事件 | P2-1 shipping | 寄件 / GMV 计数 |
+| `parcels / parcel_events / ship_orders / slots / stations` 明细表 | P1-2、P2-1 | 离线对账聚合、热力 / 滞留榜真值 |
+| RLS / `AsyncLocalStorage` / Prisma 事务注入 | P1-foundation | 租户级查询隔离 + 平台 bypass |
+| 进程内 `EventBus` 抽象（订阅方幂等约定） | P1-foundation | 事件订阅入口 |
+| Redis 客户端 | P1-foundation | 计数 Hash / 排行 ZSet / 幂等 Set |
+| BullMQ | P1-foundation | 报表异步生成 |
+| `FileStorage`（MinIO） | P1-foundation | 报表文件存储与下载 URL |
+| Socket.IO + JWT 校验工具 | P1-foundation（identity） | 网关握手鉴权 |
+
+> 数据源越全统计越准：P2-1/2-2/2-3 上线后只需补订阅对应事件 + 重算历史，不改聚合骨架。
+
+---
+
+## 2. 涉及上下文与模块
+
+analytics 为**支撑上下文**，**只读消费**其它上下文的事件与明细表，自身仅写聚合表，不反向写业务表。
+
+| 上下文 | 目录 | 职责 | 自有表 | 输入 |
+|---|---|---|---|---|
+| **analytics** | `backend/src/analytics/` | 指标聚合、实时推送、报表导出 | `metric_daily`（聚合）、`report_jobs`（导出任务） | 订阅领域事件 + 只读业务明细表 |
+
+### 2.1 模块文件职责（设计视图）
+```
+analytics/
+├── analytics.module.ts
+├── metrics.service.ts          # 增量累加 Redis + 落 metric_daily；指标读模型
+├── query.service.ts            # overview/trend/ranking/heatmap 聚合查询（读 Redis 优先，回落 DB）
+├── ranking.service.ts          # ZSet 排行：滞留榜 / 门店对比，写入与 Top-N 读取
+├── reconcile.service.ts        # 离线对账：按日重算 metric_daily + 回填 Redis（定时 + 手动）
+├── report.service.ts           # 报表任务创建 + 状态查询；交 BullMQ
+├── report.processor.ts         # BullMQ 消费者：明细查询→CSV/Excel→file→回写 report_jobs
+├── analytics.gateway.ts        # Socket.IO 网关：握手鉴权、房间、推送
+├── realtime.publisher.ts       # 把指标变化包装成推送帧，发给对应房间
+├── listeners/
+│   ├── parcel-stored.listener.ts
+│   ├── parcel-picked-up.listener.ts
+│   ├── parcel-returned.listener.ts
+│   ├── parcel-exception.listener.ts
+│   ├── parcel-overdue.listener.ts
+│   └── ship-order.listener.ts
+├── keys.ts                     # Redis key 规约（命名空间 + TTL 常量）
+├── analytics.controller.ts     # REST 指标查询 + 报表导出端点
+└── dto/
+```
+
+### 2.2 与相邻上下文的边界
+- 监听器**只读取事件 payload**（含 `tenantId / stationId / parcelId / occurredAt` 等）累加计数；需要明细真值（滞留榜内容、货架占用）时由 `query.service` 直查明细表只读视图。
+- 不订阅 `notify`，避免与 P3-1 计费用量计量职责重叠；短信用量计量留给 billing。
+- 平台级跨租户汇总通过 Prisma `app.bypass_rls='on'` 读取，仅平台超管可触达（见 §3.3、§4.1）。
+
+---
+
+## 3. 数据模型
+
+> 约定（沿用 §6）：业务表含 `id(uuid)`、`tenant_id`、`created_at/updated_at`；`tenant_id` 建 RLS Policy 与联合索引。聚合策略为**双层**：热数据在 Redis（实时 + 当日），冷数据 / 真值在 `metric_daily`（按日物化）。
+
+### 3.1 聚合表 `metric_daily`（按 租户×门店×日×指标 物化）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 |
+| `tenant_id` | uuid | RLS 隔离键 |
+| `station_id` | uuid | 门店维度（NULL=租户汇总行，便于跨店合计） |
+| `stat_date` | date | 统计自然日（门店所在时区归一，见 §6.5） |
+| `metric` | text | 指标码：`inbound / pickup / stored_snapshot / returned / exception / overdue / ship_paid / ship_gmv` |
+| `value` | bigint | 计数值（GMV 用分） |
+| `updated_at` | timestamptz | 最后写入 |
+| 唯一约束 | — | `(tenant_id, station_id, stat_date, metric)` |
+
+- 取件率为**派生指标**（不落表）：`pickup / (期初在库 + inbound)` 或简化口径 `pickup_today / (pickup_today + stored_snapshot)`，口径在 §6.2 定义并由 `query.service` 计算。
+- `stored_snapshot`（在库快照）由定时快照任务每日落点 + 实时 Redis 维护，避免靠累加漂移（见 §6.2）。
+- RLS Policy：标准 `tenant_id = current_setting('app.tenant_id')`，平台 bypass 时返回全租户行用于汇总。
+
+### 3.2 报表任务表 `report_jobs`
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 / 任务号 |
+| `tenant_id` | uuid | 归属租户（平台级报表存哨兵租户 / 平台标记） |
+| `station_id` | uuid? | 可选门店范围 |
+| `type` | text | 报表类型：`daily_summary / inbound_detail / pickup_detail / station_compare` |
+| `range_from / range_to` | date | 区间 |
+| `format` | text | `csv / xlsx` |
+| `status` | text | `PENDING → RUNNING → DONE / FAILED` |
+| `file_key` | text? | DONE 时的 file 存储 key |
+| `error` | text? | FAILED 原因 |
+| `created_by` | uuid | 发起人 |
+| `created_at / updated_at` | timestamptz | |
+
+### 3.3 Redis 结构（热层，命名规约见 `keys.ts`）
+> 前缀统一 `an:`；TTL：当日计数随 `stat_date` 滚动保留 N 天（默认 35 天覆盖月报）后过期，排行 ZSet 不设过期由对账重建。
+
+| 用途 | 结构 | Key 模式 | 成员 / 字段 → 值 |
+|---|---|---|---|
+| 当日计数（按指标） | Hash | `an:cnt:{tenantId}:{stationId}:{date}` | field=`metric` → 累加值；HINCRBY 原子累加 |
+| 在库实时快照 | String | `an:stored:{tenantId}:{stationId}` | INCR/DECR 维护当前在库数（入库+1、取件/退回-1） |
+| 滞留榜（停留时长 Top-N） | ZSet | `an:rank:overdue:{tenantId}:{stationId}` | member=`parcelId`，score=`入库时间戳`（越早=滞留越久，取 score 最小 = 停留最久） |
+| 门店对比榜（今日入库量） | ZSet | `an:rank:station:{tenantId}:{metric}:{date}` | member=`stationId`，score=当日该指标值 |
+| 货架热力 | Hash | `an:heat:{tenantId}:{stationId}` | field=`shelfCode` → 当前占用库位数（取件释放时递减） |
+| 平台跨租户汇总 | Hash | `an:plat:cnt:{date}` | field=`metric` → 全租户合计；由各租户累加时 fan-out 同步 |
+| 事件幂等去重 | Set | `an:dedup:{date}` | member=`eventId`；SADD 返回 0 表示已处理，跳过累加 |
+
+> Redis 是**加速缓存**，真值以 `metric_daily` + 明细表为准；Redis 丢失由 §6.6 对账重建，不影响正确性。
+
+### 3.4 RLS 与隔离
+- `metric_daily` / `report_jobs` 启用 RLS，租户请求只见本租户行；门店 scope（店员）由应用层在 `query.service` 叠加 `station_id ∈ staff_stations` 过滤（三道防线之第三层）。
+- 平台级查询：仅 `roles.scope=platform` 且具 `analytics:platform:read` 权限者，经服务层显式开启 `app.bypass_rls='on'` 的只读事务读取跨租户聚合，普通租户路径**无法**触达 bypass。
+- Redis key 以 `tenantId` 分段天然隔离；平台汇总用独立 `an:plat:*` 命名空间，读取受同一权限门控。
+
+---
+
+## 4. 接口与 API
+
+### 4.1 REST 指标查询端点
+> 统一响应 `{code,message,data}`；统一前缀 `/analytics`（平台级走 `/admin/analytics`，权限 `analytics:platform:read`）。租户级权限 `analytics:read`，门店 scope 生效。
+
+| 方法 | 路径 | 用途 | 关键查询参数 | data 形态 |
+|---|---|---|---|---|
+| GET | `/analytics/overview` | 今日 KPI 总览 | `stationId?`、`date?` | `{ inbound, pickup, stored, pickupRate, overdueCount, exceptionCount, shipPaid, gmv }` |
+| GET | `/analytics/trend` | 区间趋势 | `metric`、`from`、`to`、`stationId?`、`granularity=day` | `{ metric, points:[{date,value}] }` |
+| GET | `/analytics/ranking` | 排行 | `type=overdue\|station`、`stationId?`、`limit=10` | `{ type, items:[{key,label,value,extra}] }` |
+| GET | `/analytics/heatmap` | 货架热力 | `stationId` | `{ shelves:[{shelfCode,used,capacity,rate}] }` |
+| GET | `/analytics/stations/compare` | 各门店对比 | `metric`、`date?` | `{ metric, rows:[{stationId,name,value}] }` |
+| POST | `/analytics/reports` | 创建导出任务 | body：`{type,format,from,to,stationId?}` | `{ jobId, status }` |
+| GET | `/analytics/reports/:id` | 查询任务状态 | — | `{ status, downloadUrl? , error? }` |
+| GET | `/admin/analytics/overview` | 平台跨租户总览 | `date?` | `{ tenants, stations, parcels, gmv, ... }`（bypass） |
+| GET | `/admin/analytics/tenants/compare` | 租户对比 | `metric`、`date?` | `{ rows:[{tenantId,name,value}] }` |
+
+### 4.2 WebSocket 事件与房间设计
+- **命名空间**：`/analytics`（Socket.IO namespace）。
+- **握手鉴权**：客户端连接时在 `auth.token` 带 JWT；网关在 `handleConnection` 校验签名 → 解出 `userId/type/tenantId/roleCodes` → 不合法直接 `disconnect`。
+- **房间策略（按租户 / 门店 / 平台分层）**：
+
+| 房间 | 命名 | 加入条件 | 推送内容 |
+|---|---|---|---|
+| 租户房间 | `tenant:{tenantId}` | 任意已鉴权租户用户自动加入 | 本租户全门店指标跳动 |
+| 门店房间 | `station:{stationId}` | 客户端订阅且该门店 ∈ 用户 scope | 单门店实时（值守大屏选门店时） |
+| 平台房间 | `platform` | `roles.scope=platform` 且具平台权限 | 跨租户汇总跳动 |
+
+- **客户端 → 服务端事件**：`subscribe:station {stationId}`、`unsubscribe:station {stationId}`（受 scope 校验，越权忽略）。
+- **服务端 → 客户端事件**：
+
+| 事件名 | 触发 | payload |
+|---|---|---|
+| `metric:update` | 任一指标计数变化（节流后） | `{ stationId, metric, value, delta, date }` |
+| `parcel:stored` | `ParcelStored` | `{ stationId, parcelId, pickupCode?, ts }`（大屏到件流水） |
+| `parcel:pickedup` | `ParcelPickedUp` | `{ stationId, parcelId, ts }` |
+| `ranking:overdue` | 滞留榜 Top-N 变化 | `{ stationId, items:[...] }` |
+| `snapshot:init` | 客户端进房后首帧 | 当前全量 overview + 排行（避免空屏，见 §6.4） |
+
+- **隔离保证**：推送严格按房间发送，跨租户事件绝不进入他租户房间；平台帧只进 `platform` 房间。
+
+### 4.3 关键服务接口签名（设计，非实现）
+```ts
+// metrics.service.ts —— 增量累加，由监听器调用
+incr(input: { tenantId; stationId; metric: MetricCode; by?: number; eventId: string; at: Date }): Promise<void>
+adjustStored(input: { tenantId; stationId; delta: 1 | -1 }): Promise<number> // 返回新在库数
+
+// query.service.ts —— 读模型（Redis 优先，缺失回落 metric_daily/明细）
+overview(scope: QueryScope): Promise<OverviewDto>
+trend(scope: QueryScope, metric: MetricCode, from: Date, to: Date): Promise<TrendDto>
+heatmap(scope: StationScope): Promise<HeatmapDto>
+
+// ranking.service.ts
+overdueTop(scope: StationScope, limit: number): Promise<RankItem[]>
+stationCompare(scope: TenantScope, metric: MetricCode, date: Date): Promise<RankItem[]>
+
+// report.service.ts —— 异步导出
+create(req: CreateReportReq, operator: UserCtx): Promise<{ jobId: string }>
+get(jobId: string, ctx: UserCtx): Promise<ReportJobView>
+
+// reconcile.service.ts —— 离线对账
+recomputeDay(tenantId: string, date: Date): Promise<void> // 重算落表 + 回填 Redis
+
+// realtime.publisher.ts
+publishMetric(frame: MetricFrame): void  // 经节流后发对应房间
+```
+> `QueryScope` 封装 `{ tenantId, stationIds?, isPlatform }`，由控制器从 `AsyncLocalStorage` + 权限解析注入，服务层据此决定走 RLS 还是 bypass。
+
+---
+
+## 5. 领域事件订阅（事件 → 增量更新）
+
+监听器**幂等**（先 `SADD an:dedup` 判重，0 则跳过），每条事件触发：① Redis 累加；② Redis 排行 / 快照维护；③ 标记 `metric_daily` 当日脏（由批量 flush 或对账落库，避免每事件写库）；④ 触发实时推送帧。
+
+| 领域事件 | 来源 | 增量动作 |
+|---|---|---|
+| `ParcelStored` | inbound | `inbound +1`；在库快照 `+1`；滞留榜 `ZADD score=入库ts`；货架热力 `shelfCode +1`；推 `parcel:stored` + `metric:update(inbound,stored)` |
+| `ParcelPickedUp` | pickup | `pickup +1`；在库快照 `-1`；滞留榜 `ZREM parcelId`；货架热力 `shelfCode -1`；重算取件率；推 `parcel:pickedup` + `metric:update` |
+| `ParcelReturned` | parcel/滞留 | `returned +1`；在库快照 `-1`；滞留榜 `ZREM`；货架热力 `-1`；推 `metric:update` |
+| `ParcelMarkedException` | parcel | `exception +1`；推 `metric:update(exception)` |
+| `ParcelOverdueDetected` | P2-2 滞留扫描 | `overdue +1`；刷新滞留榜 Top-N；推 `ranking:overdue` |
+| `ShipOrderPaid` | P2-1 shipping | `ship_paid +1`；`ship_gmv += amount`；推 `metric:update(gmv)` |
+| `ShipOrderCreated` | P2-1 shipping | `ship_created +1`（可选趋势用） |
+
+- 各累加同时 **fan-out** 到平台汇总 `an:plat:cnt:{date}`，供 `/admin/analytics` 读取（无需逐租户聚合）。
+- 监听器对未知 / 缺字段事件**安全跳过并告警日志**，不阻塞业务事务（订阅在事件发布之后异步执行）。
+- 缺失某事件（如 P2-1 未上线）不报错，对应指标恒为 0；上线后补订阅 + `recomputeDay` 回填历史。
+
+---
+
+## 6. 关键逻辑
+
+### 6.1 增量统计 vs 离线聚合（双轨对账）
+- **增量（在线热路径）**：事件 → Redis 原子累加，毫秒级，驱动实时大屏与当日 KPI。
+- **离线（兜底真值）**：每日凌晨 + 手动触发 `reconcile.recomputeDay`，直接 `GROUP BY` 明细表重算 `metric_daily`，并回填 Redis。修正增量漂移 / 漏事件 / Redis 重启丢数。
+- **取数优先级**：当日指标读 Redis（命中即返回）→ 未命中或历史日读 `metric_daily` → 仍缺则实时聚合明细表并补写。三层降级，保证任何状态都能出数。
+
+### 6.2 在库快照与取件率口径
+- 在库数**不靠累加历史差**（易漂移），用独立 `an:stored` String 维护当前值（入库 +1、取件 / 退回 -1），每日快照写入 `metric_daily.stored_snapshot`。
+- 取件率口径固定为：`今日取件 / (今日取件 + 当前在库)`（当日处理掉的占已发生待处理总量），由 `query.service` 计算，避免跨指标口径歧义。
+
+### 6.3 Redis 计数 / ZSet 排行
+- 计数用 `HINCRBY`（原子，无并发竞态）；GMV 用分存整数避免浮点。
+- 滞留榜：`ZSET score=入库时间戳`，取 `ZRANGE 0 N-1`（score 升序=入库最早=滞留最久）；展示时由榜单 `parcelId` 批量回查明细（脱敏「王\*\*」+ 尾号）。
+- 门店对比：每次累加同步 `ZADD an:rank:station`（member=stationId），`ZREVRANGE` 取 Top-N；跨日按 `date` 分 key。
+
+### 6.4 实时推送房间（按租户 / 平台）与节流
+- 进房先推 `snapshot:init` 全量首帧，之后只推增量 `metric:update`，避免每次重拉。
+- **节流合并**：高频入库时 `metric:update` 按 (stationId, metric) 在 `realtime.publisher` 内 **200ms 窗口合并**最新值再发，防止前端图表抖动与连接打满。
+- 到件流水 `parcel:stored` 不节流（逐条进大屏滚动列表），但前端只保留最近 N 条。
+- 推送严格按房间，平台帧与租户帧物理隔离（见 §4.2）。
+
+### 6.5 时区与自然日
+- `stat_date` 以**门店配置时区**归一（默认 Asia/Shanghai），跨零点的事件按门店本地日归属，保证「今日」口径与店员认知一致。
+
+### 6.6 报表导出（异步）
+1. `POST /analytics/reports` 校验权限 + 区间 → 建 `report_jobs(PENDING)` → 投 BullMQ（带 jobId）→ 立即返回 jobId（不阻塞请求）。
+2. `report.processor` 消费：置 `RUNNING` → 按 `type` 分页流式查明细 / 聚合（避免大区间一次性加载）→ 生成 CSV（流式）或 Excel（worksheet 流写）→ 上传 file 得 `file_key` → 置 `DONE` 回写。
+3. `GET /analytics/reports/:id`：DONE 时返回带签名的临时 `downloadUrl`（file 模块出 URL）；FAILED 返回 `error`。
+4. 多实例下 BullMQ 单消费防重复；大文件流式写，内存可控。
+
+### 6.7 失败与降级
+- Redis 不可用：热路径写失败仅记日志降级，查询自动回落 DB 聚合；恢复后由对账重建，业务不受影响。
+- 事件风暴：监听器轻量（只 Redis + 标脏），落库与重算批处理，削峰。
+- WebSocket 断线：客户端自动重连 → 重新进房 → 收 `snapshot:init` 复位，无需服务端补发历史。
+
+---
+
+## 7. 业务流程
+
+### 7.1 入库 → 实时大屏跳动
+```
+店员入库完成 → parcel STORED → 发 ParcelStored
+  → parcel-stored.listener（幂等判重）
+    → metrics.incr(inbound) + adjustStored(+1) + 滞留榜 ZADD + 热力 +1
+    → fan-out 平台汇总
+    → realtime.publisher.publishMetric → room tenant:{t} / station:{s}
+  → 前端经营页/大屏收到 metric:update + parcel:stored → KPI 卡与流水即时刷新
+```
+
+### 7.2 取件核销 → 取件率 / 热力变化
+```
+核销 PICKED_UP → 发 ParcelPickedUp
+  → pickup 监听：pickup +1、stored -1、滞留榜 ZREM、热力 -1
+  → 重算取件率 → 推 metric:update（pickup / stored / pickupRate）
+```
+
+### 7.3 报表导出
+```
+店长点「导出报表」→ POST /analytics/reports（区间+格式）
+  → 建 report_jobs(PENDING) + BullMQ 入队 → 返回 jobId
+  → processor 生成文件 → file 存储 → DONE
+  → 前端轮询 GET /reports/:id → DONE 出 downloadUrl → 下载
+```
+
+### 7.4 平台总览（跨租户）
+```
+平台运营进入「平台总览」→ GET /admin/analytics/overview（鉴权 analytics:platform:read）
+  → query.service 以 bypass_rls 读 an:plat:* / metric_daily 汇总
+  → 进 platform 房间 → 收跨租户 metric:update 实时跳动
+```
+
+### 7.5 离线对账（定时）
+```
+每日 02:00 repeatable job → 遍历活跃租户 → reconcile.recomputeDay(昨日)
+  → GROUP BY 明细重算 metric_daily → 回填 Redis 历史计数
+  → 修正增量漂移；监控对账差异告警
+```
+
+---
+
+## 8. 前端
+
+> Vue3 + TS + Vite + Pinia + Vue Router；station-web / admin-web 用 Element Plus + kit.css token；图表用 **ECharts**。组件与配色严格对齐《UI 设计规范》（KPI=`.kpi`、表格=`.table-card`、状态色语义见 §7）。暗主题（科技暗）适配运营大屏 / 夜间值守。
+
+### 8.1 station-web 经营统计页（`statistics.html` 对齐）
+- 顶部 `.toolbar`：时间筛选（今日 / 近 7 日 / 自定义区间）+ 门店选择（多门店时）+「导出报表」按钮。
+- KPI 行：`.kpi` × N（今日入库 / 出库 / 在库 / 取件率 / 滞留预警[`.kpi.warn`]），数字 `tabular-nums`，带环比 `.delta`。
+- 图表卡（`.card`）：
+  - 近 7 日趋势：ECharts 折线 / 柱（入库 vs 出库）。
+  - 货架热力：ECharts heatmap / 自定义网格（占用率配色随 token）。
+  - 门店对比：ECharts 条形（多门店时）。
+  - 滞留榜：`.table-card`（排名 + 包裹 + 停留天数 + 催取入口）。
+- **实时对接**：Pinia store 持有 Socket.IO 连接，进页 `connect /analytics` → 收 `snapshot:init` 渲染首屏 → 监听 `metric:update / parcel:stored / ranking:overdue` 增量更新对应 ECharts `setOption`（增量 merge，不整图重绘）。
+- 导出：点击 → `POST /reports` → 轮询状态 → DONE 弹下载。
+
+### 8.2 admin-web 平台总览雏形（`overview.html` 对齐）
+- 平台级 `.kpi`（租户数 / 门店数 / 全平台包裹 / GMV）。
+- 实时趋势 + 监控 `.table-card`（各租户 / 门店汇总行）。
+- 进 `platform` 房间收跨租户实时帧；为 P3-3 多门店监控预留下钻入口（骨架）。
+
+### 8.3 前端对接约定
+- ECharts 主题随 `data-theme` 切换（blue/dark/mint）注册三套 ECharts theme，色值取 kit token，保证一套图三套皮肤。
+- Socket.IO 客户端封装：自动重连、进 / 退门店房间、断线 toast；token 失效 401 触发刷新。
+- 所有数值组件复用 `.tnum`；空数据用 `.empty`。
+
+---
+
+## 9. 任务分解（7 人日）
+
+| # | 任务 | 产物 | 验收 | 人日 |
+|---|---|---|---|---|
+| 1 | 事件增量统计 | `metrics.service` + 监听器 + Redis 计数 / 快照 / 排行 | 事件驱动计数准确、`SADD` 幂等不重复计 单测绿 | 1.5 |
+| 2 | 聚合表 + 对账 | `metric_daily` + `reconcile.recomputeDay` + 定时 job | 重算与明细一致、Redis 丢失可重建 单测绿 | 1 |
+| 3 | 指标查询接口 | `GET /overview\|trend\|ranking\|heatmap\|stations/compare` | 聚合结果与计数一致、租户 / 门店 scope 隔离 | 1 |
+| 4 | Socket.IO 网关 | `analytics.gateway` + 房间 + `realtime.publisher` + 节流 | `ParcelStored` 时对应房间收推、跨租户不串 集成测绿 | 1 |
+| 5 | 报表导出 | `report.service` + `report.processor`（CSV/Excel + file） | 内容正确、异步完成可下载 | 1 |
+| 6 | station-web 经营看板 | 实时 KPI + ECharts 趋势 / 热力 / 排行 + 导出 | 随入库 / 核销实时跳动、可导报表（对齐 `statistics.html`） | 1 |
+| 7 | admin-web 平台总览雏形 + e2e | 跨租户汇总骨架 + `test/analytics.e2e-spec.ts` | 平台 bypass 看跨租户、事件→计数→接口 / WS→导出 链路绿 | 0.5 |
+
+> 关键路径：1 → 3/4 并行 → 6；2 与 5 可与 3/4 并行；7 收尾。
+
+---
+
+## 10. 验收标准
+
+- **统计正确**：指标由事件驱动，与明细对账一致；幂等去重保证重复事件不重计；增量与离线对账差异为 0（或在告警阈内）。
+- **取件率 / 在库口径**：在库用独立快照维护无漂移；取件率口径固定且文档化。
+- **实时隔离**：WebSocket 推送严格按租户 / 门店 / 平台房间，跨租户绝不串；握手 JWT 鉴权，越权订阅被忽略。
+- **报表**：可异步导出 CSV/Excel，内容正确，DONE 后可下载；大区间流式不 OOM。
+- **平台总览**：仅平台超管经 bypass 看跨租户汇总；租户路径无法触达 bypass。
+- **前端**：经营页 / 大屏实时刷新（入库 / 核销即跳动），ECharts 增量更新不整图重绘，三主题视觉一致。
+- **降级**：Redis 故障查询自动回落 DB，恢复后对账重建，业务不中断。
+- **测试**：`test/analytics.e2e-spec.ts` 覆盖「触发事件 → 计数变化 → 接口 / WebSocket 一致 → 导出」全链路绿。
+
+---
+
+## 11. 依赖与风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 增量计数漂移 / 漏事件 | 指标失真 | 双轨对账（§6.1）每日重算 + 手动重算；监控对账差异告警 |
+| Redis 重启 / 故障丢热数据 | 当日实时数据丢失 | 查询三层降级回落 DB；对账回填 Redis；真值不依赖 Redis |
+| 在库数累加漂移 | 取件率 / 在库错 | 独立快照 String 维护（§6.2）+ 每日快照对齐明细 |
+| WebSocket 跨租户串房 | 数据越权泄露 | 房间严格按 tenantId/stationId/platform 隔离 + 进房 scope 校验（§4.2） |
+| 平台 bypass 误用 | 越权读全租户 | bypass 仅平台权限服务层显式开启，租户路径不可达（§3.4） |
+| 大区间报表 OOM | 导出失败 / 内存爆 | BullMQ 异步 + 分页流式查询 + 流式写文件（§6.6） |
+| 高频入库推送打满连接 | 前端抖动 / 连接压力 | `realtime.publisher` 200ms 节流合并（§6.4） |
+| 上游事件未上线（P2-1 等） | 对应指标缺失 | 缺事件指标恒 0 不报错；上线后补订阅 + `recomputeDay` 回填 |
+| 时区跨零点归属错 | 「今日」口径偏差 | `stat_date` 按门店时区归一（§6.5） |
+
+**依赖回顾**：P1-2（核心包裹事件，必需）；P2-1/2-2/2-3（数据源补全，非阻塞，增量补统计）；P1-foundation（RLS / EventBus / Redis / BullMQ / file / Socket.IO 基建）。**下游复用**：P3-1（计费用量计量复用事件计量基建）、P3-3（多门店监控复用跨租户汇总）、P4-3（预测复用历史 `metric_daily`）。

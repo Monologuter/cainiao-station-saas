@@ -1,0 +1,433 @@
+# P3-3 平台运营后台完善 · 详细设计
+
+> 设计级别文档（不含完整实现代码）。技术栈：NestJS + TypeScript · Prisma · PostgreSQL 16（RLS）· Redis（配置热缓存）· 配置中心（env + DB 配置表）· 进程内 EventBus。
+> 上游规格：`docs/superpowers/specs/cainiao-station-platform-design.md`（§3 多租户 / §5 audit·tenant·station / §6 数据模型 / §7 适配层渠道开关 / §9 横切）；UI：`docs/superpowers/specs/cainiao-station-ui-design.md`（§8.2 admin-web）；路线图：`docs/superpowers/plans/implementation-roadmap.md`（P3-3）。
+
+---
+
+## 1. 目标 · 周期 · 依赖
+
+### 1.1 目标
+把 `admin-web` 做成完整的平台运营后台，新增三大平台级能力：
+- **多门店监控（monitor）**：跨租户、跨门店的运营态势聚合——平台全局 KPI、门店健康状态（在线/订阅/异常）、单门店下钻，复用 P2-4 analytics 跨租户汇总能力并扩展平台视角监控视图。
+- **操作审计（audit）**：以 AOP 拦截器自动记录关键写操作（who/what/tenant/diff），敏感字段脱敏；平台侧按租户/操作人/时间/动作多维查询。
+- **系统配置（config）**：数据字典（快递公司/包裹规格/异常类型/通知场景）、通知模板管理、渠道开关（短信/支付/物流 mock↔real 切换）持久化 + 运行时热生效读取。
+
+### 1.2 范围边界
+- **属于本期**：审计 AOP 切面与查询；数据字典 CRUD 与字典项；系统参数配置读写与热缓存；通知模板管理（与 notify 模板表打通）；渠道开关运行时切换适配器选择入口；跨租户监控聚合视图与门店健康；admin-web 监控/审计/系统配置三页对接；平台角色权限边界。
+- **不属于本期**：审计日志的合规归档/冷存与日志外发 SIEM（仅落库 + 查询）；配置变更审批工作流（直接生效，但变更本身被审计）；适配器「接真」实现本体（仅做 mock↔real 选择入口，real 实现属 P4-4）；限流/熔断/多级缓存基础设施（P3-4）；analytics 指标计算本体（仅消费 P2-4 产出）。
+
+### 1.3 周期
+预估 **10 人日**（与路线图一致）。任务分解见 §9。
+
+### 1.4 依赖
+| 依赖项 | 来源 | 说明 |
+|---|---|---|
+| 平台多租户已成规模 | P3-2 自助入驻 | 监控/审计需有真实跨租户数据可看 |
+| analytics 跨租户汇总 + admin-web 全局大屏雏形 | P2-4 Task 6 | 监控视图复用其聚合接口与 `app.bypass_rls` 通道 |
+| RLS / `AsyncLocalStorage` / Prisma 事务注入 | P1-foundation | 审计/字典/配置的租户归属与平台 bypass |
+| 平台 RBAC（`roles.scope=platform`、`@RequirePermission`、`v-perm`） | P1 identity | 审计/配置严格限平台角色（超管/运营） |
+| 进程内 `EventBus` 抽象 | P1-foundation | 配置变更广播失效缓存（可选） |
+| 适配层接口（`NotifyChannel`/`PayChannel`/`LogisticsProvider`） | P2-1 | 渠道开关切换的目标——适配器选择 |
+| `notify_templates` 表 | P1/P2 notify | 通知模板管理复用 |
+| Redis 客户端 | P1-foundation | 配置/字典热缓存与失效广播 |
+
+---
+
+## 2. 涉及上下文与模块
+
+| 上下文 | 目录 | 职责 | 表 | 事件 |
+|---|---|---|---|---|
+| **audit** | `backend/src/audit/` | AOP 记录关键写操作、审计查询 | `audit_logs` | 订阅可选；本期不发新业务事件 |
+| **config** | `backend/src/config/` | 数据字典、系统参数、渠道开关、通知模板，热缓存 | `dictionaries` / `dict_items` / `system_configs` / `channel_configs`（+ 复用 `notify_templates`） | 发 `ConfigChanged`（进程内广播失效） |
+| **monitor**（admin 视图层） | `backend/src/admin/monitor/` | 跨租户/多门店监控聚合编排，不持有业务表 | 只读聚合 `tenants`/`stations`/`subscriptions` + analytics | 无 |
+
+> audit/config 为**平台级 + 租户维度混合**：`audit_logs` 带 `tenant_id`（按租户归属，平台 bypass 跨租户查）；`dictionaries`/`system_configs`/`channel_configs` 为**平台级**（无 `tenant_id`，仅平台超管/运营可写，全租户共享读）；通知模板可平台级（系统默认）+ 租户级（租户自定义）双层。
+
+### 2.1 audit 模块文件职责
+```
+audit/
+├── audit.module.ts
+├── audit.interceptor.ts        # AOP 切面：拦截被 @Audit 标注的写操作，记录 who/what/tenant/diff
+├── audit.decorator.ts          # @Audit({ action, resource, captureDiff }) 元数据装饰器
+├── audit.service.ts            # 异步落库（写）+ 多维查询（读）
+├── audit-redact.util.ts        # 敏感字段脱敏（手机号/密码/密钥/银行卡）
+├── audit-diff.util.ts          # before/after 字段级 diff 摘要
+├── audit.controller.ts         # GET /admin/audit-logs（平台权限）
+└── dto/                        # 查询过滤 DTO + 审计条目响应 DTO
+```
+
+### 2.2 config 模块文件职责
+```
+config/
+├── config.module.ts            # 全局模块，导出 RuntimeConfig 供适配层注入
+├── runtime-config.service.ts   # 运行时配置读取（先 Redis 缓存→DB→env 兜底），热失效订阅
+├── dictionary.service.ts       # 字典与字典项 CRUD、按 type 取项（前端枚举来源）
+├── system-config.service.ts    # 系统参数读写（按 group/key），类型化解析
+├── channel-config.service.ts   # 渠道开关读写：provider=mock|real 选择，校验合法值
+├── notify-template.service.ts  # 通知模板 CRUD（平台默认 + 租户覆盖）
+├── config-cache.ts             # Redis 缓存 key 规范、TTL、写时失效 + EventBus 广播
+├── channel-resolver.ts         # 适配层选择器：按 channel_configs 当前 provider 解析适配器实例
+├── admin-config.controller.ts  # /admin/config/* CRUD（平台权限）
+└── dto/
+```
+
+### 2.3 monitor 视图层文件职责
+```
+admin/monitor/
+├── monitor.module.ts
+├── monitor.service.ts          # 编排：调 analytics 跨租户汇总 + 计算门店健康态
+├── store-health.calculator.ts  # 门店健康：在线(近活跃)/订阅(active/欠费)/异常(异常件数)
+└── monitor.controller.ts       # /admin/monitor/*（平台 bypass RLS 聚合）
+```
+
+---
+
+## 3. 数据模型
+
+> 约定沿用 §6：业务表含 `id(uuid)`、`created_at/updated_at`、`created_by`。本期表分两类——**带租户维度**（`audit_logs`）走 RLS + 平台 bypass；**平台级**（`dictionaries`/`dict_items`/`system_configs`/`channel_configs`）无 `tenant_id`、无 RLS，写权限由平台 RBAC 守门。
+
+### 3.1 `audit_logs`（带租户维度 · RLS）
+关键操作审计流水，按租户归属，平台运营用 `app.bypass_rls='on'` 跨租户查。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 |
+| `tenant_id` | uuid? | 操作所属租户；平台级操作为 `null`（如改全局配置） |
+| `actor_id` | uuid | 操作人 user id |
+| `actor_type` | enum | `platform` / `tenant`（主体体系，对应 `roles.scope`） |
+| `actor_name` | text | 操作人显示名（落库冗余，避免连表） |
+| `action` | text | 动作码，如 `tenant:suspend` / `config:channel:switch` / `parcel:return` |
+| `resource` | text | 资源类型，如 `tenant` / `channel_config` / `parcel` |
+| `resource_id` | text? | 目标对象 id（可为业务键） |
+| `summary` | text | 一句话摘要（人类可读） |
+| `diff` | jsonb? | 字段级前后值摘要（脱敏后），`{ field: { before, after } }` |
+| `ip` | inet? | 请求来源 IP |
+| `user_agent` | text? | UA |
+| `request_id` | text? | 链路 ID（贯穿日志，见 §9 横切） |
+| `result` | enum | `success` / `failure`（拦截器捕获异常时 failure） |
+| `created_at` | timestamptz | 操作时间 |
+
+- **索引**：`(tenant_id, created_at desc)`、`(actor_id, created_at desc)`、`(action, created_at desc)`、`(resource, resource_id)`。`diff` GIN（可选）。
+- **RLS Policy**：`tenant_id = current_setting('app.tenant_id')::uuid OR current_setting('app.bypass_rls','t')='on'`；`tenant_id IS NULL` 行仅平台 bypass 可见。
+- **只追加**：审计表只 INSERT，不 UPDATE/不软删；保留期策略留 P3-4/运维（本期不实现归档）。
+
+### 3.2 `dictionaries`（平台级）
+数据字典「类目」：快递公司 / 包裹规格 / 异常类型 / 通知场景等。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 |
+| `type` | text | 字典类型码，唯一，如 `carrier` / `parcel_spec` / `exception_type` / `notify_scene` |
+| `name` | text | 显示名（「快递公司」「包裹规格」「异常类型」「通知场景」） |
+| `description` | text? | 说明 |
+| `is_system` | bool | 系统内置（不可删，仅可禁用项） |
+| `sort` | int | 排序 |
+| `enabled` | bool | 是否启用 |
+
+- **唯一**：`type` 全局唯一。无 `tenant_id`（全租户共享枚举）。
+
+### 3.3 `dict_items`（平台级）
+字典项（前端枚举/下拉的数据来源）。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 |
+| `dictionary_id` | uuid | 所属字典 FK |
+| `code` | text | 项编码（业务存这个值），字典内唯一，如 `SF`/`YTO`/`ZTO` |
+| `label` | text | 显示文案，如「顺丰」 |
+| `value` | jsonb? | 扩展值（如规格的长宽高、异常类型的默认处理时限、通知场景默认模板码） |
+| `sort` | int | 排序 |
+| `enabled` | bool | 启用/禁用（禁用不在前端枚举出现，历史数据仍可解析） |
+
+- **唯一**：`(dictionary_id, code)`。
+- **稳定枚举原则**：`code` 一经使用不可改/不可硬删（仅禁用），保证历史业务数据语义不漂移。
+
+### 3.4 `system_configs`（平台级）
+系统参数键值（分组化），平台级全局生效。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 |
+| `group` | text | 分组，如 `general` / `notify` / `security` / `overdue` |
+| `key` | text | 配置键，`group` 内唯一，如 `overdue.days`/`pickup.code.ttl` |
+| `value` | text | 字符串存储 |
+| `value_type` | enum | `string`/`int`/`bool`/`json`，读取时类型化解析 |
+| `label` | text | 显示名 |
+| `description` | text? | 说明 / 取值范围提示 |
+| `editable` | bool | 是否允许后台改（false=仅展示，由 env 锁定） |
+| `is_secret` | bool | 敏感值（密钥类）：查询脱敏、不回显明文 |
+
+- **唯一**：`(group, key)`。
+- **优先级**：env 显式设置 > DB `system_configs` > 代码默认（见 §6.2）。
+
+### 3.5 `channel_configs`（平台级 · 渠道开关）
+适配层渠道当前 provider 选择，运行时切换 mock↔real 的真相源。
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| `id` | uuid | 主键 |
+| `channel` | enum | `sms` / `pay` / `logistics` / `wechat` / `ocr` / `file` |
+| `provider` | text | 当前生效 provider，如 `mock`/`tencent`/`wechatpay`/`kuaidi100`；合法值由 §6.3 注册表校验 |
+| `enabled` | bool | 渠道总开关（关=该能力降级或停用） |
+| `config` | jsonb? | provider 专属配置占位（密钥引用、模板映射；密钥本身走 env/密钥管理，此处存引用键） |
+| `fallback_provider` | text? | 失败回退 provider（如 `tencent` 失败回 `mock`，与 P3-4 熔断协同） |
+| `updated_by` | uuid | 最近变更人（变更被审计） |
+
+- **唯一**：`channel` 唯一（每渠道一行当前态）。
+- **合法值校验**：`provider`/`fallback_provider` 必须在该 `channel` 的 ProviderRegistry 注册集合内（§6.3），否则拒绝写入。
+- **本期约束**：P1–P3 全程跑 mock，real provider 实现属 P4-4；本期只保证「切到 real 时 resolver 能选中对应适配器 token」，real 适配器未实现时返回明确「未接入」错误而非静默失败。
+
+### 3.6 `notify_templates`（复用，平台/租户双层）
+本期不新建，复用既有表，补两点：①新增 `scope` 区分 `system`（平台默认）/`tenant`（租户覆盖）；②`scene` 字段值受 `notify_scene` 字典约束。模板管理在 config 模块统一暴露。
+
+---
+
+## 4. 接口与 API
+
+> 统一响应 `{code,message,data}`。本节所有 `/admin/*` 端点要求 `actor_type=platform` 且具备对应平台权限（§4.5）。监控聚合接口在 `app.bypass_rls='on'` 下执行。
+
+### 4.1 多门店监控（monitor）
+| 方法 | 路径 | 说明 | 权限 |
+|---|---|---|---|
+| GET | `/admin/monitor/overview` | 平台全局 KPI（租户数/门店数/在库包裹/今日入出库/GMV/异常件总数） | `monitor:view` |
+| GET | `/admin/monitor/stores` | 多门店健康列表（分页+筛选：租户/在线/订阅态/异常阈值） | `monitor:view` |
+| GET | `/admin/monitor/stores/:stationId` | 单门店下钻（门店指标 + 订阅 + 近期异常 + 趋势） | `monitor:view` |
+| GET | `/admin/monitor/tenants/:tenantId` | 单租户汇总（其名下门店聚合） | `monitor:view` |
+
+### 4.2 操作审计查询（audit）
+| 方法 | 路径 | 说明 | 权限 |
+|---|---|---|---|
+| GET | `/admin/audit-logs` | 多维筛选分页查询（`tenantId`/`actorId`/`action`/`resource`/`result`/`from`/`to`/关键词） | `audit:view` |
+| GET | `/admin/audit-logs/:id` | 单条审计详情（含完整 diff，敏感仍脱敏） | `audit:view` |
+| GET | `/admin/audit-logs/actions` | 可选筛选项（动作码/资源类型枚举，便于前端构筛选器） | `audit:view` |
+
+### 4.3 数据字典 CRUD（config）
+| 方法 | 路径 | 说明 | 权限 |
+|---|---|---|---|
+| GET | `/admin/config/dictionaries` | 字典类目列表 | `config:view` |
+| POST | `/admin/config/dictionaries` | 新建非系统字典 | `config:manage` |
+| PATCH | `/admin/config/dictionaries/:id` | 改字典（名称/排序/启用） | `config:manage` |
+| GET | `/admin/config/dictionaries/:type/items` | 取某字典项（也是前端枚举来源） | `config:view` |
+| POST | `/admin/config/dictionaries/:id/items` | 增字典项 | `config:manage` |
+| PATCH | `/admin/config/dict-items/:id` | 改项（label/value/排序/启用，code 不可改） | `config:manage` |
+| GET | `/dict/:type` | **业务通用只读**枚举端点（租户端也可读，仅 enabled 项），供各前端拉枚举 | 已登录 |
+
+### 4.4 配置读写 + 渠道开关 + 通知模板（config）
+| 方法 | 路径 | 说明 | 权限 |
+|---|---|---|---|
+| GET | `/admin/config/system` | 系统参数列表（按 group 分组，secret 脱敏） | `config:view` |
+| PATCH | `/admin/config/system/:id` | 改系统参数（editable=true 才允许，类型校验） | `config:manage` |
+| GET | `/admin/config/channels` | 渠道开关列表（含当前 provider + 可选 provider） | `config:view` |
+| PATCH | `/admin/config/channels/:channel` | 切渠道 provider / 总开关 / 回退（合法值校验 + 热生效 + 审计） | `config:manage` |
+| GET | `/admin/config/notify-templates` | 通知模板列表（系统/租户层 + scene 字典） | `config:view` |
+| POST/PATCH | `/admin/config/notify-templates(/:id)` | 增改通知模板 | `config:manage` |
+
+### 4.5 平台权限码（identity 种子补充）
+本期新增平台权限码：`monitor:view`、`audit:view`、`config:view`、`config:manage`。种子绑定：平台**超管**=全部；平台**运营**=`monitor:view`+`audit:view`+`config:view`+`config:manage`（运营可改配置）；平台**客服/财务**默认仅 `monitor:view`+`audit:view`（只读，不可改配置）。前端 `v-perm` 控制按钮可见。
+
+### 4.6 服务接口签名（设计级 · 仅签名）
+```ts
+// audit.service.ts
+record(entry: AuditEntryInput): Promise<void>;                 // 异步落库，绝不阻塞主流程
+query(filter: AuditQuery): Promise<Paged<AuditLogView>>;
+findOne(id: string): Promise<AuditLogView>;
+
+// dictionary.service.ts
+listDictionaries(): Promise<Dictionary[]>;
+getItems(type: string, onlyEnabled?: boolean): Promise<DictItem[]>;  // 前端枚举来源（带缓存）
+upsertItem(dictId: string, dto: DictItemDto): Promise<DictItem>;     // code 唯一、不可改
+
+// system-config.service.ts
+get<T>(group: string, key: string, fallback?: T): Promise<T>;        // 类型化读取，热缓存
+set(id: string, rawValue: string, actor: Actor): Promise<void>;      // editable 校验 + 类型解析 + 审计
+
+// channel-config.service.ts
+getProvider(channel: Channel): Promise<string>;                      // 运行时被适配层调用
+switchProvider(channel: Channel, dto: ChannelSwitchDto, actor: Actor): Promise<void>; // 合法值+热生效+审计
+
+// channel-resolver.ts（适配层选择器）
+resolve<T>(channel: Channel): Promise<T>;   // 按当前 provider 返回适配器实例；real 未接入抛 NotImplemented
+
+// monitor.service.ts
+overview(): Promise<PlatformOverview>;                               // bypass_rls 聚合
+listStoreHealth(filter: StoreHealthFilter): Promise<Paged<StoreHealth>>;
+storeDetail(stationId: string): Promise<StoreDetail>;
+```
+
+### 4.7 审计 AOP 拦截器设计
+- **触发方式**：方法级装饰器 `@Audit({ action, resource, captureDiff?, resourceIdFrom? })` 标注关键写操作（如租户停用、渠道切换、字典改、套餐改、核销/退件等敏感动作）。`audit.interceptor` 为全局 NestInterceptor，仅对带元数据的 handler 生效（Reflector 读元数据，无元数据直接放行，零开销）。
+- **采集内容**：从 `AsyncLocalStorage`/请求上下文取 `actor_id/actor_type/actor_name/tenant_id/ip/user_agent/request_id`；`action/resource` 来自装饰器；`resource_id` 由 `resourceIdFrom`（参数/返回体路径）解析。
+- **diff 采集**：`captureDiff=true` 时，拦截器在 handler 执行**前**读取目标对象快照（通过装饰器声明的「读取器」或服务约定返回 before），handler 后取 after，`audit-diff.util` 算字段级变更，`audit-redact.util` 脱敏后写 `diff`。无 diff 需求的操作只记 summary。
+- **成败与异常**：handler 抛异常 → `result=failure` + 异常摘要写 summary，再 re-throw（审计不吞业务异常）。成功 → `result=success`。
+- **异步非阻塞**：拦截器在 `tap`/`finalize` 中调 `audit.service.record`，落库失败仅告警日志、**不影响主响应**（审计是旁路，不能反向拖垮业务）。
+- **脱敏规则**：`audit-redact.util` 按字段名/正则脱敏——手机号留尾 4 位、密码/密钥/token 全掩码、银行卡留尾 4；`system_configs.is_secret` 与 `is_secret` 字段联动。
+
+---
+
+## 5. 领域事件（可选）
+
+| 事件 | 发起 | 订阅方 | 用途 |
+|---|---|---|---|
+| `ConfigChanged` | config（字典/系统参/渠道/模板写成功后） | 各实例 RuntimeConfig 缓存、channel-resolver | 进程内广播失效本地/Redis 缓存，多实例热生效（演进期换 Redis Pub/Sub） |
+
+> 本期审计**不发**新业务事件（旁路记录）；监控为只读聚合不发事件。`ConfigChanged` 为可选优化项——单实例可退化为写时直接 `cache.del`。
+
+---
+
+## 6. 关键逻辑
+
+### 6.1 审计 AOP 切面（who / what / tenant / diff）
+- **谁（who）**：`actor_id`+`actor_type`+`actor_name` 取自登录上下文（JWT 解出 + ALS）。平台操作 `actor_type=platform`；租户内被审计的写操作 `actor_type=tenant`。
+- **改了什么（what）**：`action`（动作码 `module:action`）+ `resource`+`resource_id`+`summary`。动作码与 `@RequirePermission` 操作码体系对齐，便于审计↔权限互查。
+- **归属哪个租户（tenant）**：`tenant_id` 取 ALS 当前租户；平台级全局操作（如改字典/渠道）`tenant_id=null`，仅平台 bypass 可见。
+- **变更摘要（diff）**：字段级 `{before, after}`，脱敏后存 jsonb；大对象只取声明的关键字段，避免审计表膨胀。
+- **健壮性**：审计旁路、异步、失败降级为告警；只追加不可篡改。
+
+### 6.2 配置读取优先级与热缓存
+```
+读取顺序：Redis 缓存 → DB(system_configs/channel_configs) → env(显式覆盖锁定) → 代码默认
+```
+- env 显式设置的键标记 `editable=false`（后台只读展示，防止 DB 与 env 冲突造成困惑）。
+- 写时失效：`set/switch` 成功后立即 `cache.del(key)` 并发 `ConfigChanged` 广播，下次读重建缓存（TTL 兜底，默认 5min）。
+- 类型化解析：按 `value_type` 把字符串转 `int/bool/json`，读取端拿强类型。
+
+### 6.3 渠道开关运行时切换适配器
+- **ProviderRegistry**：每个适配接口在 DI 注册多 provider 实现（token 化），如 `NOTIFY_CHANNEL_MOCK`/`NOTIFY_CHANNEL_TENCENT`。`channel-resolver.resolve(channel)` 读 `channel_configs.provider` 选 token 返回实例。
+- **业务无感**：业务代码注入的是 `NotifyChannel` 接口（经 resolver 工厂/动态 provider 提供），切 provider 不改业务代码（符合 §7 适配层原则）。
+- **合法值守门**：切换前用 ProviderRegistry 已注册集合校验 `provider`，未注册（如 real 未实现）→ 拒绝并提示；允许「声明但未接入」的 provider 但 resolve 时抛 `NotImplemented`，避免静默走错。
+- **回退协同**：`fallback_provider` 给 P3-4 熔断器用——real 失败率高时回退 mock（本期只存配置，熔断逻辑 P3-4）。
+- **每次切换**被 `@Audit({action:'config:channel:switch', resource:'channel_config', captureDiff:true})` 审计，留 provider before/after。
+
+### 6.4 字典驱动前端枚举
+- 各前端（admin/station/user）的快递公司、包裹规格、异常类型、通知场景下拉/标签均从 `/dict/:type` 拉取（只取 `enabled` 项，带 ETag/缓存），不在前端硬编码枚举。
+- 业务表存 `dict_items.code`（稳定），展示时按 `label` 映射；`code` 永不复用，禁用而非删除，保证历史数据可解析。
+- `value` 扩展位承载枚举附带规则（规格的尺寸/重量上限、异常类型的处理时限默认、通知场景默认模板码）。
+
+### 6.5 多门店监控聚合
+- **平台视角**：monitor 在 `app.bypass_rls='on'` 下跨租户聚合，调用 P2-4 analytics 跨租户汇总接口取 KPI，叠加 tenant/station/subscription 维度。
+- **门店健康三因子**（`store-health.calculator`）：
+  - **在线**：近 N 分钟有写操作/心跳 → 在线（`.dot` 绿），否则离线（灰）；可由 analytics 最近活跃时间或登录态推导。
+  - **订阅**：关联 `subscriptions` 状态——`active` 正常、欠费/暂停 → `suspended`（红），到期临近 → 预警（琥珀）。
+  - **异常**：门店当前异常件数/滞留数超阈值 → 告警（`.kpi.warn` 琥珀 / `.tag.red`）。
+- **下钻**：单门店复用 P2-4 门店级指标 + 近期异常/滞留明细 + 趋势，平台可逐店排障。
+- **隔离纪律**：监控仅平台角色可达；bypass 仅在监控只读聚合路径开启，不污染常规请求租户上下文。
+
+---
+
+## 7. 业务流程
+
+### 7.1 关键写操作被审计
+```
+平台/店长触发被 @Audit 标注的写操作
+  → handler 执行前：拦截器取上下文(who/tenant) + 可选读 before 快照
+  → handler 执行业务（成功/抛异常）
+  → 拦截器算 diff、脱敏、组装 summary，result=success|failure
+  → audit.service.record 异步落 audit_logs（失败仅告警）
+  → 业务响应正常返回（审计不阻塞）
+平台运营在「操作审计」页按租户/人/动作/时间筛选查看（bypass 跨租户）
+```
+
+### 7.2 渠道开关热切换
+```
+运营在「系统配置」改 短信 provider: mock → tencent
+  → PATCH /admin/config/channels/sms
+  → 校验 provider 在 sms ProviderRegistry 注册集合内
+  → 写 channel_configs + cache.del(sms) + 发 ConfigChanged
+  → @Audit 记录 provider before/after
+  → 下一次 notify 发送：channel-resolver.resolve('sms') 读到 tencent → 选 TencentSmsChannel
+     （real 未接入则 NotImplemented，提示运营回退 mock）
+```
+
+### 7.3 字典维护与前端消费
+```
+运营在「系统配置/字典」新增异常类型项（code=DAMAGED, label=破损）
+  → POST /admin/config/dictionaries/:id/items（code 唯一校验）→ cache.del(dict:exception_type)
+  → 各前端下次拉 /dict/exception_type 即出现新选项；旧数据按 code 解析不受影响
+```
+
+### 7.4 平台监控巡检
+```
+运营进「平台总览」看全局 KPI → 进「门店监控」看门店健康网格
+  → 发现某门店红点(欠费)/琥珀(异常多) → 点门店下钻
+  → 看该店指标+订阅+异常明细 → 必要时跳租户管理处理（停用/催费）
+```
+
+---
+
+## 8. 前端（admin-web）
+
+> Vue3 + TS + Vite + Pinia + Vue Router + Element Plus；token 化 kit 三主题；全屏平铺布局（`.app` 248px 侧栏 + `1fr`）。侧栏分组「运营 / 商业化 / 系统」。对齐高保真 `design/mockups/hifi/admin-web/`。本期落地三页（+复用平台总览）。
+
+### 8.1 门店监控页 `stores.html`（分组「运营」）
+- **结构**：`.page-hd` + `.toolbar`（租户筛选 / 在线态 / 订阅态 / 异常阈值）+ 门店 `.card` 网格（在线 `.dot`、KPI 摘要、异常 `.tag`）+ 下方监控 `.table-card`（门店明细列表，行内下钻链接）。
+- **下钻**：点门店 → `.drawer` 或路由到门店详情（指标 + 订阅 `.tag` + 异常 `.table-card` + 趋势图卡）。
+- **状态映射**（§7 状态色）：在线绿点 / 离线灰；订阅 `active`=green、`suspended`=red、临期=amber；异常多 → `.kpi.warn`。
+- **数据**：`/admin/monitor/overview`（顶部 KPI）+ `/admin/monitor/stores`（网格/列表）+ `/admin/monitor/stores/:id`（下钻）。
+
+### 8.2 操作审计页 `audit.html`（分组「系统」）
+- **结构**：`.toolbar` 多维筛选（租户下拉 / 操作人 / 动作码 `.select`（来自 `/audit-logs/actions`）/ 资源 / 结果 / 时间范围）+ 审计 `.table-card`（时间·操作人·`.tag`(actor_type)·动作·资源·结果·摘要）+ `.pager`。
+- **详情**：行点开 `.drawer`/`.modal` 看 `diff`（字段级 before/after，敏感脱敏）+ ip/UA/request_id。
+- **数字/对齐**：时间与计数 `tabular-nums`；结果 success=green、failure=red `.tag`。
+- **数据**：`/admin/audit-logs`（列表）+ `/admin/audit-logs/:id`（详情）。
+
+### 8.3 系统配置页 `system-config.html`（分组「系统」）
+- **结构**：`.tabs` 分类——【系统参数】`.field` + `.form-grid`（按 group），secret 项打码不回显，editable=false 灰显只读；【数据字典】左字典类目列表 + 右字典项 `.table-card`（增改禁用，code 只读）；【渠道开关】`.switch` 总开关 + provider `.select`（mock/real 可选值）+ 回退选择，每行短信/支付/物流；【通知模板】模板 `.table-card`（scene 来自字典）+ 编辑 `.modal`。
+- **交互**：改配置/切渠道 → 调对应 PATCH → toast 成功 → 局部刷新；`config:manage` 缺失时 `v-perm` 隐藏保存/切换按钮（只读模式）。
+- **数据**：`/admin/config/system|channels|dictionaries|notify-templates` 系列。
+
+### 8.4 平台总览 `overview.html`（复用 P2-4，本期对接监控数据）
+- 平台级 `.kpi`（租户/门店/在库包裹/GMV/异常总数）+ 实时趋势 + 监控 `.table-card`，数据源切到 `/admin/monitor/overview`。
+
+### 8.5 前端共性
+- 路由守卫：平台 `actor_type` + 平台权限，非平台角色不可进 `/admin/audit|config|monitor`。
+- 枚举统一走 `/dict/:type`，前端不硬编码快递/规格/异常/场景。
+- 三主题、`tabular-nums`、脱敏展示（手机尾 4、密钥打码）遵循 UI 规范 §6–§7。
+
+---
+
+## 9. 任务分解
+
+| # | 任务 | 产物 | 验收 |
+|---|---|---|---|
+| 1 | 操作审计 AOP | `@Audit` 装饰器 + `audit.interceptor` + `audit_logs` 模型/迁移 + 脱敏/diff util + RLS Policy | 受控接口被调用即落审计、敏感字段脱敏、失败 result=failure、审计不阻塞主流程 单测绿 |
+| 2 | 审计查询 | `audit.service.query/findOne` + `GET /admin/audit-logs(/:id)(/actions)` | 多维筛选/分页/平台权限/bypass 跨租户、详情 diff 脱敏 正确 |
+| 3 | 数据字典 | `dictionaries`/`dict_items` 模型 + `dictionary.service` CRUD + `/admin/config/dictionaries*` + `/dict/:type` | code 唯一不可改、禁用不入枚举、前端枚举可拉、缓存命中/失效 单测绿 |
+| 4 | 系统参数与缓存 | `system_configs` 模型 + `system-config.service`(优先级+类型化+热缓存) + `/admin/config/system*` | env>DB>默认 优先级、editable/secret 守门、改后热生效 单测绿 |
+| 5 | 渠道开关与 resolver | `channel_configs` 模型 + `channel-config.service` + ProviderRegistry + `channel-resolver` + `/admin/config/channels*` | 切 provider 合法值校验、resolver 选中对应适配器、real 未接入抛 NotImplemented、切换被审计 单测绿 |
+| 6 | 通知模板管理 | `notify_templates` 扩 scope + `notify-template.service` CRUD + 端点（scene 受字典约束） | 系统/租户双层、scene 字典约束、CRUD 正确 |
+| 7 | 多门店监控聚合 | `monitor.service` + `store-health.calculator` + `/admin/monitor/*`（复用 analytics + bypass） | 全局 KPI/门店健康三因子/下钻、仅平台可达、隔离纪律 集成测绿 |
+| 8 | admin-web 三页 | 门店监控 `stores` + 操作审计 `audit` + 系统配置 `system-config` + 总览对接 | 对齐高保真、`v-perm` 只读/可写、枚举走字典、脱敏展示 |
+| 9 | 平台权限种子 | identity 补 `monitor/audit/config` 权限码 + 种子绑定（超管全/运营可写/客服财务只读） | 非平台角色 403、运营可改配置、客服只读 |
+| 10 | P3-3 e2e 冒烟 | `test/admin-console.e2e-spec.ts`（触发写操作→审计可查；改渠道开关→生效） | 审计与配置链路 e2e 绿 |
+
+---
+
+## 10. 验收标准
+
+- **审计**：关键写操作全量落 `audit_logs`，记录 who/what/tenant/diff/result；敏感字段脱敏；审计旁路异步、失败不影响业务；只追加不可篡改；平台多维查询（含 bypass 跨租户）正确。
+- **配置**：系统参数读取遵循 env>DB>默认 优先级且类型化；secret 脱敏、editable 守门；改后热生效（写时失效 + 广播）。
+- **渠道开关**：可热切换 provider 且被 `channel-resolver` 运行时读取选中对应适配器；非法/未注册 provider 被拒；real 未接入显式报错而非静默；每次切换被审计。
+- **字典**：四类字典（快递/规格/异常/通知场景）CRUD 正常；`code` 稳定不可改/禁用而非删；各前端枚举统一由 `/dict/:type` 驱动，历史数据按 code 可解析。
+- **监控**：平台可看跨租户全局 KPI 与门店健康（在线/订阅/异常三因子），可下钻单门店；聚合走 bypass 且不污染常规租户上下文。
+- **权限**：审计/配置/监控严格限平台角色；运营可改配置、客服/财务只读；`v-perm` 与 `@RequirePermission` 一致。
+- **e2e**：`admin-console.e2e-spec.ts` 全链路绿。
+
+---
+
+## 11. 依赖与风险
+
+| 风险 | 影响 | 缓解 |
+|---|---|---|
+| 审计 diff 采集侵入业务服务 | 服务需返回 before/after，耦合上升 | 装饰器声明读取器 + 仅对需 captureDiff 的少数关键操作开启；多数操作只记 summary |
+| 审计落库拖慢主流程 | 高频写操作响应变慢 | 旁路异步 record、失败降级告警；后续可批量/队列化（P3-4） |
+| `bypass_rls` 误用泄露跨租户数据 | 越权 | bypass 仅在 monitor/audit 只读聚合路径开启，严格平台权限守门 + 代码审查；常规请求绝不开 |
+| 切到 real provider 但实现未就绪（P4-4） | 渠道不可用 | ProviderRegistry 校验 + resolve 抛 NotImplemented 显式报错 + `fallback_provider` 回退 mock |
+| 配置缓存多实例不一致 | 切换未全实例生效 | `ConfigChanged` 广播（演进期 Redis Pub/Sub）+ TTL 兜底；单实例退化为写时直删 |
+| 字典 code 被误改/删导致历史数据语义漂移 | 数据解析错乱 | code 只读 + 禁用而非硬删 + 唯一约束 |
+| 敏感配置（密钥）落库泄露 | 安全 | 密钥本体走 env/密钥管理，`channel_configs.config` 仅存引用键；`is_secret` 脱敏不回显 |
+| 监控聚合性能（跨租户大表） | 慢查询 | 复用 P2-4 已聚合的 Redis 计数/汇总而非实时扫明细；门店健康分页 + 阈值过滤 |
+
+---
+
+> 关联：P3-4 将为审计落库队列化、配置多级缓存、渠道开关熔断/回退提供基础设施；P4-4 落地 real provider 后渠道开关切换即真正生效。

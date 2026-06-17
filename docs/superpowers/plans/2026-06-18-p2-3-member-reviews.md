@@ -1,0 +1,458 @@
+# P2-3 会员与评价 · 详细设计
+
+> 设计级别文档（不含完整实现代码）。技术栈：NestJS + TypeScript · Prisma · PostgreSQL 16（RLS）· Redis（积分排行 ZSet）· 进程内 EventBus。
+> 上游规格：`docs/superpowers/specs/cainiao-station-platform-design.md`（§3 多租户 / §4.3 事件 / §5 member / §6 数据模型）；路线图：`docs/superpowers/plans/implementation-roadmap.md`（P2-3）。
+
+---
+
+## 1. 目标 · 周期 · 依赖
+
+### 1.1 目标
+增强收件人粘性与门店服务闭环：
+- **会员（member）**：会员档案（绑定平台级 Consumer）、会员等级、积分获取/消费、优惠券发放与核销、每日签到。
+- **评价与投诉（review）**：收件人对取件/寄件的评价、投诉工单、门店满意度统计。
+
+### 1.2 范围边界
+- **属于本期**：积分规则与流水、等级计算、优惠券生命周期、签到、积分排行榜、评价/投诉提交与店长回复、满意度聚合。
+- **不属于本期**：积分商城兑换实物（仅预留优惠券作为兑换载体）、复杂营销活动引擎、AI 情感分析评价（P4）、跨租户统一会员钱包结算。
+
+### 1.3 周期
+预估 **6 人日**（与路线图一致）。任务分解见 §9。
+
+### 1.4 依赖
+| 依赖项 | 来源 | 说明 |
+|---|---|---|
+| `ParcelPickedUp` 事件 | P1-2 pickup | 取件核销得分入口 |
+| `ShipOrderPaid` 事件 | P2-1 shipping | 寄件支付得分入口 |
+| `consumers`（平台级）表 | P1（identity/收件人通道） | 会员与评价均按手机号归属 Consumer |
+| RLS / `AsyncLocalStorage` / Prisma 事务注入 | P1-foundation Task 5~6 | 租户级表隔离机制 |
+| 进程内 `EventBus` 抽象 | P1-foundation | 订阅方幂等约定 |
+| Redis 客户端 | P1-foundation | 积分排行 ZSet、签到防重锁 |
+
+---
+
+## 2. 涉及上下文与模块
+
+| 上下文 | 目录 | 职责 | 表 | 事件 |
+|---|---|---|---|---|
+| **member** | `backend/src/member/` | 会员档案、积分、优惠券、签到 | `members` / `point_records` / `coupon_templates` / `coupons` / `member_checkins` | 订阅 `ParcelPickedUp` / `ShipOrderPaid` |
+| **review** | `backend/src/review/` | 评价、投诉工单、满意度统计 | `reviews` / `complaints` | （本期不发新事件，预留 `ReviewSubmitted`） |
+
+### 2.1 member 模块文件职责
+```
+member/
+├── member.module.ts
+├── member.service.ts          # 会员开户/查档/等级查询
+├── point.service.ts           # 积分规则、加减分、流水、排行榜
+├── point-rule.config.ts       # 积分规则与等级阈值配置（可后续迁 DB）
+├── coupon.service.ts          # 券模板、发放、核销、过期
+├── checkin.service.ts         # 每日签到、连续签到、防重
+├── listeners/
+│   ├── parcel-picked-up.listener.ts   # 取件积分
+│   └── ship-order-paid.listener.ts    # 寄件积分
+├── member.controller.ts       # user-app 会员中心/积分/券/签到
+└── dto/
+```
+
+### 2.2 review 模块文件职责
+```
+review/
+├── review.module.ts
+├── review.service.ts          # 评价/投诉提交、店长查看回复、状态流转
+├── satisfaction.service.ts    # 满意度聚合（评分均值/分布/投诉率）
+├── review.controller.ts       # user-app 提交、station-web 处理
+└── dto/
+```
+
+### 2.3 归属模型（关键约束）
+- **`consumers` 平台级**（按手机号，跨租户，无 `tenant_id`）：会员主体。
+- **`members` 平台级**：1 个 Consumer 对应 1 条会员档案（积分账户全平台统一）。**不带 `tenant_id`**，走「消费者只读/自有通道」而非租户 RLS。
+- **`point_records` 平台级**：积分流水跟随会员账户，记录来源门店 `source_tenant_id`（可空，标识在哪家门店产生，仅作溯源/分账参考，不作隔离）。
+- **`coupons` / `coupon_templates`**：**租户级**（带 `tenant_id`），券由门店发放、仅本门店核销。
+- **`member_checkins` 平台级**：签到属会员账户。
+- **`reviews` / `complaints`**：**租户级**（带 `tenant_id`），评价关联具体门店；满意度统计按门店聚合。
+
+> 设计要点：积分账户是**平台级单一账户**（用户在任意门店取件/寄件都加同一账户分）；优惠券与评价是**门店级**（券各店独立、评价对象是门店）。这一拆分决定了 RLS 应用范围。
+
+---
+
+## 3. 数据模型
+
+> 公共约定：`id uuid pk`、`created_at/updated_at` timestamptz、软删 `deleted_at`。租户级表加 `tenant_id` + RLS Policy + 联合索引；平台级表无 `tenant_id`、不挂租户 RLS（走应用层主体校验）。
+
+### 3.1 `members`（平台级 · 会员档案）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| consumer_id | uuid | FK → `consumers.id`，**唯一** |
+| phone | varchar(20) | 冗余手机号（脱敏展示），唯一 |
+| level | smallint | 当前等级 0~N（见 §6.3），冗余字段，由总积分推导 |
+| total_points | int | 累计获得积分（只增，用于等级计算） |
+| available_points | int | 当前可用积分（加分增、消费减、过期减） |
+| frozen_points | int | 冻结积分（兑换中），默认 0 |
+| continuous_checkin_days | int | 当前连续签到天数 |
+| last_checkin_date | date | 上次签到日期（防重判定） |
+| created_at / updated_at / deleted_at | | |
+
+- 索引：`uniq(consumer_id)`、`uniq(phone)`、`idx(level)`。
+- 关系：`members 1—1 consumers`；`members 1—N point_records`；`members 1—N coupons`；`members 1—N member_checkins`。
+- 归属：**平台级**，无 `tenant_id`。读写经会员自身 JWT（Consumer 身份）或平台超管 bypass。
+
+### 3.2 `point_records`（平台级 · 积分流水）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| member_id | uuid | FK → `members.id` |
+| change | int | 积分变动（+ 获取 / − 消费/过期），不为 0 |
+| balance_after | int | 变动后可用积分（快照，便于对账） |
+| type | enum | `PICKUP`/`SHIP`/`CHECKIN`/`COUPON_REDEEM`/`EXPIRE`/`ADJUST`/`REFUND` |
+| source_tenant_id | uuid? | 产生门店（取件/寄件所在门店），可空 |
+| ref_type | varchar(32)? | 关联业务类型 `parcel`/`ship_order`/`checkin`/`coupon` |
+| ref_id | varchar(64)? | 关联业务主键（用于幂等与溯源） |
+| idempotency_key | varchar(128) | **唯一**，事件/操作幂等键（见 §6.1） |
+| remark | varchar(200)? | 备注 |
+| created_at | | 流水不可变，无 update/delete |
+
+- 索引：`uniq(idempotency_key)`、`idx(member_id, created_at desc)`、`idx(source_tenant_id)`。
+- 归属：**平台级**，流水只追加（append-only），保证积分可追溯。
+
+### 3.3 `coupon_templates`（租户级 · 券模板）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| tenant_id | uuid | RLS |
+| name | varchar(64) | 券名 |
+| type | enum | `DISCOUNT`(满减) / `RATE`(折扣) / `EXEMPT`(免单/免保管费) |
+| face_value | numeric(10,2) | 满减金额 / 折扣率 |
+| threshold | numeric(10,2) | 使用门槛（满 X 元），可 0 |
+| scene | enum | `PICKUP`/`SHIP`/`ALL`（适用场景） |
+| cost_points | int? | 积分兑换该券所需积分（积分领券时用），可空=非积分券 |
+| total_stock | int? | 总库存，空=不限 |
+| issued_count | int | 已发放数 |
+| valid_days | int | 领取后有效天数 |
+| status | enum | `ACTIVE`/`PAUSED`/`ARCHIVED` |
+| created_at / updated_at / deleted_at | | |
+
+- 索引：`idx(tenant_id, status)`、`idx(tenant_id, scene)`。
+
+### 3.4 `coupons`（租户级 · 用户持有券）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| tenant_id | uuid | RLS（发放门店） |
+| template_id | uuid | FK → `coupon_templates.id` |
+| member_id | uuid | 持券会员（平台级 id 引用） |
+| code | varchar(32) | 券码，唯一 |
+| status | enum | `UNUSED`/`USED`/`EXPIRED`/`FROZEN` |
+| obtained_via | enum | `POINT_REDEEM`/`ISSUE`/`CHECKIN_REWARD` |
+| point_record_id | uuid? | 积分兑换时对应的扣分流水 |
+| used_at | timestamptz? | 核销时间 |
+| used_ref_type / used_ref_id | | 核销关联业务（如 ship_order） |
+| expire_at | timestamptz | 过期时间 |
+| created_at / updated_at | | |
+
+- 索引：`uniq(code)`、`idx(tenant_id, member_id, status)`、`idx(expire_at, status)`（过期扫描）。
+- 关系：`coupons N—1 coupon_templates`；`coupons N—1 members`（跨平台引用，应用层校验）。
+
+### 3.5 `member_checkins`（平台级 · 签到记录）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| member_id | uuid | FK → `members.id` |
+| checkin_date | date | 签到日 |
+| reward_points | int | 当日获得积分（含连签加成） |
+| continuous_days | int | 本次连续签到天数快照 |
+| point_record_id | uuid | 对应加分流水 |
+| created_at | | |
+
+- 索引：`uniq(member_id, checkin_date)`（**唯一约束做防重**）。
+
+### 3.6 `reviews`（租户级 · 评价）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| tenant_id | uuid | RLS（被评价门店） |
+| station_id | uuid | 被评价门店 |
+| member_id | uuid | 评价人（平台级会员引用） |
+| consumer_phone | varchar(20) | 冗余，便于跨租户核身 |
+| target_type | enum | `PICKUP`(取件) / `SHIP`(寄件) |
+| ref_type / ref_id | | 关联 `parcel` / `ship_order`（防重复评价） |
+| rating | smallint | 1~5 星 |
+| tags | text[] | 标签（如「服务好」「位置近」） |
+| content | varchar(500)? | 文字评价 |
+| images | text[]? | 图片 url |
+| status | enum | `PUBLISHED`/`REPLIED`/`HIDDEN` |
+| reply_content | varchar(500)? | 店长回复 |
+| replied_by / replied_at | | 回复人/时间 |
+| created_at / updated_at / deleted_at | | |
+
+- 索引：`uniq(tenant_id, ref_type, ref_id, member_id)`（同一业务单仅一次评价）、`idx(tenant_id, station_id, created_at desc)`、`idx(tenant_id, rating)`。
+
+### 3.7 `complaints`（租户级 · 投诉工单）
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid | PK |
+| tenant_id | uuid | RLS |
+| station_id | uuid | 被投诉门店 |
+| member_id / consumer_phone | | 投诉人 |
+| type | enum | `DAMAGE`(破损)/`LOST`(丢失)/`SERVICE`(服务态度)/`WRONG`(错领/错放)/`OTHER` |
+| ref_type / ref_id | | 关联包裹/寄件单（可空） |
+| content | varchar(1000) | 投诉内容 |
+| images | text[]? | 凭证图 |
+| status | enum | `PENDING`(待处理)/`PROCESSING`(处理中)/`RESOLVED`(已解决)/`CLOSED`(已关闭) |
+| handle_note | varchar(1000)? | 处理记录 |
+| handled_by / handled_at | | |
+| created_at / updated_at / deleted_at | | |
+
+- 索引：`idx(tenant_id, station_id, status)`、`idx(tenant_id, created_at desc)`。
+
+### 3.8 ER 关系总览
+```
+consumers(平台级) 1—1 members(平台级) 1—N point_records(平台级)
+                              │ 1—N member_checkins(平台级)
+                              │ 1—N coupons(租户级,发放门店) N—1 coupon_templates(租户级)
+                              │ 1—N reviews(租户级,被评门店) ──station_id──▶ stations
+                              │ 1—N complaints(租户级,被投诉门店)
+```
+
+---
+
+## 4. 接口与 API
+
+### 4.1 端点表
+
+**会员中心（user-app · Consumer 身份）**
+| 方法 | 路径 | 说明 | 鉴权 |
+|---|---|---|---|
+| GET | `/member/profile` | 会员档案（等级/可用积分/连签天数） | Consumer JWT |
+| GET | `/member/points/records` | 积分流水（分页/按 type 过滤） | Consumer JWT |
+| GET | `/member/points/rank` | 积分排行榜（门店内 Top N + 自己名次） | Consumer JWT |
+| POST | `/member/checkin` | 每日签到 | Consumer JWT |
+| GET | `/member/checkin/status` | 今日是否签到、连签天数、月历 | Consumer JWT |
+| GET | `/member/coupons` | 我的券（按 status 过滤） | Consumer JWT |
+| GET | `/member/coupon-templates` | 可领/可兑换券列表（按门店+场景） | Consumer JWT |
+| POST | `/member/coupons/redeem` | 积分兑换券 | Consumer JWT |
+| POST | `/member/coupons/:id/verify` | 核销券（下单/取件时调用，幂等） | Consumer/内部 |
+
+**评价与投诉（user-app）**
+| 方法 | 路径 | 说明 |
+|---|---|---|
+| POST | `/reviews` | 提交评价（取件/寄件） |
+| GET | `/reviews/mine` | 我的评价列表 |
+| GET | `/reviews/pending-targets` | 待评价业务单（已取件未评价的包裹/寄件单） |
+| POST | `/complaints` | 提交投诉工单 |
+| GET | `/complaints/mine` | 我的投诉及进度 |
+
+**门店处理（station-web · StaffUser 身份 · 租户 RLS + 门店 scope）**
+| 方法 | 路径 | 说明 | 权限码 |
+|---|---|---|---|
+| GET | `/admin/reviews` | 门店评价列表（按门店/评分/状态） | `review:read` |
+| POST | `/admin/reviews/:id/reply` | 店长回复评价 | `review:reply` |
+| POST | `/admin/reviews/:id/hide` | 隐藏违规评价 | `review:manage` |
+| GET | `/admin/complaints` | 投诉工单列表 | `complaint:read` |
+| POST | `/admin/complaints/:id/handle` | 处理/流转投诉 | `complaint:handle` |
+| GET | `/admin/satisfaction/summary` | 满意度统计（均分/分布/投诉率/趋势） | `review:read` |
+| POST | `/admin/coupon-templates` | 创建券模板 | `coupon:manage` |
+| POST | `/admin/coupon-templates/:id/issue` | 批量/定向发券 | `coupon:issue` |
+
+> 平台级会员接口绕租户 RLS（会员自身数据）；门店接口走标准三道防线（RLS + 功能权限 + 门店 scope）。统一响应 `{code,message,data}`。
+
+### 4.2 关键服务接口签名（设计级，TS 伪签名）
+
+```ts
+// point.service.ts
+interface PointService {
+  // 幂等加分：相同 idempotencyKey 重复调用只生效一次
+  earn(memberId, change, type, ctx: { sourceTenantId?, refType?, refId?, idempotencyKey, remark? }): Promise<PointRecord>;
+  spend(memberId, amount, type, ctx): Promise<PointRecord>;        // 余额不足抛业务异常
+  getRecords(memberId, query: PageQuery & { type? }): Promise<Paged<PointRecord>>;
+  getRank(tenantId, memberId): Promise<{ top: RankItem[]; self: RankItem }>;  // Redis ZSet
+}
+
+// member.service.ts
+interface MemberService {
+  ensureMember(consumerId, phone): Promise<Member>;   // 开户（不存在则建），幂等
+  getProfile(memberId): Promise<MemberProfile>;       // 含等级推导
+  recalcLevel(memberId): Promise<number>;             // 按 total_points 重算等级
+}
+
+// coupon.service.ts
+interface CouponService {
+  listTemplates(tenantId, scene): Promise<CouponTemplate[]>;
+  redeemByPoints(memberId, templateId): Promise<Coupon>;   // 事务：扣分+发券
+  issue(tenantId, templateId, memberIds): Promise<number>; // 门店定向发券
+  verify(couponId, ctx: { usedRefType, usedRefId, idempotencyKey }): Promise<Coupon>; // 核销
+  expireScan(): Promise<number>;                            // BullMQ 定时调用
+}
+
+// checkin.service.ts
+interface CheckinService {
+  checkin(memberId): Promise<CheckinResult>;          // 唯一约束防重，连签加成
+  getStatus(memberId, month): Promise<CheckinStatus>;
+}
+
+// review.service.ts
+interface ReviewService {
+  submit(memberId, dto: SubmitReviewDto): Promise<Review>;       // 防重复评价
+  listForStation(tenantId, query): Promise<Paged<Review>>;
+  reply(reviewId, staffId, content): Promise<Review>;            // PUBLISHED→REPLIED
+  submitComplaint(memberId, dto): Promise<Complaint>;
+  handleComplaint(complaintId, staffId, dto): Promise<Complaint>;// 状态流转
+}
+
+// satisfaction.service.ts
+interface SatisfactionService {
+  summary(tenantId, query: { stationId?, from, to }): Promise<SatisfactionSummary>;
+  // { avgRating, ratingDist[1..5], reviewCount, complaintRate, trend[] }
+}
+```
+
+---
+
+## 5. 领域事件（订阅）
+
+### 5.1 订阅清单
+| 事件 | 来源 | 监听器 | 动作 |
+|---|---|---|---|
+| `ParcelPickedUp` | parcel/pickup | `parcel-picked-up.listener` | 取件得分 |
+| `ShipOrderPaid` | shipping | `ship-order-paid.listener` | 寄件得分 |
+
+### 5.2 事件载荷（约定，取自上游聚合）
+```ts
+ParcelPickedUp  { parcelId, tenantId, stationId, consumerPhone, pickedUpAt }
+ShipOrderPaid   { shipOrderId, tenantId, stationId, consumerPhone, amount, paidAt }
+```
+
+### 5.3 监听处理流程（幂等）
+1. 由 `consumerPhone` → `member.ensureMember(...)`（无会员则开户）。
+2. 计算积分（§6.1 规则）。
+3. `point.earn(...)`，幂等键：
+   - 取件：`pickup:{parcelId}`
+   - 寄件：`ship:{shipOrderId}`
+4. 写流水 + 更新 `members.total_points/available_points` + 刷新 Redis 排行榜 + 触发等级重算。
+
+> 全部在 member 上下文事务内完成；监听器幂等，重复事件不重复加分（依赖 `point_records.idempotency_key` 唯一约束兜底）。进程内 EventBus，演进期换 MQ 订阅方不变。
+
+---
+
+## 6. 关键逻辑
+
+### 6.1 积分规则与流水
+- **规则（`point-rule.config.ts` 可配置，后续可迁 DB）**：
+  | 来源 | 规则 | 幂等键 |
+  |---|---|---|
+  | 取件 `PICKUP` | 固定 +2 分/件 | `pickup:{parcelId}` |
+  | 寄件 `SHIP` | 按金额 `floor(amount × 系数)`（如每元 1 分），封顶 N | `ship:{shipOrderId}` |
+  | 签到 `CHECKIN` | 基础 1 分 + 连签加成（见 §6.4） | `checkin:{memberId}:{date}` |
+  | 兑换券 `COUPON_REDEEM` | − `template.cost_points` | `coupon-redeem:{couponId}` |
+  | 过期 `EXPIRE` | 负向核减（如启用积分有效期） | `expire:{batchId}` |
+- **流水保证可追溯**：所有加减分**必经 `point_records`**（append-only），`balance_after` 记快照；`members.available_points` 为派生缓存，可由流水重算校验（对账任务）。
+- **并发**：同一会员加减分在行级事务内串行（`SELECT ... FOR UPDATE members`），避免余额竞态。
+
+### 6.2 积分排行榜（Redis ZSet）
+- Key：`rank:points:{tenantId}`（门店维度排行，反映本店活跃度）成员 = `memberId`，score = 该店累计获得分。
+- 写入：监听器加分时 `ZINCRBY`；查询 `ZREVRANGE` 取 Top N + `ZREVRANK` 取自己名次。
+- 兜底：ZSet 仅缓存，丢失可由 `point_records` 按 `source_tenant_id` 重建（提供 rebuild 脚本）。
+
+### 6.3 等级计算
+- 等级阈值表（配置）：`L0 [0,100) / L1 [100,500) / L2 [500,2000) / L3 [2000,∞)`，按 **`total_points`（累计获得，不随消费回退）** 计算。
+- `recalcLevel`：加分后比对阈值，跨档则更新 `members.level`；等级影响权益（如更高签到加成、专属券），权益规则查配置。
+
+### 6.4 优惠券发放/核销
+- **发放途径**：积分兑换（`redeemByPoints`，事务扣分+生成 `coupons`，校验库存/积分）；门店定向发放（`issue`，运营/营销）；签到奖励（连签 N 天送券）。
+- **核销**：`verify` 校验 `status=UNUSED` 且未过期且门槛满足 → 置 `USED` + 记 `used_ref` + 幂等键防重复核销；与下单/取件流程对接（券抵扣金额由调用方计算）。
+- **过期**：BullMQ 定时 `expireScan` 扫 `expire_at < now && status=UNUSED` → 置 `EXPIRED`。
+- 库存并发：发券对 `coupon_templates.issued_count` 做原子自增 + 库存校验。
+
+### 6.5 签到
+- 幂等：`member_checkins (member_id, checkin_date)` 唯一约束 + Redis 当日锁（`checkin:lock:{memberId}:{date}` 短期防并发）。
+- 连签：若 `last_checkin_date == 昨天` → `continuous_checkin_days+1`；否则重置为 1。
+- 加成：`reward = base + min(continuous_days-1, maxBonus)`；写签到记录 + 调 `point.earn(CHECKIN)` + 更新 `members.last_checkin_date/continuous_checkin_days`；满 7/30 天可触发送券。
+
+### 6.6 评价聚合与满意度
+- **防重复评价**：`reviews` 唯一约束 `(tenant_id, ref_type, ref_id, member_id)`；提交前校验业务单归属该 Consumer 且状态允许（已取件/已支付）。
+- **状态流转**：评价 `PUBLISHED → REPLIED`（店长回复）/ `→ HIDDEN`（违规隐藏）。投诉 `PENDING → PROCESSING → RESOLVED → CLOSED`。
+- **满意度统计**：`satisfaction.summary` 按门店聚合——平均分、1~5 星分布、评价量、投诉率（投诉数/取件量）、按日趋势。P2 用 SQL 聚合 + 短缓存；与 analytics（P2-4）大屏数据口径对齐。
+
+---
+
+## 7. 业务流程
+
+**积分获取（取件）**
+```
+取件核销 →(parcel)→ ParcelPickedUp →(EventBus)→ member.listener
+  → ensureMember(phone) → 算分(+2) → point.earn(幂等 pickup:{parcelId})
+  → 流水 + 余额 + ZINCRBY 排行 + recalcLevel
+```
+
+**积分获取（寄件）**：`ShipOrderPaid → 算分(amount) → point.earn(幂等 ship:{id}) → 同上`。
+
+**签到得分**：`POST /member/checkin → 唯一约束/锁防重 → 连签计算 → earn(CHECKIN) → 返回今日得分+连签`。
+
+**积分兑券并核销**：`兑换券(扣分+发券) → 持有 UNUSED → 下单选券 → verify(置USED+记ref) → 抵扣`。
+
+**评价闭环**：`待评价单 → 提交评价(防重) → station-web 店长查看 → 回复(REPLIED) → 计入满意度`。
+
+**投诉闭环**：`提交投诉(PENDING) → 店长受理(PROCESSING) → 处理(RESOLVED) → 关闭(CLOSED)`。
+
+---
+
+## 8. 前端
+
+### 8.1 user-app（uni-app · Consumer）
+- **个人中心**：会员卡（等级/可用积分/连签）、入口宫格（积分明细/我的券/签到/我的评价/我的投诉）。
+- **积分页**：积分余额 + 流水列表（按类型筛选）+ 门店排行榜（Top N + 自己名次）。
+- **签到页**：月历签到、连签天数、今日签到按钮、连签奖励提示。
+- **优惠券页**：我的券（未用/已用/过期 tab）、可兑换券（积分兑换）。
+- **评价入口**：待评价列表（已取件/已寄件未评价）→ 评价表单（星级/标签/文字/图片）；我的评价（含店长回复）。
+- **投诉入口**：提交投诉表单（类型/内容/凭证）；我的投诉进度。
+
+> 前端先对齐既有 31 页高保真（`design/mockups/hifi/`，清爽蓝），新增页沿用 token 化主题与 full-bleed 规范。
+
+### 8.2 station-web（Element Plus · StaffUser）
+- **评价管理**：门店评价列表（评分/状态/门店筛选）、回复弹窗、隐藏操作、满意度概览卡（均分/分布/趋势）。
+- **投诉处理**：工单列表（状态泳道/筛选）、受理与处理流转、处理记录。
+- **券模板管理**：创建券模板、批量/定向发券、库存与发放统计。
+- 受 `v-perm` 功能权限 + 门店数据范围约束。
+
+---
+
+## 9. 任务分解
+
+| # | 任务 | 产物 | 验收 |
+|---|---|---|---|
+| 1 | member 模型与开户 | `members/point_records` schema（平台级，不挂租户 RLS）+ `ensureMember/getProfile` | 开户/查档单测绿，重复开户幂等 |
+| 2 | 积分规则与流水 | `point.service` + `point-rule.config` + 排行榜 ZSet | 加减分/余额/流水/排行单测绿 |
+| 3 | 积分事件订阅 | 两个 listener（取件/寄件），幂等键 | 各记一次、重复事件不重复加分单测绿 |
+| 4 | 优惠券服务 | `coupon_templates/coupons` schema（租户级 RLS）+ `coupon.service`（兑换/发放/核销/过期） | 发券/核销/过期/库存并发单测绿 |
+| 5 | 签到服务 | `member_checkins` schema + `checkin.service`（连签/防重） | 连续/重复签到单测绿 |
+| 6 | 评价与投诉服务 | `reviews/complaints` schema（租户级 RLS）+ `review/satisfaction.service` | 提交→回复、投诉流转、满意度聚合单测绿 |
+| 7 | 接口层 | member/review controller（user-app + admin）+ DTO + 权限码 | 接口走通、权限/数据范围正确 |
+| 8 | 前端 | user-app 会员中心/积分/签到/券/评价 + station-web 评价投诉/券管理 | 用户签到得分用券提交评价、店长可回复处理 |
+| 9 | P2-3 e2e 冒烟 | `test/member-review.e2e-spec.ts` | 核销得分→签到→领券核销；提交评价→店长回复，全链路绿 |
+
+---
+
+## 10. 验收标准
+- 积分**由事件驱动且幂等**：取件/寄件各记一次，重复事件不重复加分（`idempotency_key` 唯一约束兜底）。
+- 积分**全程可追溯**：任意余额可由 `point_records` 流水重算对账一致。
+- 优惠券**全生命周期可用**：兑换/发放/核销/过期均正确，核销幂等、库存不超发。
+- 签到**防重**：同日多次仅一次，连签计算正确。
+- 评价投诉**闭环**：评价防重 + 店长回复；投诉状态流转完整；满意度统计口径正确。
+- **隔离正确**：券/评价/投诉租户隔离（RLS 生效）；会员/积分为平台级单账户、跨门店共用且不越权读他人数据。
+- e2e（核销得分→签到→领券核销；提交评价→店长回复）全绿。
+
+---
+
+## 11. 依赖与风险
+
+| 项 | 类型 | 应对 |
+|---|---|---|
+| `ParcelPickedUp` / `ShipOrderPaid` 载荷需含 `consumerPhone/tenantId/stationId` | 依赖 | 与 P1-2/P2-1 约定事件契约；缺字段则由 ref 反查补全 |
+| 平台级会员表绕 RLS，存在越权读风险 | 风险 | 会员接口强制按 JWT 中 Consumer/手机号过滤；超管 bypass 审计留痕 |
+| 积分并发加减导致余额错乱 | 风险 | 行级锁 + 流水快照 + 定时对账任务 |
+| Redis 排行榜与 DB 不一致 / 丢失 | 风险 | ZSet 仅缓存，提供按流水 rebuild；展示标注「准实时」 |
+| 重复事件 / 重复核销 / 重复签到 | 风险 | 统一幂等键 + 唯一约束（流水/核销 ref/签到日） |
+| 满意度口径与 analytics(P2-4) 不一致 | 风险 | 统一投诉率/均分定义，satisfaction 与大屏共用聚合口径 |
+| 积分有效期/过期核减是否启用 | 待定 | 本期预留 `EXPIRE` 流水类型与配置开关，默认不过期 |
+| 跨租户统一会员权益（券通用）超范围 | 边界 | 本期券严格门店级；统一钱包留待后续 |
