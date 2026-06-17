@@ -66,34 +66,77 @@ enum PickupAuthorizationStatus {
   REVOKED
 }
 
+enum ShipOrderChannel {
+  STATION
+  ONLINE
+}
+
+enum ShipOrderStatus {
+  CREATED
+  PAID
+  COLLECTED
+  IN_TRANSIT
+  DELIVERED
+  CANCELLED
+}
+
+enum PaymentBizType {
+  SHIP_ORDER
+}
+
+enum PaymentStatus {
+  PENDING
+  SUCCESS
+  FAILED
+  REFUNDED
+}
+
+enum LogisticsNodeStatus {
+  COLLECTED
+  IN_TRANSIT
+  ARRIVED
+  OUT_FOR_DELIVERY
+  DELIVERED
+}
+
+enum LogisticsTrackSource {
+  MOCK
+  PROVIDER
+}
+
 model Tenant {
-  id           String       @id @default(uuid()) @db.Uuid
-  name         String
-  ownerName    String
-  contactPhone String
-  status       TenantStatus @default(ACTIVE)
-  createdAt    DateTime     @default(now())
-  users        User[]
-  stations     Station[]
-  shelves      Shelf[]
-  slots        Slot[]
-  parcels      Parcel[]
-  parcelEvents ParcelEvent[]
-  notifications Notification[]
-  notifyTemplates NotifyTemplate[]
+  id                   String                @id @default(uuid()) @db.Uuid
+  name                 String
+  ownerName            String
+  contactPhone         String
+  status               TenantStatus          @default(ACTIVE)
+  createdAt            DateTime              @default(now())
+  users                User[]
+  stations             Station[]
+  shelves              Shelf[]
+  slots                Slot[]
+  parcels              Parcel[]
+  parcelEvents         ParcelEvent[]
+  notifications        Notification[]
+  notifyTemplates      NotifyTemplate[]
   pickupAuthorizations PickupAuthorization[]
+  shipOrders           ShipOrder[]
+  priceRules           PriceRule[]
+  payments             Payment[]
+  logisticsTracks      LogisticsTrack[]
 }
 
 model Station {
-  id        String   @id @default(uuid()) @db.Uuid
-  tenantId  String   @map("tenant_id") @db.Uuid
-  name      String
-  code      String
-  createdAt DateTime @default(now())
-  tenant    Tenant   @relation(fields: [tenantId], references: [id])
-  shelves   Shelf[]
-  slots     Slot[]
-  parcels   Parcel[]
+  id         String      @id @default(uuid()) @db.Uuid
+  tenantId   String      @map("tenant_id") @db.Uuid
+  name       String
+  code       String
+  createdAt  DateTime    @default(now())
+  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  shelves    Shelf[]
+  slots      Slot[]
+  parcels    Parcel[]
+  shipOrders ShipOrder[]
 
   @@index([tenantId])
 }
@@ -146,26 +189,26 @@ model Slot {
 }
 
 model Parcel {
-  id                String        @id @default(uuid()) @db.Uuid
-  tenantId          String        @map("tenant_id") @db.Uuid
-  stationId         String        @map("station_id") @db.Uuid
-  waybillNo         String        @map("waybill_no")
+  id                String         @id @default(uuid()) @db.Uuid
+  tenantId          String         @map("tenant_id") @db.Uuid
+  stationId         String         @map("station_id") @db.Uuid
+  waybillNo         String         @map("waybill_no")
   carrier           String?
-  receiverPhone     String        @map("receiver_phone")
-  receiverPhoneTail String        @map("receiver_phone_tail")
-  pickupCode        String?       @map("pickup_code")
-  slotId            String?       @map("slot_id") @db.Uuid
-  status            ParcelStatus  @default(PENDING)
-  storedAt          DateTime?     @map("stored_at")
-  pickedUpAt        DateTime?     @map("picked_up_at")
-  version           Int           @default(0)
-  createdAt         DateTime      @default(now()) @map("created_at")
-  updatedAt         DateTime      @updatedAt @map("updated_at")
-  deletedAt         DateTime?     @map("deleted_at")
-  createdBy         String?       @map("created_by") @db.Uuid
-  tenant            Tenant        @relation(fields: [tenantId], references: [id])
-  station           Station       @relation(fields: [stationId], references: [id])
-  slot              Slot?         @relation(fields: [slotId], references: [id])
+  receiverPhone     String         @map("receiver_phone")
+  receiverPhoneTail String         @map("receiver_phone_tail")
+  pickupCode        String?        @map("pickup_code")
+  slotId            String?        @map("slot_id") @db.Uuid
+  status            ParcelStatus   @default(PENDING)
+  storedAt          DateTime?      @map("stored_at")
+  pickedUpAt        DateTime?      @map("picked_up_at")
+  version           Int            @default(0)
+  createdAt         DateTime       @default(now()) @map("created_at")
+  updatedAt         DateTime       @updatedAt @map("updated_at")
+  deletedAt         DateTime?      @map("deleted_at")
+  createdBy         String?        @map("created_by") @db.Uuid
+  tenant            Tenant         @relation(fields: [tenantId], references: [id])
+  station           Station        @relation(fields: [stationId], references: [id])
+  slot              Slot?          @relation(fields: [slotId], references: [id])
   events            ParcelEvent[]
   notifications     Notification[]
 
@@ -176,17 +219,17 @@ model Parcel {
 }
 
 model ParcelEvent {
-  id         String           @id @default(uuid()) @db.Uuid
-  tenantId   String           @map("tenant_id") @db.Uuid
-  parcelId   String           @map("parcel_id") @db.Uuid
-  fromStatus ParcelStatus?    @map("from_status")
-  toStatus   ParcelStatus     @map("to_status")
-  eventType  ParcelEventType  @map("event_type")
-  operatorId String?          @map("operator_id") @db.Uuid
+  id         String          @id @default(uuid()) @db.Uuid
+  tenantId   String          @map("tenant_id") @db.Uuid
+  parcelId   String          @map("parcel_id") @db.Uuid
+  fromStatus ParcelStatus?   @map("from_status")
+  toStatus   ParcelStatus    @map("to_status")
+  eventType  ParcelEventType @map("event_type")
+  operatorId String?         @map("operator_id") @db.Uuid
   payload    Json?
-  createdAt  DateTime         @default(now()) @map("created_at")
-  tenant     Tenant           @relation(fields: [tenantId], references: [id])
-  parcel     Parcel           @relation(fields: [parcelId], references: [id])
+  createdAt  DateTime        @default(now()) @map("created_at")
+  tenant     Tenant          @relation(fields: [tenantId], references: [id])
+  parcel     Parcel          @relation(fields: [parcelId], references: [id])
 
   @@index([tenantId, parcelId, createdAt])
   @@map("parcel_events")
@@ -248,6 +291,112 @@ model PickupAuthorization {
   @@index([tenantId, ownerPhone, status])
   @@index([tenantId, authorizedPhone, status])
   @@map("pickup_authorizations")
+}
+
+model ShipOrder {
+  id                String           @id @default(uuid()) @db.Uuid
+  tenantId          String           @map("tenant_id") @db.Uuid
+  stationId         String?          @map("station_id") @db.Uuid
+  orderNo           String           @map("order_no")
+  channel           ShipOrderChannel
+  status            ShipOrderStatus  @default(CREATED)
+  senderJson        Json             @map("sender_json")
+  receiverJson      Json             @map("receiver_json")
+  itemJson          Json             @map("item_json")
+  weightGram        Int              @map("weight_gram")
+  courierCode       String           @map("courier_code") @db.VarChar(16)
+  courierName       String           @map("courier_name") @db.VarChar(32)
+  quoteAmount       Int              @map("quote_amount")
+  quoteSnapshotJson Json             @map("quote_snapshot_json")
+  consumerId        String?          @map("consumer_id")
+  waybillNo         String?          @map("waybill_no") @db.VarChar(40)
+  paidAt            DateTime?        @map("paid_at")
+  collectedAt       DateTime?        @map("collected_at")
+  deliveredAt       DateTime?        @map("delivered_at")
+  cancelledAt       DateTime?        @map("cancelled_at")
+  version           Int              @default(0)
+  createdAt         DateTime         @default(now()) @map("created_at")
+  updatedAt         DateTime         @updatedAt @map("updated_at")
+  deletedAt         DateTime?        @map("deleted_at")
+  createdBy         String?          @map("created_by") @db.Uuid
+  tenant            Tenant           @relation(fields: [tenantId], references: [id])
+  station           Station?         @relation(fields: [stationId], references: [id])
+  logisticsTracks   LogisticsTrack[]
+
+  @@unique([tenantId, orderNo])
+  @@index([tenantId, status])
+  @@index([tenantId, stationId])
+  @@index([tenantId, consumerId])
+  @@index([waybillNo])
+  @@map("ship_orders")
+}
+
+model PriceRule {
+  id              String    @id @default(uuid()) @db.Uuid
+  tenantId        String    @map("tenant_id") @db.Uuid
+  courierCode     String    @map("courier_code") @db.VarChar(16)
+  courierName     String    @map("courier_name") @db.VarChar(32)
+  zone            String    @db.VarChar(16)
+  firstWeightGram Int       @default(1000) @map("first_weight_gram")
+  firstPrice      Int       @map("first_price")
+  addUnitGram     Int       @default(1000) @map("add_unit_gram")
+  addPrice        Int       @map("add_price")
+  zoneFactor      Decimal   @default(1.00) @map("zone_factor") @db.Decimal(4, 2)
+  estHours        Int       @map("est_hours")
+  enabled         Boolean   @default(true)
+  priority        Int       @default(0)
+  createdAt       DateTime  @default(now()) @map("created_at")
+  updatedAt       DateTime  @updatedAt @map("updated_at")
+  deletedAt       DateTime? @map("deleted_at")
+  createdBy       String?   @map("created_by") @db.Uuid
+  tenant          Tenant    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, courierCode, zone, enabled])
+  @@map("price_rules")
+}
+
+model Payment {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  bizType        PaymentBizType @map("biz_type")
+  bizId          String         @map("biz_id") @db.Uuid
+  channel        String         @db.VarChar(16)
+  amount         Int
+  status         PaymentStatus  @default(PENDING)
+  idempotencyKey String         @map("idempotency_key") @db.VarChar(64)
+  outTradeNo     String         @map("out_trade_no") @db.VarChar(64)
+  paidAt         DateTime?      @map("paid_at")
+  rawJson        Json           @map("raw_json")
+  createdAt      DateTime       @default(now()) @map("created_at")
+  updatedAt      DateTime       @updatedAt @map("updated_at")
+  deletedAt      DateTime?      @map("deleted_at")
+  createdBy      String?        @map("created_by") @db.Uuid
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+
+  @@unique([tenantId, idempotencyKey])
+  @@index([tenantId, bizType, bizId])
+  @@map("payments")
+}
+
+model LogisticsTrack {
+  id          String               @id @default(uuid()) @db.Uuid
+  tenantId    String               @map("tenant_id") @db.Uuid
+  shipOrderId String               @map("ship_order_id") @db.Uuid
+  waybillNo   String               @map("waybill_no") @db.VarChar(40)
+  seq         Int
+  nodeStatus  LogisticsNodeStatus  @map("node_status")
+  location    String               @db.VarChar(64)
+  description String               @db.VarChar(255)
+  happenedAt  DateTime             @map("happened_at")
+  source      LogisticsTrackSource
+  createdAt   DateTime             @default(now()) @map("created_at")
+  tenant      Tenant               @relation(fields: [tenantId], references: [id])
+  shipOrder   ShipOrder            @relation(fields: [shipOrderId], references: [id])
+
+  @@unique([shipOrderId, seq])
+  @@index([tenantId, shipOrderId])
+  @@index([waybillNo])
+  @@map("logistics_tracks")
 }
 
 model User {
