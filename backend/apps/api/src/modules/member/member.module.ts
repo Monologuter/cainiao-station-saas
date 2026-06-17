@@ -4,6 +4,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { ParcelPickedUpListener } from './listeners/parcel-picked-up.listener';
 import { ShipOrderPaidListener } from './listeners/ship-order-paid.listener';
+import { CouponService } from './coupon.service';
 import { MemberController } from './member.controller';
 import { MemberService } from './member.service';
 import { PointService } from './point.service';
@@ -19,11 +20,12 @@ import { PointService } from './point.service';
   providers: [
     MemberService,
     PointService,
+    CouponService,
     ParcelPickedUpListener,
     ShipOrderPaidListener,
     PrismaService,
     RedisService,
   ],
-  exports: [MemberService, PointService],
+  exports: [MemberService, PointService, CouponService],
 })
 export class MemberModule {}

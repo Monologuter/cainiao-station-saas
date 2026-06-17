@@ -141,6 +141,37 @@ enum PointRecordType {
   REFUND
 }
 
+enum CouponType {
+  DISCOUNT
+  RATE
+  EXEMPT
+}
+
+enum CouponScene {
+  PICKUP
+  SHIP
+  ALL
+}
+
+enum CouponTemplateStatus {
+  ACTIVE
+  PAUSED
+  ARCHIVED
+}
+
+enum CouponStatus {
+  UNUSED
+  USED
+  EXPIRED
+  FROZEN
+}
+
+enum CouponObtainedVia {
+  POINT_REDEEM
+  ISSUE
+  CHECKIN_REWARD
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -166,6 +197,7 @@ model Member {
   deletedAt             DateTime?     @map("deleted_at")
   consumer              Consumer      @relation(fields: [consumerId], references: [id])
   pointRecords          PointRecord[]
+  coupons               Coupon[]
 
   @@index([level])
   @@map("members")
@@ -190,6 +222,55 @@ model PointRecord {
   @@map("point_records")
 }
 
+model CouponTemplate {
+  id          String               @id @default(uuid()) @db.Uuid
+  tenantId    String               @map("tenant_id") @db.Uuid
+  name        String               @db.VarChar(64)
+  type        CouponType
+  faceValue   Decimal              @map("face_value") @db.Decimal(10, 2)
+  threshold   Decimal              @default(0) @db.Decimal(10, 2)
+  scene       CouponScene
+  costPoints  Int?                 @map("cost_points")
+  totalStock  Int?                 @map("total_stock")
+  issuedCount Int                  @default(0) @map("issued_count")
+  validDays   Int                  @map("valid_days")
+  status      CouponTemplateStatus @default(ACTIVE)
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  deletedAt   DateTime?            @map("deleted_at")
+  createdBy   String?              @map("created_by") @db.Uuid
+  tenant      Tenant               @relation(fields: [tenantId], references: [id])
+  coupons     Coupon[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, scene])
+  @@map("coupon_templates")
+}
+
+model Coupon {
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  templateId    String            @map("template_id") @db.Uuid
+  memberId      String            @map("member_id") @db.Uuid
+  code          String            @unique @db.VarChar(32)
+  status        CouponStatus      @default(UNUSED)
+  obtainedVia   CouponObtainedVia @map("obtained_via")
+  pointRecordId String?           @map("point_record_id") @db.Uuid
+  usedAt        DateTime?         @map("used_at")
+  usedRefType   String?           @map("used_ref_type") @db.VarChar(32)
+  usedRefId     String?           @map("used_ref_id") @db.VarChar(64)
+  expireAt      DateTime          @map("expire_at")
+  createdAt     DateTime          @default(now()) @map("created_at")
+  updatedAt     DateTime          @updatedAt @map("updated_at")
+  template      CouponTemplate    @relation(fields: [templateId], references: [id])
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  member        Member            @relation(fields: [memberId], references: [id])
+
+  @@index([tenantId, memberId, status])
+  @@index([expireAt, status])
+  @@map("coupons")
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
@@ -211,6 +292,8 @@ model Tenant {
   payments             Payment[]
   logisticsTracks      LogisticsTrack[]
   exceptionTickets     ExceptionTicket[]
+  couponTemplates      CouponTemplate[]
+  coupons              Coupon[]
 }
 
 model Station {
