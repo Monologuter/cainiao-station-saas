@@ -82,6 +82,7 @@ enum ShipOrderStatus {
 
 enum PaymentBizType {
   SHIP_ORDER
+  SUBSCRIPTION_INVOICE
 }
 
 enum PaymentStatus {
@@ -215,6 +216,40 @@ enum ReportType {
   INBOUND_DETAIL
   PICKUP_DETAIL
   STATION_COMPARE
+}
+
+enum PlanStatus {
+  DRAFT
+  ACTIVE
+  ARCHIVED
+}
+
+enum BillingPeriod {
+  MONTHLY
+  YEARLY
+}
+
+enum SubscriptionStatus {
+  TRIALING
+  ACTIVE
+  PAST_DUE
+  SUSPENDED
+  CANCELED
+  EXPIRED
+}
+
+enum UsageMetric {
+  SMS
+  PARCELS
+  EXTRA_STATIONS
+}
+
+enum InvoiceStatus {
+  DRAFT
+  OPEN
+  PAID
+  OVERDUE
+  VOID
 }
 
 model Consumer {
@@ -435,6 +470,126 @@ model ReportJob {
   @@map("report_jobs")
 }
 
+model BillingPlan {
+  id            String         @id @default(uuid()) @db.Uuid
+  code          String         @unique @db.VarChar(40)
+  name          String         @db.VarChar(80)
+  monthlyPrice  BigInt         @map("monthly_price")
+  currency      String         @default("CNY") @db.Char(3)
+  quotas        Json           @default("{}")
+  overagePrices Json           @default("{}") @map("overage_prices")
+  billingPeriod BillingPeriod  @default(MONTHLY) @map("billing_period")
+  status        PlanStatus     @default(DRAFT)
+  sort          Int            @default(0)
+  description   String?
+  createdAt     DateTime       @default(now()) @map("created_at")
+  updatedAt     DateTime       @updatedAt @map("updated_at")
+  deletedAt     DateTime?      @map("deleted_at")
+  createdBy     String?        @map("created_by") @db.Uuid
+  subscriptions Subscription[]
+
+  @@index([status, sort])
+  @@map("plans")
+}
+
+model Subscription {
+  id                 String             @id @default(uuid()) @db.Uuid
+  tenantId           String             @map("tenant_id") @db.Uuid
+  stationId          String?            @map("station_id") @db.Uuid
+  planId             String             @map("plan_id") @db.Uuid
+  status             SubscriptionStatus @default(ACTIVE)
+  currentPeriodStart DateTime           @map("current_period_start")
+  currentPeriodEnd   DateTime           @map("current_period_end")
+  nextBillingAt      DateTime           @map("next_billing_at")
+  autoRenew          Boolean            @default(true) @map("auto_renew")
+  startedAt          DateTime           @map("started_at")
+  canceledAt         DateTime?          @map("canceled_at")
+  planSnapshot       Json               @map("plan_snapshot")
+  createdAt          DateTime           @default(now()) @map("created_at")
+  updatedAt          DateTime           @updatedAt @map("updated_at")
+  deletedAt          DateTime?          @map("deleted_at")
+  createdBy          String?            @map("created_by") @db.Uuid
+  tenant             Tenant             @relation(fields: [tenantId], references: [id])
+  station            Station?           @relation(fields: [stationId], references: [id])
+  plan               BillingPlan        @relation(fields: [planId], references: [id])
+  usageRecords       UsageRecord[]
+  usageDedups        UsageDedup[]
+  invoices           Invoice[]
+
+  @@index([tenantId, status])
+  @@index([tenantId, stationId])
+  @@index([nextBillingAt])
+  @@map("subscriptions")
+}
+
+model UsageRecord {
+  id             String       @id @default(uuid()) @db.Uuid
+  tenantId       String       @map("tenant_id") @db.Uuid
+  subscriptionId String       @map("subscription_id") @db.Uuid
+  periodStart    DateTime     @map("period_start")
+  metric         UsageMetric
+  quantity       BigInt       @default(0)
+  lastEventAt    DateTime     @default(now()) @map("last_event_at")
+  createdAt      DateTime     @default(now()) @map("created_at")
+  updatedAt      DateTime     @updatedAt @map("updated_at")
+  deletedAt      DateTime?    @map("deleted_at")
+  tenant         Tenant       @relation(fields: [tenantId], references: [id])
+  subscription   Subscription @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([subscriptionId, periodStart, metric])
+  @@index([tenantId, subscriptionId, periodStart])
+  @@index([tenantId, metric])
+  @@map("usage_records")
+}
+
+model UsageDedup {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  eventId        String        @map("event_id") @db.VarChar(120)
+  subscriptionId String?       @map("subscription_id") @db.Uuid
+  metric         UsageMetric?
+  createdAt      DateTime      @default(now()) @map("created_at")
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  subscription   Subscription? @relation(fields: [subscriptionId], references: [id])
+
+  @@unique([tenantId, eventId])
+  @@index([tenantId, createdAt])
+  @@map("usage_dedup")
+}
+
+model Invoice {
+  id             String        @id @default(uuid()) @db.Uuid
+  tenantId       String        @map("tenant_id") @db.Uuid
+  subscriptionId String        @map("subscription_id") @db.Uuid
+  code           String        @db.VarChar(40)
+  periodStart    DateTime      @map("period_start")
+  periodEnd      DateTime      @map("period_end")
+  status         InvoiceStatus @default(DRAFT)
+  baseAmount     BigInt        @default(0) @map("base_amount")
+  overageAmount  BigInt        @default(0) @map("overage_amount")
+  totalAmount    BigInt        @default(0) @map("total_amount")
+  currency       String        @default("CNY") @db.Char(3)
+  lineItems      Json          @default("[]") @map("line_items")
+  issuedAt       DateTime      @map("issued_at")
+  dueAt          DateTime      @map("due_at")
+  paidAt         DateTime?     @map("paid_at")
+  paymentId      String?       @map("payment_id") @db.Uuid
+  createdAt      DateTime      @default(now()) @map("created_at")
+  updatedAt      DateTime      @updatedAt @map("updated_at")
+  deletedAt      DateTime?     @map("deleted_at")
+  createdBy      String?       @map("created_by") @db.Uuid
+  tenant         Tenant        @relation(fields: [tenantId], references: [id])
+  subscription   Subscription  @relation(fields: [subscriptionId], references: [id])
+  payment        Payment?      @relation(fields: [paymentId], references: [id])
+
+  @@unique([tenantId, code])
+  @@unique([subscriptionId, periodStart])
+  @@index([tenantId, status])
+  @@index([status, dueAt])
+  @@index([tenantId, subscriptionId])
+  @@map("invoices")
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
@@ -462,24 +617,29 @@ model Tenant {
   complaints           Complaint[]
   metricDailies        MetricDaily[]
   reportJobs           ReportJob[]
+  subscriptions        Subscription[]
+  usageRecords         UsageRecord[]
+  usageDedups          UsageDedup[]
+  invoices             Invoice[]
 }
 
 model Station {
-  id         String            @id @default(uuid()) @db.Uuid
-  tenantId   String            @map("tenant_id") @db.Uuid
-  name       String
-  code       String
-  createdAt  DateTime          @default(now())
-  tenant     Tenant            @relation(fields: [tenantId], references: [id])
-  shelves    Shelf[]
-  slots      Slot[]
-  parcels    Parcel[]
-  shipOrders ShipOrder[]
-  exceptions ExceptionTicket[]
-  reviews    Review[]
-  complaints Complaint[]
-  metrics    MetricDaily[]
-  reportJobs ReportJob[]
+  id            String            @id @default(uuid()) @db.Uuid
+  tenantId      String            @map("tenant_id") @db.Uuid
+  name          String
+  code          String
+  createdAt     DateTime          @default(now())
+  tenant        Tenant            @relation(fields: [tenantId], references: [id])
+  shelves       Shelf[]
+  slots         Slot[]
+  parcels       Parcel[]
+  shipOrders    ShipOrder[]
+  exceptions    ExceptionTicket[]
+  reviews       Review[]
+  complaints    Complaint[]
+  metrics       MetricDaily[]
+  reportJobs    ReportJob[]
+  subscriptions Subscription[]
 
   @@index([tenantId])
 }
@@ -750,6 +910,7 @@ model Payment {
   deletedAt      DateTime?      @map("deleted_at")
   createdBy      String?        @map("created_by") @db.Uuid
   tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  invoices       Invoice[]
 
   @@unique([tenantId, idempotencyKey])
   @@index([tenantId, bizType, bizId])

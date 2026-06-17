@@ -40,6 +40,50 @@ const analyticsPerms = [
   },
 ];
 
+const billingPerms = [
+  { code: 'plan:read', name: '查看套餐', module: 'billing' },
+  { code: 'plan:write', name: '管理套餐', module: 'billing' },
+  { code: 'subscription:read', name: '查看订阅', module: 'billing' },
+  { code: 'subscription:write', name: '管理订阅', module: 'billing' },
+  { code: 'subscription:admin', name: '平台订阅管理', module: 'billing' },
+  { code: 'usage:read', name: '查看用量', module: 'billing' },
+  { code: 'usage:meter', name: '上报用量', module: 'billing' },
+  { code: 'invoice:read', name: '查看账单', module: 'billing' },
+  { code: 'invoice:pay', name: '支付账单', module: 'billing' },
+  { code: 'invoice:run', name: '手动出账', module: 'billing' },
+  { code: 'invoice:admin', name: '平台账单管理', module: 'billing' },
+];
+
+const defaultBillingPlans = [
+  {
+    code: 'BASIC',
+    name: '基础版',
+    monthlyPrice: 9900,
+    quotas: { sms: 300, parcels: -1, stations: 1 },
+    overagePrices: { sms: 10, parcels: 0, stations: 19900 },
+    sort: 10,
+    description: '适合单店起步运营',
+  },
+  {
+    code: 'STANDARD',
+    name: '标准版',
+    monthlyPrice: 29900,
+    quotas: { sms: 1500, parcels: -1, stations: 3 },
+    overagePrices: { sms: 8, parcels: 0, stations: 15900 },
+    sort: 20,
+    description: '适合多员工稳定运营',
+  },
+  {
+    code: 'FLAGSHIP',
+    name: '旗舰版',
+    monthlyPrice: 69900,
+    quotas: { sms: 5000, parcels: -1, stations: 10 },
+    overagePrices: { sms: 6, parcels: 0, stations: 9900 },
+    sort: 30,
+    description: '适合多门店规模化经营',
+  },
+];
+
 const defaultPriceRules = [
   ['SF', '顺丰速运', 900, 500, 12],
   ['YTO', '圆通速递', 600, 300, 48],
@@ -73,12 +117,32 @@ async function main() {
         ...exceptionPerms,
         ...memberReviewPerms,
         ...analyticsPerms,
+        ...billingPerms,
       ];
       for (const perm of perms) {
         await tx.permission.upsert({
           where: { code: perm.code },
-          update: {},
+          update: { name: perm.name, module: perm.module },
           create: perm,
+        });
+      }
+
+      for (const plan of defaultBillingPlans) {
+        await tx.billingPlan.upsert({
+          where: { code: plan.code },
+          update: {
+            name: plan.name,
+            monthlyPrice: plan.monthlyPrice,
+            quotas: plan.quotas,
+            overagePrices: plan.overagePrices,
+            status: 'ACTIVE',
+            sort: plan.sort,
+            description: plan.description,
+          },
+          create: {
+            ...plan,
+            status: 'ACTIVE',
+          },
         });
       }
 
@@ -202,6 +266,12 @@ async function main() {
               ...memberReviewPerms.map((permission) => permission.code),
               'analytics:read',
               'analytics:export',
+              'plan:read',
+              'subscription:read',
+              'subscription:write',
+              'usage:read',
+              'invoice:read',
+              'invoice:pay',
             ],
           },
         },

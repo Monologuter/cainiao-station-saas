@@ -34,15 +34,26 @@ const TENANT_DEFAULT_PERMISSIONS = [
   { code: 'coupon:issue', name: '发放优惠券', module: 'member' },
   { code: 'analytics:read', name: '查看运营大屏', module: 'analytics' },
   { code: 'analytics:export', name: '导出运营报表', module: 'analytics' },
+  { code: 'plan:read', name: '查看套餐', module: 'billing' },
+  { code: 'subscription:read', name: '查看订阅', module: 'billing' },
+  { code: 'subscription:write', name: '管理订阅', module: 'billing' },
+  { code: 'usage:read', name: '查看用量', module: 'billing' },
+  { code: 'invoice:read', name: '查看账单', module: 'billing' },
+  { code: 'invoice:pay', name: '支付账单', module: 'billing' },
 ];
 
-const ANALYTICS_EXTRA_PERMISSIONS = [
+const EXTRA_AVAILABLE_PERMISSIONS = [
   { code: 'analytics:reconcile', name: '手动对账重算', module: 'analytics' },
   {
     code: 'analytics:platform:read',
     name: '查看平台运营总览',
     module: 'analytics',
   },
+  { code: 'plan:write', name: '管理套餐', module: 'billing' },
+  { code: 'subscription:admin', name: '平台订阅管理', module: 'billing' },
+  { code: 'usage:meter', name: '上报用量', module: 'billing' },
+  { code: 'invoice:run', name: '手动出账', module: 'billing' },
+  { code: 'invoice:admin', name: '平台账单管理', module: 'billing' },
 ];
 
 const DEFAULT_PRICE_RULES = [
@@ -96,7 +107,7 @@ export class TenantService {
           create: perm,
         });
       }
-      for (const perm of ANALYTICS_EXTRA_PERMISSIONS) {
+      for (const perm of EXTRA_AVAILABLE_PERMISSIONS) {
         await tx.permission.upsert({
           where: { code: perm.code },
           update: { name: perm.name, module: perm.module },
