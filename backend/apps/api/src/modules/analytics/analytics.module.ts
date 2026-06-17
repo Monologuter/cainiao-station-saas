@@ -17,6 +17,8 @@ import { QueryService } from './query.service';
 import { RankingService } from './ranking.service';
 import { RealtimePublisher } from './realtime.publisher';
 import { ReconcileService } from './reconcile.service';
+import { ReportProcessor } from './report.processor';
+import { ReportService } from './report.service';
 
 @Module({
   controllers: [AnalyticsController, AdminAnalyticsController],
@@ -26,6 +28,8 @@ import { ReconcileService } from './reconcile.service';
     QueryService,
     RankingService,
     ReconcileService,
+    ReportService,
+    ReportProcessor,
     RealtimePublisher,
     ParcelStoredAnalyticsListener,
     ParcelLifecycleAnalyticsListener,

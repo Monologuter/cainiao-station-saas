@@ -3,6 +3,7 @@ import {
   Body,
   Controller,
   Get,
+  Param,
   Post,
   Query,
 } from '@nestjs/common';
@@ -11,6 +12,7 @@ import { CurrentUser, RequirePermission } from '../identity/decorators';
 import { QueryService } from './query.service';
 import { RankingService } from './ranking.service';
 import { ReconcileService } from './reconcile.service';
+import { ReportService } from './report.service';
 
 @Controller('analytics')
 export class AnalyticsController {
@@ -18,6 +20,7 @@ export class AnalyticsController {
     private readonly queries: QueryService,
     private readonly rankings: RankingService,
     private readonly reconcileService: ReconcileService,
+    private readonly reports: ReportService,
   ) {}
 
   @RequirePermission('analytics:read')
@@ -113,6 +116,21 @@ export class AnalyticsController {
       stationId,
       date: this.parseDate(body.date) ?? new Date(),
     });
+  }
+
+  @RequirePermission('analytics:export')
+  @Post('reports')
+  createReport(@CurrentUser() user: any, @Body() body: any) {
+    return this.reports.create(body, {
+      tenantId: user.tenantId,
+      userId: user.userId,
+    });
+  }
+
+  @RequirePermission('analytics:export')
+  @Get('reports/:id')
+  getReport(@CurrentUser() user: any, @Param('id') id: string) {
+    return this.reports.get(user.tenantId, id);
   }
 
   private async requireStationId(tenantId: string, stationId?: string) {
