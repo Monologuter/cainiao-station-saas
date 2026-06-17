@@ -92,6 +92,7 @@ export class OnboardingService {
           stationId: result.stationId,
           ownerUserId: result.ownerUserId,
           ownerUsername: result.ownerUsername,
+          tempPassword: result.tempPassword,
           planCode: result.planCode,
         }),
       );

@@ -240,6 +240,24 @@ async function main() {
           content:
             '【菜鸟驿站】您的包裹已滞留{daysOverdue}天，即将退回，请立即领取。',
         },
+        {
+          code: 'TENANT_APPROVED',
+          channel: 'IN_APP' as const,
+          content:
+            '入驻申请已通过，店长账号 {username}，套餐 {planCode}，请尽快完成首次登录。',
+        },
+        {
+          code: 'TENANT_APPROVED',
+          channel: 'SMS' as const,
+          content:
+            '【菜鸟驿站】入驻已通过，店长账号{username}，初始密码{tempPassword}，请登录后尽快修改。',
+        },
+        {
+          code: 'APPLICATION_REJECTED',
+          channel: 'SMS' as const,
+          content:
+            '【菜鸟驿站】入驻申请未通过，原因：{reason}。请补充材料后重新提交。',
+        },
       ]) {
         const exists = await tx.notifyTemplate.findFirst({
           where: {

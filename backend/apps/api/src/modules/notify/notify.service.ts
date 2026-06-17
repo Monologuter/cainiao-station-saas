@@ -26,6 +26,21 @@ interface ParcelOverdueNotification {
   daysOverdue: number;
 }
 
+interface TenantApprovedNotification {
+  applicationId: string;
+  tenantId: string;
+  stationId?: string;
+  ownerUsername: string;
+  tempPassword?: string;
+  planCode: string;
+}
+
+interface ApplicationRejectedNotification {
+  applicationId: string;
+  contactPhone: string;
+  rejectReason: string;
+}
+
 const OVERDUE_TEMPLATE_BY_LEVEL: Record<1 | 2 | 3, string> = {
   1: 'OVERDUE_REMIND',
   2: 'OVERDUE_URGE',
@@ -121,6 +136,62 @@ export class NotifyService {
         notification.sentAt,
       );
     }
+  }
+
+  async notifyTenantApproved(payload: TenantApprovedNotification) {
+    for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+      const rendered = await this.renderer.render('TENANT_APPROVED', channel, {
+        username: payload.ownerUsername,
+        tempPassword: payload.tempPassword ?? '',
+        planCode: payload.planCode,
+      });
+      const dedupKey = `${payload.applicationId}:TenantApproved:${channel}`;
+
+      const notification = await this.tenantPrisma.withTenant<any>((tx) =>
+        tx.notification.upsert({
+          where: {
+            tenantId_dedupKey: {
+              tenantId: payload.tenantId,
+              dedupKey,
+            },
+          },
+          update: {},
+          create: {
+            tenantId: payload.tenantId,
+            parcelId: null,
+            receiverPhone: payload.ownerUsername,
+            channel,
+            templateCode: 'TENANT_APPROVED',
+            content: rendered.content,
+            status: 'SENT',
+            dedupKey,
+            sentAt: new Date(),
+          },
+        }),
+      );
+      await this.publishSmsSent(
+        channel,
+        {
+          tenantId: payload.tenantId,
+          stationId: payload.stationId ?? '',
+        },
+        dedupKey,
+        notification.sentAt,
+      );
+    }
+  }
+
+  async notifyApplicationRejected(payload: ApplicationRejectedNotification) {
+    const rendered = await this.renderer.render('APPLICATION_REJECTED', 'SMS', {
+      reason: payload.rejectReason,
+    });
+    return [
+      {
+        channel: 'SMS',
+        receiverPhone: payload.contactPhone,
+        content: rendered.content,
+      },
+    ];
   }
 
   private async publishSmsSent(

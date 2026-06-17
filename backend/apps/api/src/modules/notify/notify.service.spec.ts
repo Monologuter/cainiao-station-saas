@@ -163,4 +163,83 @@ describe('NotifyService', () => {
       dedupKey: 'p1:ParcelOverdue:2:IN_APP',
     });
   });
+
+  it('creates tenant-scoped onboarding approval notifications and meters SMS usage', async () => {
+    const upserts: any[] = [];
+    const tx = {
+      notification: {
+        upsert: async (args: any) => {
+          upserts.push(args);
+          return args.create;
+        },
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const renderer = {
+      render: jest.fn(async (code, channel, vars) => ({
+        content: `${code}:${channel}:${vars.username}:${vars.tempPassword}`,
+      })),
+    } as any;
+    const eventBus = { publish: jest.fn() };
+    const service = new NotifyService(tenantPrisma, renderer, eventBus as any);
+
+    await service.notifyTenantApproved({
+      applicationId: 'app-1',
+      tenantId: 'tenant-1',
+      stationId: 'station-1',
+      ownerUsername: '13800000001',
+      tempPassword: 'Cn123456',
+      planCode: 'BASIC',
+    });
+
+    expect(upserts).toHaveLength(2);
+    expect(upserts[0].create).toMatchObject({
+      tenantId: 'tenant-1',
+      receiverPhone: '13800000001',
+      templateCode: 'TENANT_APPROVED',
+      dedupKey: 'app-1:TenantApproved:IN_APP',
+    });
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'SmsNotificationSent',
+        payload: expect.objectContaining({
+          tenantId: 'tenant-1',
+          stationId: 'station-1',
+          usageEventId: 'notify:tenant-1:app-1:TenantApproved:SMS',
+        }),
+      }),
+    );
+  });
+
+  it('renders rejected onboarding notifications without tenant-scoped persistence', async () => {
+    const tx = {
+      notification: {
+        upsert: jest.fn(),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const renderer = {
+      render: jest.fn(async (code, channel, vars) => ({
+        content: `${code}:${channel}:${vars.reason}`,
+      })),
+    } as any;
+    const service = new NotifyService(tenantPrisma, renderer, {
+      publish: jest.fn(),
+    } as any);
+
+    await expect(
+      service.notifyApplicationRejected({
+        applicationId: 'app-2',
+        contactPhone: '13800000002',
+        rejectReason: '证照不清晰',
+      }),
+    ).resolves.toEqual([
+      {
+        channel: 'SMS',
+        receiverPhone: '13800000002',
+        content: 'APPLICATION_REJECTED:SMS:证照不清晰',
+      },
+    ]);
+    expect(tx.notification.upsert).not.toHaveBeenCalled();
+  });
 });

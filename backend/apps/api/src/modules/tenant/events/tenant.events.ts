@@ -4,6 +4,7 @@ export interface TenantApprovedPayload {
   stationId: string;
   ownerUserId: string;
   ownerUsername: string;
+  tempPassword?: string;
   planCode: string;
 }
 
