@@ -29,6 +29,17 @@ const memberReviewPerms = [
   { code: 'coupon:issue', name: '发放优惠券', module: 'member' },
 ];
 
+const analyticsPerms = [
+  { code: 'analytics:read', name: '查看运营大屏', module: 'analytics' },
+  { code: 'analytics:export', name: '导出运营报表', module: 'analytics' },
+  { code: 'analytics:reconcile', name: '手动对账重算', module: 'analytics' },
+  {
+    code: 'analytics:platform:read',
+    name: '查看平台运营总览',
+    module: 'analytics',
+  },
+];
+
 const defaultPriceRules = [
   ['SF', '顺丰速运', 900, 500, 12],
   ['YTO', '圆通速递', 600, 300, 48],
@@ -61,6 +72,7 @@ async function main() {
         ...shippingPerms,
         ...exceptionPerms,
         ...memberReviewPerms,
+        ...analyticsPerms,
       ];
       for (const perm of perms) {
         await tx.permission.upsert({
@@ -188,6 +200,8 @@ async function main() {
               ...shippingPerms.map((permission) => permission.code),
               ...exceptionPerms.map((permission) => permission.code),
               ...memberReviewPerms.map((permission) => permission.code),
+              'analytics:read',
+              'analytics:export',
             ],
           },
         },

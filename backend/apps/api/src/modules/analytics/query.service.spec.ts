@@ -11,6 +11,7 @@ function createQueryService(redisData: any = {}) {
     metricDaily: { findMany: jest.fn() },
     shelf: { findMany: jest.fn() },
     slot: { groupBy: jest.fn() },
+    notification: { count: jest.fn().mockResolvedValue(0) },
   };
   const tenantPrisma = { withTenant: (fn: any) => fn(tx) } as any;
   return { service: new QueryService(tenantPrisma, redis), tx, client };

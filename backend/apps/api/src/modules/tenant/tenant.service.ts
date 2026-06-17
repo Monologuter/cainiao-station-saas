@@ -32,6 +32,17 @@ const TENANT_DEFAULT_PERMISSIONS = [
   { code: 'complaint:handle', name: '处理投诉', module: 'review' },
   { code: 'coupon:manage', name: '管理优惠券', module: 'member' },
   { code: 'coupon:issue', name: '发放优惠券', module: 'member' },
+  { code: 'analytics:read', name: '查看运营大屏', module: 'analytics' },
+  { code: 'analytics:export', name: '导出运营报表', module: 'analytics' },
+];
+
+const ANALYTICS_EXTRA_PERMISSIONS = [
+  { code: 'analytics:reconcile', name: '手动对账重算', module: 'analytics' },
+  {
+    code: 'analytics:platform:read',
+    name: '查看平台运营总览',
+    module: 'analytics',
+  },
 ];
 
 const DEFAULT_PRICE_RULES = [
@@ -79,6 +90,13 @@ export class TenantService {
         },
       });
       for (const perm of TENANT_DEFAULT_PERMISSIONS) {
+        await tx.permission.upsert({
+          where: { code: perm.code },
+          update: { name: perm.name, module: perm.module },
+          create: perm,
+        });
+      }
+      for (const perm of ANALYTICS_EXTRA_PERMISSIONS) {
         await tx.permission.upsert({
           where: { code: perm.code },
           update: { name: perm.name, module: perm.module },

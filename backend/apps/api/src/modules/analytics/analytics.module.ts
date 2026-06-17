@@ -2,7 +2,10 @@ import { Module } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
-import { AnalyticsController } from './analytics.controller';
+import {
+  AdminAnalyticsController,
+  AnalyticsController,
+} from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 import {
   ParcelLifecycleAnalyticsListener,
@@ -16,7 +19,7 @@ import { RealtimePublisher } from './realtime.publisher';
 import { ReconcileService } from './reconcile.service';
 
 @Module({
-  controllers: [AnalyticsController],
+  controllers: [AnalyticsController, AdminAnalyticsController],
   providers: [
     AnalyticsService,
     MetricsService,

@@ -44,10 +44,21 @@ export class QueryService {
       ),
       client.get(analyticsKeys.stored(input.tenantId, input.stationId)),
     ]);
+    const hasHotCounters =
+      Object.keys(counts).length > 0 || storedValue !== null;
+
+    if (!hasHotCounters) {
+      return this.overviewFromDetail(input, date);
+    }
+
+    const [notifyToday, storedFallback] = await Promise.all([
+      this.countNotifications(input, date),
+      storedValue === null ? this.countStored(input) : Promise.resolve(null),
+    ]);
 
     const inbound = Number(counts.inbound ?? 0);
     const pickup = Number(counts.pickup ?? 0);
-    const stored = Number(storedValue ?? 0);
+    const stored = Number(storedValue ?? storedFallback ?? 0);
     const denominator = pickup + stored;
 
     return {
@@ -62,8 +73,23 @@ export class QueryService {
       exceptionCount: Number(counts.exception ?? 0),
       shipPaid: Number(counts.ship_paid ?? 0),
       gmv: Number(counts.ship_gmv ?? 0),
-      notifyToday: 0,
+      notifyToday,
     };
+  }
+
+  async resolveStationId(tenantId: string, stationId?: string) {
+    if (stationId) {
+      return stationId;
+    }
+    const station = await this.tenantPrisma.withTenant<{ id: string } | null>(
+      (tx) =>
+        tx.station.findFirst({
+          where: { tenantId },
+          orderBy: { createdAt: 'asc' },
+          select: { id: true },
+        }),
+    );
+    return station?.id;
   }
 
   async trend(input: TrendInput) {
@@ -132,6 +158,159 @@ export class QueryService {
         }),
       };
     });
+  }
+
+  async platformOverview(date = new Date()) {
+    const dateKey = this.toDateKey(date);
+    const hotCounts = await this.redis
+      .getClient()
+      .hgetall(analyticsKeys.platformCount(dateKey));
+    const { start, end } = this.dayBounds(date);
+
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const [tenants, stations, parcels, shipGmv] = await Promise.all([
+        tx.tenant.count(),
+        tx.station.count(),
+        tx.parcel.count(),
+        tx.shipOrder.aggregate({
+          where: { paidAt: { gte: start, lt: end } },
+          _sum: { quoteAmount: true },
+        }),
+      ]);
+
+      return {
+        tenants,
+        stations,
+        parcels,
+        inbound: Number(hotCounts.inbound ?? 0),
+        pickup: Number(hotCounts.pickup ?? 0),
+        shipPaid: Number(hotCounts.ship_paid ?? 0),
+        gmv: Number(hotCounts.ship_gmv ?? shipGmv._sum.quoteAmount ?? 0),
+      };
+    });
+  }
+
+  private overviewFromDetail(input: OverviewInput, date: Date) {
+    const { start, end } = this.dayBounds(date);
+    const overdueBefore = new Date(date);
+    overdueBefore.setUTCDate(overdueBefore.getUTCDate() - 3);
+
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const [
+        inbound,
+        pickup,
+        stored,
+        overdueCount,
+        exceptionCount,
+        shipPaid,
+        gmv,
+        notifyToday,
+      ] = await Promise.all([
+        tx.parcel.count({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            storedAt: { gte: start, lt: end },
+          },
+        }),
+        tx.parcel.count({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            pickedUpAt: { gte: start, lt: end },
+          },
+        }),
+        tx.parcel.count({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            status: 'STORED',
+          },
+        }),
+        tx.parcel.count({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            status: 'STORED',
+            storedAt: { lt: overdueBefore },
+          },
+        }),
+        tx.parcel.count({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            status: 'EXCEPTION',
+          },
+        }),
+        tx.shipOrder.count({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            paidAt: { gte: start, lt: end },
+          },
+        }),
+        tx.shipOrder.aggregate({
+          where: {
+            tenantId: input.tenantId,
+            stationId: input.stationId,
+            paidAt: { gte: start, lt: end },
+          },
+          _sum: { quoteAmount: true },
+        }),
+        tx.notification.count({
+          where: {
+            tenantId: input.tenantId,
+            createdAt: { gte: start, lt: end },
+          },
+        }),
+      ]);
+      const denominator = pickup + stored;
+      return {
+        inbound,
+        pickup,
+        stored,
+        inboundToday: inbound,
+        pickedToday: pickup,
+        inStock: stored,
+        pickupRate: denominator ? Math.round((pickup / denominator) * 100) : 0,
+        overdueCount,
+        exceptionCount,
+        shipPaid,
+        gmv: Number(gmv._sum.quoteAmount ?? 0),
+        notifyToday,
+      };
+    });
+  }
+
+  private countNotifications(input: OverviewInput, date: Date) {
+    const { start, end } = this.dayBounds(date);
+    return this.tenantPrisma.withTenant((tx) =>
+      tx.notification.count({
+        where: {
+          tenantId: input.tenantId,
+          createdAt: { gte: start, lt: end },
+        },
+      }),
+    );
+  }
+
+  private countStored(input: OverviewInput) {
+    return this.tenantPrisma.withTenant((tx) =>
+      tx.parcel.count({
+        where: {
+          tenantId: input.tenantId,
+          stationId: input.stationId,
+          status: 'STORED',
+        },
+      }),
+    );
+  }
+
+  private dayBounds(date: Date) {
+    const start = this.dateOnly(date);
+    const end = new Date(start);
+    end.setUTCDate(end.getUTCDate() + 1);
+    return { start, end };
   }
 
   private dateOnly(value: Date) {
