@@ -16,6 +16,7 @@ import { MemberModule } from './modules/member/member.module';
 import { NotifyModule } from './modules/notify/notify.module';
 import { ParcelModule } from './modules/parcel/parcel.module';
 import { PickupModule } from './modules/pickup/pickup.module';
+import { ShippingModule } from './modules/shipping/shipping.module';
 import { StationModule } from './modules/station/station.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 
@@ -30,6 +31,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     NotifyModule,
     ParcelModule,
     PickupModule,
+    ShippingModule,
     StationModule,
     TenantModule,
   ],

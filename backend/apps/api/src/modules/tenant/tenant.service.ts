@@ -9,6 +9,34 @@ interface CreateTenantInput {
   ownerPassword: string;
 }
 
+const TENANT_DEFAULT_PERMISSIONS = [
+  { code: 'station:manage', name: '货架库位管理', module: 'station' },
+  { code: 'station:read', name: '查看门店货架库位', module: 'station' },
+  { code: 'parcel:inbound', name: '入库', module: 'parcel' },
+  { code: 'parcel:pickup', name: '取件核销', module: 'parcel' },
+  { code: 'parcel:read', name: '查看包裹通知', module: 'parcel' },
+  { code: 'shipping:quote', name: '寄件报价', module: 'shipping' },
+  { code: 'shipping:create', name: '创建寄件单', module: 'shipping' },
+  { code: 'shipping:read', name: '查看寄件单', module: 'shipping' },
+  { code: 'shipping:pay', name: '寄件支付', module: 'shipping' },
+  { code: 'shipping:collect', name: '寄件揽收', module: 'shipping' },
+  { code: 'shipping:cancel', name: '取消寄件单', module: 'shipping' },
+];
+
+const DEFAULT_PRICE_RULES = [
+  ['SF', '顺丰速运', 900, 500, 12],
+  ['YTO', '圆通速递', 600, 300, 48],
+  ['ZTO', '中通快递', 650, 280, 36],
+  ['STO', '申通快递', 580, 260, 60],
+] as const;
+
+const ZONES = [
+  ['SAME_CITY', 1.0],
+  ['SAME_PROVINCE', 1.1],
+  ['CROSS_PROVINCE', 1.3],
+  ['REMOTE', 1.6],
+] as const;
+
 @Injectable()
 export class TenantService {
   constructor(private readonly prisma: PrismaService) {}
@@ -39,16 +67,17 @@ export class TenantService {
           isBuiltin: true,
         },
       });
+      for (const perm of TENANT_DEFAULT_PERMISSIONS) {
+        await tx.permission.upsert({
+          where: { code: perm.code },
+          update: { name: perm.name, module: perm.module },
+          create: perm,
+        });
+      }
       const ownerPerms = await tx.permission.findMany({
         where: {
           code: {
-            in: [
-              'station:manage',
-              'station:read',
-              'parcel:inbound',
-              'parcel:pickup',
-              'parcel:read',
-            ],
+            in: TENANT_DEFAULT_PERMISSIONS.map((permission) => permission.code),
           },
         },
       });
@@ -73,6 +102,9 @@ export class TenantService {
       await tx.userRole.create({
         data: { userId: user.id, roleId: ownerRole.id },
       });
+      await tx.priceRule.createMany({
+        data: this.defaultPriceRules(tenant.id),
+      });
 
       return {
         tenantId: tenant.id,
@@ -80,5 +112,25 @@ export class TenantService {
         ownerUserId: user.id,
       };
     });
+  }
+
+  private defaultPriceRules(tenantId: string) {
+    return DEFAULT_PRICE_RULES.flatMap(
+      ([courierCode, courierName, firstPrice, addPrice, estHours]) =>
+        ZONES.map(([zone, zoneFactor], index) => ({
+          tenantId,
+          courierCode,
+          courierName,
+          zone,
+          firstWeightGram: 1000,
+          firstPrice,
+          addUnitGram: 1000,
+          addPrice,
+          zoneFactor,
+          estHours: estHours + index * 12,
+          enabled: true,
+          priority: 0,
+        })),
+    );
   }
 }

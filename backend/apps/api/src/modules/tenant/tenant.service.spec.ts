@@ -13,12 +13,18 @@ describe('TenantService.createTenant', () => {
           (created.station = { id: 's1', ...data }),
       },
       role: { create: async ({ data }: any) => ({ id: 'r1', ...data }) },
-      permission: { findMany: async () => [{ id: 'p1' }, { id: 'p2' }] },
+      permission: {
+        upsert: async ({ create }: any) => create,
+        findMany: async () => [{ id: 'p1' }, { id: 'p2' }],
+      },
       rolePermission: { createMany: async () => ({ count: 2 }) },
       user: {
         create: async ({ data }: any) => (created.user = { id: 'u1', ...data }),
       },
       userRole: { create: async () => ({}) },
+      priceRule: {
+        createMany: async ({ data }: any) => ({ count: data.length }),
+      },
       $executeRawUnsafe: jest.fn(),
     };
     const prisma = { $transaction: async (fn: any) => fn(tx) } as any;

@@ -3,6 +3,29 @@ import * as argon2 from 'argon2';
 
 const prisma = new PrismaClient();
 
+const shippingPerms = [
+  { code: 'shipping:quote', name: '寄件报价', module: 'shipping' },
+  { code: 'shipping:create', name: '创建寄件单', module: 'shipping' },
+  { code: 'shipping:read', name: '查看寄件单', module: 'shipping' },
+  { code: 'shipping:pay', name: '寄件支付', module: 'shipping' },
+  { code: 'shipping:collect', name: '寄件揽收', module: 'shipping' },
+  { code: 'shipping:cancel', name: '取消寄件单', module: 'shipping' },
+];
+
+const defaultPriceRules = [
+  ['SF', '顺丰速运', 900, 500, 12],
+  ['YTO', '圆通速递', 600, 300, 48],
+  ['ZTO', '中通快递', 650, 280, 36],
+  ['STO', '申通快递', 580, 260, 60],
+] as const;
+
+const zones = [
+  ['SAME_CITY', 1.0],
+  ['SAME_PROVINCE', 1.1],
+  ['CROSS_PROVINCE', 1.3],
+  ['REMOTE', 1.6],
+] as const;
+
 async function main() {
   await prisma.$transaction(async (tx) => {
     await tx.$executeRawUnsafe(
@@ -17,6 +40,7 @@ async function main() {
       { code: 'parcel:inbound', name: '入库', module: 'parcel' },
       { code: 'parcel:pickup', name: '取件核销', module: 'parcel' },
       { code: 'parcel:read', name: '查看包裹通知', module: 'parcel' },
+      ...shippingPerms,
     ];
     for (const perm of perms) {
       await tx.permission.upsert({
@@ -100,6 +124,7 @@ async function main() {
             'parcel:inbound',
             'parcel:pickup',
             'parcel:read',
+            ...shippingPerms.map((permission) => permission.code),
           ],
         },
       },
@@ -121,7 +146,36 @@ async function main() {
         });
       }
     }
-  });
+
+    const tenants = await tx.tenant.findMany({ select: { id: true } });
+    for (const tenant of tenants) {
+      const hasAnyRule = await tx.priceRule.findFirst({
+        where: { tenantId: tenant.id },
+      });
+      if (hasAnyRule) {
+        continue;
+      }
+      await tx.priceRule.createMany({
+        data: defaultPriceRules.flatMap(
+          ([courierCode, courierName, firstPrice, addPrice, estHours]) =>
+            zones.map(([zone, zoneFactor]) => ({
+              tenantId: tenant.id,
+              courierCode,
+              courierName,
+              zone,
+              firstWeightGram: 1000,
+              firstPrice,
+              addUnitGram: 1000,
+              addPrice,
+              zoneFactor,
+              estHours,
+              enabled: true,
+              priority: 0,
+            })),
+        ),
+      });
+    }
+  }, { timeout: 30000 });
 
   console.log('seed done: platform admin = admin / admin123456');
 }
