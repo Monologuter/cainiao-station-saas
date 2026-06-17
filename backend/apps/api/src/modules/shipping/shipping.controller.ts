@@ -61,6 +61,12 @@ export class ShippingController {
   }
 
   @RequirePermission('shipping:read')
+  @Get('orders/:id/tracks')
+  getTracks(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.logistics.getTracks(id, user);
+  }
+
+  @RequirePermission('shipping:read')
   @Get('orders/:id')
   getOrder(@Param('id') id: string, @CurrentUser() user: any) {
     return this.shipping.getOrder(id, user);

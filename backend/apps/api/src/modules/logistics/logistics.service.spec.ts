@@ -86,6 +86,59 @@ describe('LogisticsService', () => {
       code: ApiCode.SHIPPING_ILLEGAL_TRANSITION,
     });
   });
+
+  it('materializes mock track nodes and moves order to DELIVERED', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'COLLECTED',
+        waybillNo: 'MOCK001',
+      },
+      tracks: [
+        {
+          id: 'tr1',
+          shipOrderId: 'so1',
+          waybillNo: 'MOCK001',
+          seq: 1,
+          nodeStatus: 'COLLECTED',
+        },
+      ],
+    };
+    const provider = {
+      pollTracks: jest.fn().mockResolvedValue([
+        {
+          nodeStatus: 'IN_TRANSIT',
+          location: '杭州转运中心',
+          description: '【运输中】快件离开始发城市',
+          happenedAt: new Date('2026-06-18T08:00:00Z'),
+        },
+        {
+          nodeStatus: 'DELIVERED',
+          location: '深圳南山',
+          description: '【签收】快件已签收',
+          happenedAt: new Date('2026-06-18T18:00:00Z'),
+        },
+      ]),
+    };
+    const service = new LogisticsService(
+      { withTenant: jest.fn(async (fn) => fn(makeTx(state))) } as any,
+      provider as any,
+    );
+
+    const tracks = await TenantContext.run(
+      { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+      () => service.getTracks('so1'),
+    );
+
+    expect(tracks.map((track: any) => track.nodeStatus)).toEqual([
+      'COLLECTED',
+      'IN_TRANSIT',
+      'DELIVERED',
+    ]);
+    expect(state.order.status).toBe('DELIVERED');
+    expect(state.order.deliveredAt).toEqual(new Date('2026-06-18T18:00:00Z'));
+  });
 });
 
 function makeTx(state: any) {
@@ -108,6 +161,9 @@ function makeTx(state: any) {
       }),
     },
     logisticsTrack: {
+      findMany: jest.fn(async () =>
+        [...state.tracks].sort((a, b) => a.seq - b.seq),
+      ),
       create: jest.fn(async ({ data }) => {
         const track = { id: 'tr1', ...data };
         state.tracks.push(track);

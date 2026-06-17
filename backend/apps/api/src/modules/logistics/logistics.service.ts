@@ -79,6 +79,57 @@ export class LogisticsService {
     });
   }
 
+  async getTracks(orderId: string, user?: RequestUser) {
+    const ctx = this.requireContext(user);
+
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const order = await tx.shipOrder.findFirst({
+        where: { id: orderId, tenantId: ctx.tenantId, deletedAt: null },
+      });
+      if (!order) {
+        throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
+      }
+
+      let tracks = await tx.logisticsTrack.findMany({
+        where: { tenantId: ctx.tenantId, shipOrderId: order.id },
+        orderBy: { seq: 'asc' },
+      });
+
+      if (
+        order.waybillNo &&
+        (order.status === 'COLLECTED' || order.status === 'IN_TRANSIT')
+      ) {
+        const visibleNodes = await this.provider.pollTracks(order.waybillNo);
+        const materializedNodes = Math.max(tracks.length - 1, 0);
+        const missing = visibleNodes.slice(materializedNodes);
+        let nextSeq = tracks.length + 1;
+        for (const node of missing) {
+          await tx.logisticsTrack.create({
+            data: {
+              tenantId: ctx.tenantId,
+              shipOrderId: order.id,
+              waybillNo: order.waybillNo,
+              seq: nextSeq++,
+              nodeStatus: node.nodeStatus,
+              location: node.location,
+              description: node.description,
+              happenedAt: node.happenedAt,
+              source: 'MOCK',
+            },
+          });
+        }
+
+        tracks = await tx.logisticsTrack.findMany({
+          where: { tenantId: ctx.tenantId, shipOrderId: order.id },
+          orderBy: { seq: 'asc' },
+        });
+        await this.syncOrderStatus(tx, order, tracks);
+      }
+
+      return tracks;
+    });
+  }
+
   private requireContext(user?: RequestUser) {
     if (user?.tenantId) {
       return {
@@ -93,5 +144,52 @@ export class LogisticsService {
       throw new BizError(ApiCode.UNAUTHORIZED, '缺少租户上下文');
     }
     return ctx;
+  }
+
+  private async syncOrderStatus(tx: any, order: any, tracks: any[]) {
+    const latest = tracks[tracks.length - 1];
+    if (!latest) {
+      return;
+    }
+    if (latest.nodeStatus === 'DELIVERED' && order.status !== 'DELIVERED') {
+      if (order.status === 'COLLECTED') {
+        ShipOrderAggregate.assertTransit(
+          order.status as ShipOrderStatus,
+          'IN_TRANSIT',
+        );
+        order.status = 'IN_TRANSIT';
+      }
+      ShipOrderAggregate.assertTransit(
+        order.status as ShipOrderStatus,
+        'DELIVERED',
+      );
+      await tx.shipOrder.update({
+        where: { id: order.id },
+        data: {
+          status: 'DELIVERED',
+          deliveredAt: latest.happenedAt,
+          version: { increment: 1 },
+        },
+      });
+      order.status = 'DELIVERED';
+      order.deliveredAt = latest.happenedAt;
+      return;
+    }
+    if (
+      ['IN_TRANSIT', 'ARRIVED', 'OUT_FOR_DELIVERY'].includes(
+        latest.nodeStatus,
+      ) &&
+      order.status === 'COLLECTED'
+    ) {
+      ShipOrderAggregate.assertTransit(
+        order.status as ShipOrderStatus,
+        'IN_TRANSIT',
+      );
+      await tx.shipOrder.update({
+        where: { id: order.id },
+        data: { status: 'IN_TRANSIT', version: { increment: 1 } },
+      });
+      order.status = 'IN_TRANSIT';
+    }
   }
 }
