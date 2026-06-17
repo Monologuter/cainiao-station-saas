@@ -10,13 +10,19 @@ import {
   ShipOrderAnalyticsListener,
 } from './listeners/analytics.listeners';
 import { MetricsService } from './metrics.service';
+import { QueryService } from './query.service';
+import { RankingService } from './ranking.service';
 import { RealtimePublisher } from './realtime.publisher';
+import { ReconcileService } from './reconcile.service';
 
 @Module({
   controllers: [AnalyticsController],
   providers: [
     AnalyticsService,
     MetricsService,
+    QueryService,
+    RankingService,
+    ReconcileService,
     RealtimePublisher,
     ParcelStoredAnalyticsListener,
     ParcelLifecycleAnalyticsListener,
