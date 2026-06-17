@@ -11,6 +11,7 @@ import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
 import { BillingModule } from './modules/billing/billing.module';
+import { AdminConfigModule } from './modules/config/admin-config.module';
 import { ExceptionModule } from './modules/exceptions/exception.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
@@ -32,6 +33,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     AnalyticsModule,
     AuditModule,
     BillingModule,
+    AdminConfigModule,
     ExceptionModule,
     IdentityModule,
     InboundModule,
