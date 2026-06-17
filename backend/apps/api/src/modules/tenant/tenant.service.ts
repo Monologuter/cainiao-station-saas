@@ -25,6 +25,13 @@ const TENANT_DEFAULT_PERMISSIONS = [
   { code: 'exception:read', name: '查看异常件', module: 'exception' },
   { code: 'exception:handle', name: '处理异常件', module: 'exception' },
   { code: 'parcel:overdue:scan', name: '手动滞留扫描', module: 'parcel' },
+  { code: 'review:read', name: '查看评价', module: 'review' },
+  { code: 'review:reply', name: '回复评价', module: 'review' },
+  { code: 'review:manage', name: '管理评价', module: 'review' },
+  { code: 'complaint:read', name: '查看投诉', module: 'review' },
+  { code: 'complaint:handle', name: '处理投诉', module: 'review' },
+  { code: 'coupon:manage', name: '管理优惠券', module: 'member' },
+  { code: 'coupon:issue', name: '发放优惠券', module: 'member' },
 ];
 
 const DEFAULT_PRICE_RULES = [

@@ -184,6 +184,12 @@ export class MemberService {
     }
   }
 
+  async requireMember(authHeader?: string) {
+    const consumer = await this.requireConsumer(authHeader);
+    const member = await this.ensureMember(consumer.sub, consumer.phone);
+    return { consumer, member };
+  }
+
   private extractBearer(authHeader?: string) {
     const match = authHeader?.match(/^Bearer\s+(.+)$/i);
     return match?.[1];

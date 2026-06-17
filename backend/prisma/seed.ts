@@ -19,6 +19,16 @@ const exceptionPerms = [
   { code: 'parcel:overdue:scan', name: '手动滞留扫描', module: 'parcel' },
 ];
 
+const memberReviewPerms = [
+  { code: 'review:read', name: '查看评价', module: 'review' },
+  { code: 'review:reply', name: '回复评价', module: 'review' },
+  { code: 'review:manage', name: '管理评价', module: 'review' },
+  { code: 'complaint:read', name: '查看投诉', module: 'review' },
+  { code: 'complaint:handle', name: '处理投诉', module: 'review' },
+  { code: 'coupon:manage', name: '管理优惠券', module: 'member' },
+  { code: 'coupon:issue', name: '发放优惠券', module: 'member' },
+];
+
 const defaultPriceRules = [
   ['SF', '顺丰速运', 900, 500, 12],
   ['YTO', '圆通速递', 600, 300, 48],
@@ -50,6 +60,7 @@ async function main() {
         { code: 'parcel:read', name: '查看包裹通知', module: 'parcel' },
         ...shippingPerms,
         ...exceptionPerms,
+        ...memberReviewPerms,
       ];
       for (const perm of perms) {
         await tx.permission.upsert({
@@ -176,6 +187,7 @@ async function main() {
               'parcel:read',
               ...shippingPerms.map((permission) => permission.code),
               ...exceptionPerms.map((permission) => permission.code),
+              ...memberReviewPerms.map((permission) => permission.code),
             ],
           },
         },

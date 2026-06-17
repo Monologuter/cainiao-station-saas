@@ -22,6 +22,11 @@ interface VerifyCouponInput {
   idempotencyKey: string;
 }
 
+interface CouponTemplateQuery {
+  tenantId?: string;
+  scene?: 'PICKUP' | 'SHIP' | 'ALL';
+}
+
 @Injectable()
 export class CouponService {
   constructor(
@@ -48,6 +53,39 @@ export class CouponService {
         },
       }),
     );
+  }
+
+  listTemplates(query: CouponTemplateQuery = {}) {
+    return this.withBypass(async (tx) => {
+      const where: any = { status: 'ACTIVE', deletedAt: null };
+      if (query.tenantId) {
+        where.tenantId = query.tenantId;
+      }
+      if (query.scene) {
+        where.scene = {
+          in: query.scene === 'ALL' ? ['ALL'] : [query.scene, 'ALL'],
+        };
+      }
+      const list = await tx.couponTemplate.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      });
+      return { list, total: list.length, page: 1, size: list.length };
+    });
+  }
+
+  listMemberCoupons(memberId: string, status?: string) {
+    return this.withBypass(async (tx) => {
+      const list = await tx.coupon.findMany({
+        where: {
+          memberId,
+          status,
+        },
+        include: { template: true },
+        orderBy: { createdAt: 'desc' },
+      });
+      return { list, total: list.length, page: 1, size: list.length };
+    });
   }
 
   async redeemByPoints(memberId: string, templateId: string) {
@@ -126,6 +164,76 @@ export class CouponService {
           usedAt: new Date(),
         },
       });
+    });
+  }
+
+  async verifyForMember(
+    memberId: string,
+    id: string,
+    input: VerifyCouponInput,
+  ) {
+    return this.withBypass(async (tx) => {
+      const coupon = await tx.coupon.findFirstOrThrow({
+        where: { id, memberId },
+      });
+      if (
+        coupon.status === 'USED' &&
+        coupon.usedRefType === input.usedRefType &&
+        coupon.usedRefId === input.usedRefId
+      ) {
+        return coupon;
+      }
+      if (coupon.status !== 'UNUSED') {
+        throw new BizError(ApiCode.BAD_REQUEST, '券不可核销');
+      }
+      if (coupon.expireAt.getTime() < Date.now()) {
+        throw new BizError(ApiCode.BAD_REQUEST, '券已过期');
+      }
+      return tx.coupon.update({
+        where: { id },
+        data: {
+          status: 'USED',
+          usedRefType: input.usedRefType,
+          usedRefId: input.usedRefId,
+          usedAt: new Date(),
+        },
+      });
+    });
+  }
+
+  async issue(tenantId: string, templateId: string, memberIds: string[]) {
+    const template: any = await this.withBypass((tx) =>
+      tx.couponTemplate.findFirstOrThrow({
+        where: { id: templateId, tenantId },
+      }),
+    );
+    if (template.status !== 'ACTIVE') {
+      throw new BizError(ApiCode.BAD_REQUEST, '券模板不可用');
+    }
+    if (
+      template.totalStock !== null &&
+      template.issuedCount + memberIds.length > template.totalStock
+    ) {
+      throw new BizError(ApiCode.BAD_REQUEST, '券库存不足');
+    }
+
+    return this.withBypass(async (tx) => {
+      await tx.couponTemplate.update({
+        where: { id: templateId },
+        data: { issuedCount: { increment: memberIds.length } },
+      });
+      await tx.coupon.createMany({
+        data: memberIds.map((memberId) => ({
+          tenantId,
+          templateId,
+          memberId,
+          code: this.nextCode(),
+          status: 'UNUSED',
+          obtainedVia: 'ISSUE',
+          expireAt: this.daysFromNow(template.validDays),
+        })),
+      });
+      return memberIds.length;
     });
   }
 

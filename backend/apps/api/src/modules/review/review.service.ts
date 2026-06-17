@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { ApiCode, BizError } from '../../core/http/api-code';
+import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 
@@ -34,7 +35,10 @@ interface HandleComplaintInput {
 
 @Injectable()
 export class ReviewService {
-  constructor(private readonly tenantPrisma: TenantPrismaService) {}
+  constructor(
+    private readonly tenantPrisma: TenantPrismaService,
+    private readonly prisma?: PrismaService,
+  ) {}
 
   async submit(memberId: string, input: SubmitReviewInput) {
     this.assertRating(input.rating);
@@ -101,6 +105,57 @@ export class ReviewService {
       const [total, list] = await Promise.all([
         tx.review.count({ where }),
         tx.review.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * size,
+          take: size,
+        }),
+      ]);
+      return { list, total, page, size };
+    });
+  }
+
+  listMine(memberId: string, type: 'review' | 'complaint') {
+    return this.withBypass(async (tx) => {
+      if (type === 'review') {
+        const list = await tx.review.findMany({
+          where: { memberId, deletedAt: null },
+          orderBy: { createdAt: 'desc' },
+        });
+        return { list, total: list.length, page: 1, size: list.length };
+      }
+
+      const list = await tx.complaint.findMany({
+        where: { memberId, deletedAt: null },
+        orderBy: { createdAt: 'desc' },
+      });
+      return { list, total: list.length, page: 1, size: list.length };
+    });
+  }
+
+  listComplaints(
+    tenantId: string,
+    query: {
+      stationId?: string;
+      status?: string;
+      page?: string | number;
+      size?: string | number;
+    } = {},
+  ) {
+    const page = this.parsePositiveInt(query.page, 1);
+    const size = Math.min(this.parsePositiveInt(query.size, 20), 100);
+    const where: any = { tenantId };
+    if (query.stationId) {
+      where.stationId = query.stationId;
+    }
+    if (query.status) {
+      where.status = query.status;
+    }
+
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const [total, list] = await Promise.all([
+        tx.complaint.count({ where }),
+        tx.complaint.findMany({
           where,
           orderBy: { createdAt: 'desc' },
           skip: (page - 1) * size,
@@ -230,5 +285,17 @@ export class ReviewService {
   ) {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private async withBypass<T>(fn: (tx: any) => Promise<T>) {
+    if (!this.prisma) {
+      return this.tenantPrisma.withTenant(fn);
+    }
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return fn(tx);
+    });
   }
 }
