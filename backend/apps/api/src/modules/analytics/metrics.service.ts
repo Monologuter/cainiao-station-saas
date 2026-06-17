@@ -17,6 +17,20 @@ export interface AdjustStoredInput {
   delta: 1 | -1;
 }
 
+export interface OverdueCandidateInput {
+  tenantId: string;
+  stationId: string;
+  parcelId: string;
+  at: Date;
+}
+
+export interface HeatInput {
+  tenantId: string;
+  stationId: string;
+  shelfCode: string;
+  delta: 1 | -1;
+}
+
 @Injectable()
 export class MetricsService {
   constructor(private readonly redis: RedisService) {}
@@ -58,6 +72,44 @@ export class MetricsService {
         analyticsKeys.stored(input.tenantId, input.stationId),
         input.delta,
       );
+  }
+
+  addOverdueCandidate(input: OverdueCandidateInput) {
+    return this.redis
+      .getClient()
+      .zadd(
+        analyticsKeys.overdueRank(input.tenantId, input.stationId),
+        input.at.getTime(),
+        input.parcelId,
+      );
+  }
+
+  removeOverdueCandidate(input: Omit<OverdueCandidateInput, 'at'>) {
+    return this.redis
+      .getClient()
+      .zrem(
+        analyticsKeys.overdueRank(input.tenantId, input.stationId),
+        input.parcelId,
+      );
+  }
+
+  adjustHeat(input: HeatInput) {
+    return this.redis
+      .getClient()
+      .hincrby(
+        analyticsKeys.heat(input.tenantId, input.stationId),
+        input.shelfCode,
+        input.delta,
+      );
+  }
+
+  adjustHeatBySlotId(_input: {
+    tenantId: string;
+    stationId: string;
+    slotId?: string | null;
+    delta: 1 | -1;
+  }) {
+    return Promise.resolve(0);
   }
 
   private toDateKey(date: Date) {
