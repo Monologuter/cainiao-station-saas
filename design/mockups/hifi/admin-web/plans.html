@@ -1,0 +1,472 @@
+<!-- @dsCard group="admin-web" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>套餐配置 · 平台运营后台</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题 · 全屏平铺）
+   所有页面内联本文件内容到 <style>，保证视觉一致。
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100vh}
+body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;font-size:14px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.link{color:var(--primary);font-weight:600;cursor:pointer}
+
+/* ---------- 全屏平铺布局 ---------- */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--side-line);padding:16px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px}
+.brand .logo{width:38px;height:38px;border-radius:11px;background:var(--primary);color:#fff;display:grid;place-items:center}
+.brand b{font-size:16px;font-weight:700}.brand span{font-size:11px;color:var(--side-mut)}
+.nav{display:flex;flex-direction:column;gap:2px;overflow:auto}
+.nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--side-mut);font-size:13.5px;font-weight:500;cursor:pointer;transition:.18s}
+.nav a:hover{background:var(--surface-2);color:var(--side-fg)}
+.nav a.on{background:var(--side-on-bg);color:var(--side-on-fg);font-weight:600}
+.nav a svg{width:18px;height:18px}
+.nav a .badge{margin-left:auto;font-size:11px;font-weight:700;background:var(--danger);color:#fff;border-radius:20px;padding:1px 7px}
+.nav .grp{font-size:10.5px;color:var(--side-mut);padding:14px 12px 6px;font-weight:700;letter-spacing:.05em}
+.side-foot{margin-top:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;display:flex;align-items:center;gap:9px;cursor:pointer}
+.side-foot .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.side-foot b{font-size:13px;font-weight:600}.side-foot span{font-size:11px;color:var(--muted)}
+.main{padding:20px 26px;min-width:0}
+
+/* ---------- 顶栏 ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:16px}
+.top h1{font-size:21px;font-weight:700;letter-spacing:-.01em}
+.top .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.top-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius-sm);color:var(--muted);font-size:13px;min-width:220px}
+.ibtn{width:38px;height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;position:relative;color:var(--muted)}
+.ibtn .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.avatar{height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px 0 6px;cursor:pointer}
+.avatar i{width:28px;height:28px;border-radius:7px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;font-style:normal}
+.avatar b{font-size:13px;font-weight:600}
+
+/* ---------- 页头 / 工具条 ---------- */
+.page-hd{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;gap:16px}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.page-hd h1{font-size:20px;font-weight:700}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+
+/* ---------- 按钮 ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s;white-space:nowrap}
+.btn:hover{border-color:#D6DBE4;background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-accent:hover{filter:brightness(.96)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-lg{height:44px;padding:0 20px;font-size:14.5px}
+.btn-sm{height:30px;padding:0 11px;font-size:12.5px}
+
+/* ---------- 表单 ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12.5px;font-weight:600;color:var(--text)}
+.field label .req{color:var(--danger);margin-left:2px}
+.input,.select,textarea.input{height:38px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-size:13.5px;font-family:var(--font);color:var(--text);background:var(--surface);outline:none;transition:.18s;width:100%}
+textarea.input{height:auto;padding:10px 12px;resize:vertical}
+.input:focus,.select:focus,textarea.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.input::placeholder{color:#A7AFBC}
+.select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.switch{width:40px;height:22px;border-radius:20px;background:#CBD5E1;position:relative;cursor:pointer;transition:.2s}
+.switch.on{background:var(--primary)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on::after{left:20px}
+
+/* ---------- 卡片 / KPI ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card>.hd{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)}
+.card>.hd h2{font-size:15px;font-weight:600}
+.card>.bd{padding:18px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.kpi .lab{font-size:12.5px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+.kpi .lab i{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.kpi .lab i svg{width:15px;height:15px}
+.kpi .num{font-size:28px;font-weight:700;margin-top:10px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi .delta{font-size:11.5px;margin-top:4px;color:var(--ok);font-weight:600}
+
+/* ---------- 表格 ---------- */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:12px 18px;background:var(--surface-2);white-space:nowrap}
+tbody td{padding:13px 18px;font-size:13px;border-top:1px solid var(--border-2);font-variant-numeric:tabular-nums}
+tbody tr:hover{background:var(--surface-2)}
+.code{font-weight:700;color:var(--primary)}
+.op{color:var(--primary);font-weight:600;font-size:12.5px;cursor:pointer}
+.op+.op{margin-left:14px}
+.op.danger{color:var(--danger)}
+
+/* ---------- 标签 / 徽章 ---------- */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.blue{background:var(--primary-soft);color:var(--primary)}
+.tag.green{background:var(--ok-soft);color:var(--ok)}
+.tag.red{background:var(--danger-soft);color:var(--danger)}
+.tag.amber{background:var(--warn-soft);color:var(--warn)}
+.tag.gray{background:#F1F5F9;color:#64748B}
+.tag.purple{background:var(--purple-soft);color:var(--purple)}
+
+/* ---------- 标签页 / 分页 ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs .tab{padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs .tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:14px 18px}
+.pager .pg{min-width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;font-size:13px;cursor:pointer;background:var(--surface)}
+.pager .pg.on{background:var(--primary);border-color:var(--primary);color:#fff}
+
+/* ---------- 进度条 / 弹窗 / 抽屉 ---------- */
+.progress{height:6px;border-radius:6px;background:#EAEEF3;overflow:hidden}
+.progress span{display:block;height:100%;background:var(--primary);border-radius:6px}
+.mask{position:fixed;inset:0;background:rgba(15,23,42,.4);display:grid;place-items:center;z-index:50}
+.modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:560px;max-width:92vw;overflow:hidden}
+.modal>.hd{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.modal>.hd h3{font-size:16px;font-weight:700}
+.modal>.bd{padding:22px}
+.modal>.ft{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--border);background:var(--surface-2)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:94vw;background:var(--surface);box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column}
+
+/* ---------- 空状态 ---------- */
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:48px;color:var(--muted)}
+.empty svg{width:40px;height:40px;opacity:.5}
+
+/* ===========================================================
+   本页特有样式 · 套餐配置
+   =========================================================== */
+.plan-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:18px;margin-bottom:22px}
+.plan{position:relative;background:var(--surface);border:1px solid var(--border);border-radius:var(--radius-lg);box-shadow:var(--shadow);display:flex;flex-direction:column;overflow:hidden;transition:.18s}
+.plan:hover{box-shadow:var(--shadow-lg);border-color:#D6DBE4}
+.plan.hot{border:1.5px solid var(--primary);box-shadow:0 14px 34px rgba(59,110,246,.16)}
+.plan .ribbon{position:absolute;top:16px;right:-34px;transform:rotate(45deg);background:var(--primary);color:#fff;font-size:11px;font-weight:700;letter-spacing:.04em;padding:5px 40px;box-shadow:0 2px 6px rgba(37,87,230,.3)}
+.plan-hd{padding:22px 22px 18px;border-bottom:1px solid var(--border-2)}
+.plan.hot .plan-hd{background:linear-gradient(180deg,#F4F8FF 0%,#fff 100%)}
+.plan-name{display:flex;align-items:center;gap:10px;font-size:17px;font-weight:700}
+.plan-name .ic{width:36px;height:36px;border-radius:10px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.plan-name .ic svg{width:19px;height:19px}
+.plan.tier-2 .plan-name .ic{background:var(--info-soft);color:var(--info)}
+.plan.tier-3 .plan-name .ic{background:var(--purple-soft);color:var(--purple)}
+.plan-desc{font-size:12.5px;color:var(--muted);margin-top:8px;line-height:1.5}
+.plan-price{display:flex;align-items:baseline;gap:3px;margin-top:16px}
+.plan-price .cur{font-size:18px;font-weight:700;color:var(--text)}
+.plan-price .amt{font-size:38px;font-weight:700;letter-spacing:-.02em;font-variant-numeric:tabular-nums;line-height:1}
+.plan-price .per{font-size:13px;color:var(--muted);font-weight:500}
+.plan-sub{display:flex;align-items:center;gap:7px;margin-top:14px;font-size:12.5px;color:var(--muted)}
+.plan-sub b{color:var(--text);font-weight:700;font-variant-numeric:tabular-nums}
+.plan-sub .pill{display:inline-flex;align-items:center;gap:5px;background:var(--ok-soft);color:var(--ok);font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.plan-sub .pill svg{width:12px;height:12px}
+
+.quota{padding:18px 22px;border-bottom:1px solid var(--border-2)}
+.quota .qt{font-size:11px;font-weight:700;color:var(--side-mut);letter-spacing:.06em;margin-bottom:12px}
+.quota .qrow{display:flex;align-items:center;justify-content:space-between;padding:7px 0;font-size:13px}
+.quota .qrow .ql{display:flex;align-items:center;gap:9px;color:var(--text)}
+.quota .qrow .ql svg{width:15px;height:15px;color:var(--muted)}
+.quota .qrow .qv{font-weight:700;font-variant-numeric:tabular-nums;color:var(--text)}
+.quota .qrow .qv.unlim{color:var(--primary)}
+
+.feats{padding:18px 22px;flex:1}
+.feats .ft-row{display:flex;align-items:center;gap:9px;padding:6px 0;font-size:13px}
+.feats .ft-row .tk{width:18px;height:18px;border-radius:50%;display:grid;place-items:center;flex-shrink:0}
+.feats .ft-row .tk svg{width:11px;height:11px;stroke-width:3}
+.feats .ft-row.yes .tk{background:var(--ok-soft);color:var(--ok)}
+.feats .ft-row.no .tk{background:#F1F5F9;color:#94A3B8}
+.feats .ft-row.no span{color:#94A3B8}
+
+.plan-ft{padding:16px 22px 22px;border-top:1px solid var(--border-2);display:flex;flex-direction:column;gap:9px}
+.plan-ft .btn{width:100%;justify-content:center}
+
+.fee-rule td .rk{display:flex;align-items:center;gap:10px}
+.fee-rule td .rk i{width:30px;height:30px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.fee-rule td .rk i svg{width:16px;height:16px}
+.fee-rule .price-cell{font-weight:700;color:var(--text)}
+.fee-rule .price-cell b{color:var(--primary);font-variant-numeric:tabular-nums}
+.note{display:flex;align-items:center;gap:8px;padding:12px 18px;background:var(--primary-soft);color:var(--primary-700);font-size:12.5px;font-weight:500;border-top:1px solid var(--border-2)}
+.note svg{width:16px;height:16px;flex-shrink:0}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===== 侧栏 ===== -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg>
+      </div>
+      <div>
+        <b>菜鸟驿站</b><br>
+        <span>平台运营后台</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="grp">运营</div>
+      <a><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>平台总览</a>
+      <a><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9v.01M9 12v.01M9 15v.01M9 18v.01"/></svg>租户管理</a>
+      <a><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>入驻审核</a>
+      <a><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7z"/><circle cx="12" cy="12" r="3"/></svg>门店监控</a>
+      <div class="grp">商业化</div>
+      <a><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>订阅与账单</a>
+      <a class="on"><svg viewBox="0 0 24 24"><path d="M20 7h-9"/><path d="M14 17H5"/><circle cx="17" cy="17" r="3"/><circle cx="7" cy="7" r="3"/></svg>套餐配置</a>
+      <div class="grp">系统</div>
+      <a><svg viewBox="0 0 24 24"><path d="M17 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M23 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>平台用户</a>
+      <a><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10z"/></svg>角色权限</a>
+      <a><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/></svg>系统配置</a>
+      <a><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>操作审计</a>
+    </nav>
+    <div class="side-foot">
+      <span class="dot"></span>
+      <div>
+        <b>系统状态正常</b><br>
+        <span>v3.6.0 · 节点全部在线</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== 主区 ===== -->
+  <main class="main">
+    <!-- 顶栏 -->
+    <div class="top">
+      <div>
+        <h1>套餐配置</h1>
+        <div class="sub">2026年6月18日 周四 · 管理平台对外销售的订阅套餐与用量加费规则</div>
+      </div>
+      <div class="top-r">
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          搜索套餐 / 租户 / 计费项
+        </div>
+        <div class="ibtn"><span class="dot"></span><svg viewBox="0 0 24 24"><path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"/><path d="M13.73 21a2 2 0 0 1-3.46 0"/></svg></div>
+        <div class="avatar"><i>运</i><b>平台 / 运营管理员</b></div>
+      </div>
+    </div>
+
+    <!-- 页头 -->
+    <div class="page-hd">
+      <div>
+        <div class="crumb">商业化 <svg viewBox="0 0 24 24" width="12" height="12"><path d="m9 18 6-6-6-6"/></svg> 套餐配置</div>
+        <h1>套餐配置</h1>
+      </div>
+      <button class="btn btn-primary">
+        <svg viewBox="0 0 24 24"><path d="M12 5v14M5 12h14"/></svg>
+        新增套餐
+      </button>
+    </div>
+
+    <!-- 三个套餐卡片 -->
+    <div class="plan-grid">
+
+      <!-- 基础版 -->
+      <div class="plan tier-1">
+        <div class="plan-hd">
+          <div class="plan-name">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg></span>
+            基础版
+          </div>
+          <div class="plan-desc">面向单店起步驿站，满足日常代收与取件核销的基本经营需求。</div>
+          <div class="plan-price">
+            <span class="cur">¥</span><span class="amt tnum">99</span><span class="per">/月</span>
+          </div>
+          <div class="plan-sub">
+            当前订阅 <b>32</b> 个租户
+            <span class="pill"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>已上线</span>
+          </div>
+        </div>
+
+        <div class="quota">
+          <div class="qt">包含额度</div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>门店数</span><span class="qv tnum">1 店</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>月包裹量</span><span class="qv tnum">3,000 件</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>短信条数</span><span class="qv tnum">2,000 条</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>员工数</span><span class="qv tnum">2 人</span></div>
+        </div>
+
+        <div class="feats">
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>扫码入库 · 取件核销</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>货架库位管理</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>短信取件通知</span></div>
+          <div class="ft-row no"><span class="tk"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></span><span>经营数据报表</span></div>
+          <div class="ft-row no"><span class="tk"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></span><span>多门店连锁管理</span></div>
+          <div class="ft-row no"><span class="tk"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></span><span>开放 API 接入</span></div>
+        </div>
+
+        <div class="plan-ft">
+          <button class="btn">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+            编辑
+          </button>
+        </div>
+      </div>
+
+      <!-- 标准版 -->
+      <div class="plan tier-2">
+        <div class="plan-hd">
+          <div class="plan-name">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></span>
+            标准版
+          </div>
+          <div class="plan-desc">面向稳定经营驿站，含数据报表与更高额度，适配中等业务量门店。</div>
+          <div class="plan-price">
+            <span class="cur">¥</span><span class="amt tnum">299</span><span class="per">/月</span>
+          </div>
+          <div class="plan-sub">
+            当前订阅 <b>78</b> 个租户
+            <span class="pill"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>已上线</span>
+          </div>
+        </div>
+
+        <div class="quota">
+          <div class="qt">包含额度</div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>门店数</span><span class="qv tnum">3 店</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>月包裹量</span><span class="qv tnum">12,000 件</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>短信条数</span><span class="qv tnum">10,000 条</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>员工数</span><span class="qv tnum">8 人</span></div>
+        </div>
+
+        <div class="feats">
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>扫码入库 · 取件核销</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>货架库位管理</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>短信取件通知</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>经营数据报表</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>多门店连锁管理</span></div>
+          <div class="ft-row no"><span class="tk"><svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg></span><span>开放 API 接入</span></div>
+        </div>
+
+        <div class="plan-ft">
+          <button class="btn">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+            编辑
+          </button>
+        </div>
+      </div>
+
+      <!-- 旗舰版（推荐） -->
+      <div class="plan tier-3 hot">
+        <div class="ribbon">推荐</div>
+        <div class="plan-hd">
+          <div class="plan-name">
+            <span class="ic"><svg viewBox="0 0 24 24"><path d="M2 12l3-9 4 6 3-7 3 7 4-6 3 9"/><path d="M5 21h14"/></svg></span>
+            旗舰版
+          </div>
+          <div class="plan-desc">面向连锁运营商，全功能开放、不限门店与 API，适配高并发大网点。</div>
+          <div class="plan-price">
+            <span class="cur">¥</span><span class="amt tnum">699</span><span class="per">/月</span>
+          </div>
+          <div class="plan-sub">
+            当前订阅 <b>26</b> 个租户
+            <span class="pill"><svg viewBox="0 0 24 24"><path d="M12 2v20M17 5H9.5a3.5 3.5 0 0 0 0 7h5a3.5 3.5 0 0 1 0 7H6"/></svg>已上线</span>
+          </div>
+        </div>
+
+        <div class="quota">
+          <div class="qt">包含额度</div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/></svg>门店数</span><span class="qv unlim tnum">10 店</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg>月包裹量</span><span class="qv tnum">50,000 件</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg>短信条数</span><span class="qv tnum">50,000 条</span></div>
+          <div class="qrow"><span class="ql"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>员工数</span><span class="qv unlim tnum">不限</span></div>
+        </div>
+
+        <div class="feats">
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>扫码入库 · 取件核销</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>货架库位管理</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>短信取件通知</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>经营数据报表</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>多门店连锁管理</span></div>
+          <div class="ft-row yes"><span class="tk"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span>开放 API 接入</span></div>
+        </div>
+
+        <div class="plan-ft">
+          <button class="btn btn-primary">
+            <svg viewBox="0 0 24 24"><path d="M11 4H4a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h14a2 2 0 0 0 2-2v-7"/><path d="M18.5 2.5a2.12 2.12 0 0 1 3 3L12 15l-4 1 1-4z"/></svg>
+            编辑
+          </button>
+        </div>
+      </div>
+
+    </div>
+
+    <!-- 用量加费规则 -->
+    <div class="card">
+      <div class="hd">
+        <h2>用量加费规则</h2>
+        <span class="tag blue"><span class="d"></span>月费 + 用量 混合计费</span>
+      </div>
+      <div class="table-card" style="border:0;box-shadow:none;border-radius:0">
+        <table class="fee-rule">
+          <thead>
+            <tr>
+              <th style="width:34%">计费项</th>
+              <th>计费说明</th>
+              <th style="width:20%">超额单价</th>
+              <th style="width:14%">计费单位</th>
+            </tr>
+          </thead>
+          <tbody>
+            <tr>
+              <td>
+                <div class="rk">
+                  <i><svg viewBox="0 0 24 24"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></i>
+                  <span>超额短信</span>
+                </div>
+              </td>
+              <td class="muted">套餐内短信用尽后，每条取件通知按量计费</td>
+              <td class="price-cell">¥<b>0.05</b> / 条</td>
+              <td><span class="tag gray">按条</span></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="rk">
+                  <i><svg viewBox="0 0 24 24"><path d="m7.5 4.27 9 5.15"/><path d="M21 8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5M12 22V12"/></svg></i>
+                  <span>超额包裹量</span>
+                </div>
+              </td>
+              <td class="muted">月入库包裹超出套餐额度部分，按入库件数计费</td>
+              <td class="price-cell">¥<b>0.02</b> / 件</td>
+              <td><span class="tag gray">按件</span></td>
+            </tr>
+            <tr>
+              <td>
+                <div class="rk">
+                  <i><svg viewBox="0 0 24 24"><path d="M3 9l9-7 9 7v11a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 22V12h6v10"/></svg></i>
+                  <span>额外门店</span>
+                </div>
+              </td>
+              <td class="muted">超出套餐门店数后，每新增一家门店按月计费</td>
+              <td class="price-cell">¥<b>50</b> / 店 / 月</td>
+              <td><span class="tag gray">按店月</span></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+      <div class="note">
+        <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="10"/><path d="M12 16v-4M12 8h.01"/></svg>
+        加费规则于每月 1 日随订阅账单合并出账；超额部分按当月实际用量四舍五入计费，调整即时对全部租户生效。
+      </div>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

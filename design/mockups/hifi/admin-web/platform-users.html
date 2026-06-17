@@ -1,0 +1,496 @@
+<!-- @dsCard group="admin-web" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>平台用户与角色权限 · 平台运营后台</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题 · 全屏平铺）
+   所有页面内联本文件内容到 <style>，保证视觉一致。
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100vh}
+body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;font-size:14px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.link{color:var(--primary);font-weight:600;cursor:pointer}
+
+/* ---------- 全屏平铺布局 ---------- */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--side-line);padding:16px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px}
+.brand .logo{width:38px;height:38px;border-radius:11px;background:var(--primary);color:#fff;display:grid;place-items:center}
+.brand b{font-size:16px;font-weight:700}.brand span{font-size:11px;color:var(--side-mut)}
+.nav{display:flex;flex-direction:column;gap:2px;overflow:auto}
+.nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--side-mut);font-size:13.5px;font-weight:500;cursor:pointer;transition:.18s}
+.nav a:hover{background:var(--surface-2);color:var(--side-fg)}
+.nav a.on{background:var(--side-on-bg);color:var(--side-on-fg);font-weight:600}
+.nav a svg{width:18px;height:18px}
+.nav a .badge{margin-left:auto;font-size:11px;font-weight:700;background:var(--danger);color:#fff;border-radius:20px;padding:1px 7px}
+.nav .grp{font-size:10.5px;color:var(--side-mut);padding:14px 12px 6px;font-weight:700;letter-spacing:.05em}
+.side-foot{margin-top:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;display:flex;align-items:center;gap:9px;cursor:pointer}
+.side-foot .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.side-foot b{font-size:13px;font-weight:600}.side-foot span{font-size:11px;color:var(--muted)}
+.main{padding:20px 26px;min-width:0}
+
+/* ---------- 顶栏 ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:16px}
+.top h1{font-size:21px;font-weight:700;letter-spacing:-.01em}
+.top .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.top-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius-sm);color:var(--muted);font-size:13px;min-width:220px}
+.ibtn{width:38px;height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;position:relative;color:var(--muted)}
+.ibtn .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.avatar{height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px 0 6px;cursor:pointer}
+.avatar i{width:28px;height:28px;border-radius:7px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;font-style:normal}
+.avatar b{font-size:13px;font-weight:600}
+
+/* ---------- 页头 / 工具条 ---------- */
+.page-hd{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;gap:16px}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.page-hd h1{font-size:20px;font-weight:700}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+
+/* ---------- 按钮 ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s;white-space:nowrap}
+.btn:hover{border-color:#D6DBE4;background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-accent:hover{filter:brightness(.96)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-lg{height:44px;padding:0 20px;font-size:14.5px}
+.btn-sm{height:30px;padding:0 11px;font-size:12.5px}
+
+/* ---------- 表单 ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12.5px;font-weight:600;color:var(--text)}
+.field label .req{color:var(--danger);margin-left:2px}
+.input,.select,textarea.input{height:38px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-size:13.5px;font-family:var(--font);color:var(--text);background:var(--surface);outline:none;transition:.18s;width:100%}
+textarea.input{height:auto;padding:10px 12px;resize:vertical}
+.input:focus,.select:focus,textarea.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.input::placeholder{color:#A7AFBC}
+.select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.switch{width:40px;height:22px;border-radius:20px;background:#CBD5E1;position:relative;cursor:pointer;transition:.2s}
+.switch.on{background:var(--primary)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on::after{left:20px}
+
+/* ---------- 卡片 / KPI ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card>.hd{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)}
+.card>.hd h2{font-size:15px;font-weight:600}
+.card>.bd{padding:18px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.kpi .lab{font-size:12.5px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+.kpi .lab i{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.kpi .lab i svg{width:15px;height:15px}
+.kpi .num{font-size:28px;font-weight:700;margin-top:10px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi .delta{font-size:11.5px;margin-top:4px;color:var(--ok);font-weight:600}
+
+/* ---------- 表格 ---------- */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:12px 18px;background:var(--surface-2);white-space:nowrap}
+tbody td{padding:13px 18px;font-size:13px;border-top:1px solid var(--border-2);font-variant-numeric:tabular-nums}
+tbody tr:hover{background:var(--surface-2)}
+.code{font-weight:700;color:var(--primary)}
+.op{color:var(--primary);font-weight:600;font-size:12.5px;cursor:pointer}
+.op+.op{margin-left:14px}
+.op.danger{color:var(--danger)}
+
+/* ---------- 标签 / 徽章 ---------- */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.blue{background:var(--primary-soft);color:var(--primary)}
+.tag.green{background:var(--ok-soft);color:var(--ok)}
+.tag.red{background:var(--danger-soft);color:var(--danger)}
+.tag.amber{background:var(--warn-soft);color:var(--warn)}
+.tag.gray{background:#F1F5F9;color:#64748B}
+.tag.purple{background:var(--purple-soft);color:var(--purple)}
+
+/* ---------- 标签页 / 分页 ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs .tab{padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs .tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:14px 18px}
+.pager .pg{min-width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;font-size:13px;cursor:pointer;background:var(--surface)}
+.pager .pg.on{background:var(--primary);border-color:var(--primary);color:#fff}
+
+/* ---------- 进度条 / 弹窗 / 抽屉 ---------- */
+.progress{height:6px;border-radius:6px;background:#EAEEF3;overflow:hidden}
+.progress span{display:block;height:100%;background:var(--primary);border-radius:6px}
+.mask{position:fixed;inset:0;background:rgba(15,23,42,.4);display:grid;place-items:center;z-index:50}
+.modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:560px;max-width:92vw;overflow:hidden}
+.modal>.hd{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.modal>.hd h3{font-size:16px;font-weight:700}
+.modal>.bd{padding:22px}
+.modal>.ft{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--border);background:var(--surface-2)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:94vw;background:var(--surface);box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column}
+
+/* ---------- 空状态 ---------- */
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:48px;color:var(--muted)}
+.empty svg{width:40px;height:40px;opacity:.5}
+
+/* ===========================================================
+   本页特有样式
+   =========================================================== */
+.usr{display:flex;align-items:center;gap:10px}
+.usr .ava{width:32px;height:32px;border-radius:8px;background:var(--primary-soft);color:var(--primary);display:grid;place-items:center;font-size:12px;font-weight:700;flex-shrink:0}
+.usr .nm{font-weight:600;font-size:13px}
+.usr .ac{font-size:11.5px;color:var(--muted)}
+
+/* 角色权限双栏 */
+.rbac{display:grid;grid-template-columns:288px 1fr;gap:18px;align-items:start}
+.role-list{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+.role-list .lh{padding:14px 16px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between}
+.role-list .lh h2{font-size:14px;font-weight:600}
+.role-item{display:flex;align-items:center;gap:11px;padding:13px 16px;cursor:pointer;border-bottom:1px solid var(--border-2);transition:.18s}
+.role-item:last-child{border-bottom:none}
+.role-item:hover{background:var(--surface-2)}
+.role-item.on{background:var(--side-on-bg)}
+.role-item .ri{width:34px;height:34px;border-radius:9px;display:grid;place-items:center;flex-shrink:0;background:var(--primary-soft);color:var(--primary)}
+.role-item .rn{font-size:13.5px;font-weight:600}
+.role-item .rd{font-size:11.5px;color:var(--muted);margin-top:2px}
+.role-item .rc{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:600;font-variant-numeric:tabular-nums}
+.role-item.on .rn{color:var(--primary)}
+
+/* 权限树 */
+.perm-grp{border:1px solid var(--border);border-radius:var(--radius-sm);margin-bottom:14px;overflow:hidden}
+.perm-grp .gh{display:flex;align-items:center;gap:10px;padding:12px 16px;background:var(--surface-2);border-bottom:1px solid var(--border-2);cursor:pointer}
+.perm-grp .gh .gi{width:26px;height:26px;border-radius:7px;display:grid;place-items:center;color:#fff;flex-shrink:0}
+.perm-grp .gh b{font-size:13.5px;font-weight:600}
+.perm-grp .gh .gc{margin-left:auto;font-size:11.5px;color:var(--muted);font-weight:600}
+.perm-rows{display:grid;grid-template-columns:1fr 1fr;gap:2px;padding:10px}
+.chk{display:flex;align-items:center;gap:10px;padding:9px 11px;border-radius:var(--radius-sm);cursor:pointer;transition:.15s}
+.chk:hover{background:var(--surface-2)}
+.cb{width:18px;height:18px;border-radius:5px;border:1.5px solid #CBD5E1;display:grid;place-items:center;flex-shrink:0;color:#fff;background:var(--surface);transition:.15s}
+.cb svg{width:12px;height:12px;stroke-width:3;opacity:0}
+.chk.on .cb{background:var(--primary);border-color:var(--primary)}
+.chk.on .cb svg{opacity:1}
+.cb.part{background:var(--primary-soft);border-color:var(--primary)}
+.cb.part::after{content:"";width:9px;height:2px;border-radius:2px;background:var(--primary)}
+.chk .ct{font-size:13px;font-weight:500}
+.chk.on .ct{color:var(--text);font-weight:600}
+.chk.off .ct{color:var(--muted)}
+.perm-foot{display:flex;align-items:center;justify-content:space-between;padding:16px 18px;border-top:1px solid var(--border);background:var(--surface-2)}
+.perm-foot .hint{font-size:12px;color:var(--muted)}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ===== 侧栏 ===== -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 9l9-6 9 6v9a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z"/><path d="M9 21V12h6v9"/></svg>
+      </div>
+      <div>
+        <b>菜鸟驿站</b><br>
+        <span>平台运营后台</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="grp">运营</div>
+      <a><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>平台总览</a>
+      <a><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h.01M9 13h.01M9 17h.01"/></svg>租户管理</a>
+      <a><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>入驻审核</a>
+      <a><svg viewBox="0 0 24 24"><path d="M2 12s3-7 10-7 10 7 10 7-3 7-10 7-10-7-10-7Z"/><circle cx="12" cy="12" r="3"/></svg>门店监控</a>
+      <div class="grp">商业化</div>
+      <a><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>订阅与账单</a>
+      <a><svg viewBox="0 0 24 24"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/><path d="m3.3 7 8.7 5 8.7-5"/><path d="M12 22V12"/></svg>套餐配置</a>
+      <div class="grp">系统</div>
+      <a class="on"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/><path d="M16 3.13a4 4 0 0 1 0 7.75"/></svg>平台用户</a>
+      <a><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/><path d="m9 12 2 2 4-4"/></svg>角色权限</a>
+      <a><svg viewBox="0 0 24 24"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg>系统配置</a>
+      <a><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"/><path d="M14 2v6h6"/><path d="M16 13H8M16 17H8M10 9H8"/></svg>操作审计</a>
+    </nav>
+    <div class="side-foot">
+      <span class="dot"></span>
+      <div>
+        <b>平台运营中心</b><br>
+        <span>v2.6 · 集群正常</span>
+      </div>
+    </div>
+  </aside>
+
+  <!-- ===== 主区 ===== -->
+  <main class="main">
+    <!-- 顶栏 -->
+    <div class="top">
+      <div>
+        <h1>平台用户与角色权限</h1>
+        <div class="sub">管理平台侧后台账号、角色与功能权限（RBAC）</div>
+      </div>
+      <div class="top-r">
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          搜索用户 / 账号 / 角色
+        </div>
+        <div class="ibtn"><span class="dot"></span><svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <div class="avatar"><i>运</i><b>运营管理员</b></div>
+      </div>
+    </div>
+
+    <!-- 顶部 Tabs -->
+    <div class="tabs">
+      <div class="tab on">平台用户</div>
+      <div class="tab">角色权限</div>
+    </div>
+
+    <!-- ========== 平台用户 ========== -->
+    <div class="toolbar">
+      <div class="field" style="flex-direction:row;align-items:center;gap:8px">
+        <select class="select" style="width:148px"><option>全部角色</option><option>超级管理员</option><option>运营</option><option>客服</option><option>财务</option></select>
+        <select class="select" style="width:130px"><option>全部状态</option><option>启用</option><option>停用</option></select>
+      </div>
+      <div class="spacer"></div>
+      <button class="btn"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>导出</button>
+      <button class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M19 8v6M22 11h-6"/></svg>新增用户</button>
+    </div>
+
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>姓名 / 账号</th>
+            <th>角色</th>
+            <th>所属部门</th>
+            <th>状态</th>
+            <th>最后登录</th>
+            <th style="text-align:right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><div class="usr"><div class="ava">陈</div><div><div class="nm">陈志远</div><div class="ac">chenzy@cainiao.com</div></div></div></td>
+            <td><span class="tag purple"><span class="d"></span>超级管理员</span></td>
+            <td>平台技术部</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-18 09:12</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">林</div><div><div class="nm">林婉清</div><div class="ac">linwq@cainiao.com</div></div></div></td>
+            <td><span class="tag blue"><span class="d"></span>运营</span></td>
+            <td>运营管理部</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-18 08:47</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">赵</div><div><div class="nm">赵明轩</div><div class="ac">zhaomx@cainiao.com</div></div></div></td>
+            <td><span class="tag blue"><span class="d"></span>运营</span></td>
+            <td>区域运营组</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-17 21:33</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">孙</div><div><div class="nm">孙佳怡</div><div class="ac">sunjy@cainiao.com</div></div></div></td>
+            <td><span class="tag amber"><span class="d"></span>客服</span></td>
+            <td>客户服务中心</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-18 10:05</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">周</div><div><div class="nm">周晓彤</div><div class="ac">zhouxt@cainiao.com</div></div></div></td>
+            <td><span class="tag amber"><span class="d"></span>客服</span></td>
+            <td>客户服务中心</td>
+            <td><span class="tag gray"><span class="d"></span>停用</span></td>
+            <td class="tnum">2026-05-29 16:20</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op">启用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">吴</div><div><div class="nm">吴启航</div><div class="ac">wuqh@cainiao.com</div></div></div></td>
+            <td><span class="tag green"><span class="d"></span>财务</span></td>
+            <td>财务结算部</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-18 09:58</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">郑</div><div><div class="nm">郑雨欣</div><div class="ac">zhengyx@cainiao.com</div></div></div></td>
+            <td><span class="tag green"><span class="d"></span>财务</span></td>
+            <td>财务结算部</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-17 18:42</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">黄</div><div><div class="nm">黄子豪</div><div class="ac">huangzh@cainiao.com</div></div></div></td>
+            <td><span class="tag blue"><span class="d"></span>运营</span></td>
+            <td>区域运营组</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-16 14:09</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">何</div><div><div class="nm">何思琪</div><div class="ac">hesq@cainiao.com</div></div></div></td>
+            <td><span class="tag amber"><span class="d"></span>客服</span></td>
+            <td>客户服务中心</td>
+            <td><span class="tag green"><span class="d"></span>启用</span></td>
+            <td class="tnum">2026-06-18 07:51</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op danger">停用</span></td>
+          </tr>
+          <tr>
+            <td><div class="usr"><div class="ava">徐</div><div><div class="nm">徐文博</div><div class="ac">xuwb@cainiao.com</div></div></div></td>
+            <td><span class="tag purple"><span class="d"></span>超级管理员</span></td>
+            <td>平台技术部</td>
+            <td><span class="tag gray"><span class="d"></span>停用</span></td>
+            <td class="tnum">2026-04-12 11:30</td>
+            <td style="text-align:right"><span class="op">编辑</span><span class="op">启用</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager">
+        <span class="muted" style="margin-right:auto;font-size:12.5px;padding-left:4px">共 28 个用户</span>
+        <span class="pg">‹</span>
+        <span class="pg on">1</span>
+        <span class="pg">2</span>
+        <span class="pg">3</span>
+        <span class="pg">›</span>
+      </div>
+    </div>
+
+    <!-- ========== 角色权限（同页展示，对应第二个 Tab 内容） ========== -->
+    <div class="page-hd" style="margin-top:30px;margin-bottom:14px">
+      <div>
+        <h1 style="font-size:17px">角色权限配置</h1>
+        <div class="sub" style="margin-top:4px">选择左侧角色，配置其可访问的功能模块权限</div>
+      </div>
+    </div>
+
+    <div class="rbac">
+      <!-- 左：角色列表 -->
+      <div class="role-list">
+        <div class="lh">
+          <h2>平台角色</h2>
+          <button class="btn btn-sm"><svg viewBox="0 0 24 24"><path d="M5 12h14M12 5v14"/></svg>新增</button>
+        </div>
+        <div class="role-item">
+          <div class="ri" style="background:var(--purple-soft);color:var(--purple)"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M12 2 4 5v6c0 5 3.5 8.5 8 11 4.5-2.5 8-6 8-11V5z"/><path d="m9 12 2 2 4-4"/></svg></div>
+          <div>
+            <div class="rn">超级管理员</div>
+            <div class="rd">拥有全部权限</div>
+          </div>
+          <span class="rc">2 人</span>
+        </div>
+        <div class="role-item on">
+          <div class="ri"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></div>
+          <div>
+            <div class="rn">运营</div>
+            <div class="rd">租户、审核、门店管理</div>
+          </div>
+          <span class="rc">3 人</span>
+        </div>
+        <div class="role-item">
+          <div class="ri" style="background:var(--warn-soft);color:var(--warn)"><svg viewBox="0 0 24 24" width="17" height="17"><path d="M21 15a2 2 0 0 1-2 2H7l-4 4V5a2 2 0 0 1 2-2h14a2 2 0 0 1 2 2z"/></svg></div>
+          <div>
+            <div class="rn">客服</div>
+            <div class="rd">门店监控、工单处理</div>
+          </div>
+          <span class="rc">3 人</span>
+        </div>
+        <div class="role-item">
+          <div class="ri" style="background:var(--ok-soft);color:var(--ok)"><svg viewBox="0 0 24 24" width="17" height="17"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg></div>
+          <div>
+            <div class="rn">财务</div>
+            <div class="rd">订阅、账单、结算</div>
+          </div>
+          <span class="rc">2 人</span>
+        </div>
+      </div>
+
+      <!-- 右：权限配置 -->
+      <div class="card">
+        <div class="hd">
+          <h2>「运营」角色 · 功能权限</h2>
+          <span class="tag blue"><span class="d"></span>已选 6 / 9 项</span>
+        </div>
+        <div class="bd">
+
+          <!-- 运营分组：部分勾选 -->
+          <div class="perm-grp">
+            <div class="gh">
+              <span class="gi" style="background:var(--primary)"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/></svg></span>
+              <b>运营</b>
+              <span class="chk" style="padding:0"><span class="cb part"></span></span>
+              <span class="gc">已选 2 / 3</span>
+            </div>
+            <div class="perm-rows">
+              <div class="chk on"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">租户管理</span></div>
+              <div class="chk on"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">入驻审核</span></div>
+              <div class="chk off"><span class="cb"></span><span class="ct">门店监控</span></div>
+            </div>
+          </div>
+
+          <!-- 商业化分组：全不勾 -->
+          <div class="perm-grp">
+            <div class="gh">
+              <span class="gi" style="background:var(--purple)"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M21 16V8a2 2 0 0 0-1-1.73l-7-4a2 2 0 0 0-2 0l-7 4A2 2 0 0 0 3 8v8a2 2 0 0 0 1 1.73l7 4a2 2 0 0 0 2 0l7-4A2 2 0 0 0 21 16Z"/></svg></span>
+              <b>商业化</b>
+              <span class="chk" style="padding:0"><span class="cb"></span></span>
+              <span class="gc">已选 0 / 2</span>
+            </div>
+            <div class="perm-rows">
+              <div class="chk off"><span class="cb"></span><span class="ct">订阅账单</span></div>
+              <div class="chk off"><span class="cb"></span><span class="ct">套餐配置</span></div>
+            </div>
+          </div>
+
+          <!-- 系统分组：部分勾选 -->
+          <div class="perm-grp">
+            <div class="gh">
+              <span class="gi" style="background:var(--info)"><svg viewBox="0 0 24 24" width="15" height="15"><path d="M12.22 2h-.44a2 2 0 0 0-2 2v.18a2 2 0 0 1-1 1.73l-.43.25a2 2 0 0 1-2 0l-.15-.08a2 2 0 0 0-2.73.73l-.22.38a2 2 0 0 0 .73 2.73l.15.1a2 2 0 0 1 1 1.72v.51a2 2 0 0 1-1 1.74l-.15.09a2 2 0 0 0-.73 2.73l.22.38a2 2 0 0 0 2.73.73l.15-.08a2 2 0 0 1 2 0l.43.25a2 2 0 0 1 1 1.73V20a2 2 0 0 0 2 2h.44a2 2 0 0 0 2-2v-.18a2 2 0 0 1 1-1.73l.43-.25a2 2 0 0 1 2 0l.15.08a2 2 0 0 0 2.73-.73l.22-.39a2 2 0 0 0-.73-2.73l-.15-.08a2 2 0 0 1-1-1.74v-.5a2 2 0 0 1 1-1.74l.15-.09a2 2 0 0 0 .73-2.73l-.22-.38a2 2 0 0 0-2.73-.73l-.15.08a2 2 0 0 1-2 0l-.43-.25a2 2 0 0 1-1-1.73V4a2 2 0 0 0-2-2Z"/><circle cx="12" cy="12" r="3"/></svg></span>
+              <b>系统</b>
+              <span class="chk" style="padding:0"><span class="cb part"></span></span>
+              <span class="gc">已选 2 / 4</span>
+            </div>
+            <div class="perm-rows">
+              <div class="chk on"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">平台用户</span></div>
+              <div class="chk on"><span class="cb"><svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg></span><span class="ct">角色权限</span></div>
+              <div class="chk off"><span class="cb"></span><span class="ct">系统配置</span></div>
+              <div class="chk off"><span class="cb"></span><span class="ct">操作审计</span></div>
+            </div>
+          </div>
+
+        </div>
+        <div class="perm-foot">
+          <span class="hint">上次更新：2026-06-17 由 陈志远 修改</span>
+          <div style="display:flex;gap:10px">
+            <button class="btn">重置</button>
+            <button class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M19 21H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11l5 5v11a2 2 0 0 1-2 2Z"/><path d="M17 21v-8H7v8M7 3v5h8"/></svg>保存</button>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+</body>
+</html>

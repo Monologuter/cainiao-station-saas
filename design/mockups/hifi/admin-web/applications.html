@@ -1,0 +1,474 @@
+<!-- @dsCard group="admin-web" -->
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>入驻审核 · 平台运营后台</title>
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+/* ===========================================================
+   菜鸟驿站 · 高保真共享 KIT（清爽蓝主题 · 全屏平铺）
+   所有页面内联本文件内容到 <style>，保证视觉一致。
+   =========================================================== */
+:root{
+  --bg:#F7F8FA;--surface:#FFFFFF;--surface-2:#FBFCFE;
+  --side-bg:#FFFFFF;--side-fg:#334155;--side-mut:#94A3B8;--side-on-bg:#EBF1FE;--side-on-fg:#3B6EF6;--side-line:#EEF1F5;
+  --text:#1E293B;--muted:#64748B;--border:#E8EBF0;--border-2:#F1F3F7;
+  --primary:#3B6EF6;--primary-fg:#fff;--primary-soft:#EBF1FE;--primary-700:#2557E6;
+  --accent:#10B981;--accent-soft:#E7F8F1;
+  --ok:#16A34A;--ok-soft:#ECFDF3;--warn:#D97706;--warn-soft:#FEF3C7;--danger:#DC2626;--danger-soft:#FEF2F2;
+  --info:#0EA5E9;--info-soft:#E0F2FE;--purple:#7C5CFC;--purple-soft:#EFEBFF;
+  --radius:12px;--radius-sm:9px;--radius-lg:16px;
+  --shadow:0 1px 3px rgba(16,24,40,.06),0 1px 2px rgba(16,24,40,.04);
+  --shadow-lg:0 12px 32px rgba(16,24,40,.12);
+  --font:'Inter','PingFang SC','Microsoft YaHei',system-ui,sans-serif;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html,body{min-height:100vh}
+body{font-family:var(--font);background:var(--bg);color:var(--text);width:100%;font-size:14px;-webkit-font-smoothing:antialiased}
+svg{stroke:currentColor;fill:none;stroke-width:2}
+a{text-decoration:none;color:inherit}
+.tnum{font-variant-numeric:tabular-nums}
+.muted{color:var(--muted)}
+.link{color:var(--primary);font-weight:600;cursor:pointer}
+
+/* ---------- 全屏平铺布局 ---------- */
+.app{display:grid;grid-template-columns:248px 1fr;min-height:100vh}
+.side{background:var(--side-bg);border-right:1px solid var(--side-line);padding:16px 14px;position:sticky;top:0;height:100vh;display:flex;flex-direction:column}
+.brand{display:flex;align-items:center;gap:11px;padding:6px 8px 16px}
+.brand .logo{width:38px;height:38px;border-radius:11px;background:var(--primary);color:#fff;display:grid;place-items:center}
+.brand b{font-size:16px;font-weight:700}.brand span{font-size:11px;color:var(--side-mut)}
+.nav{display:flex;flex-direction:column;gap:2px;overflow:auto}
+.nav a{display:flex;align-items:center;gap:11px;padding:10px 12px;border-radius:var(--radius-sm);color:var(--side-mut);font-size:13.5px;font-weight:500;cursor:pointer;transition:.18s}
+.nav a:hover{background:var(--surface-2);color:var(--side-fg)}
+.nav a.on{background:var(--side-on-bg);color:var(--side-on-fg);font-weight:600}
+.nav a svg{width:18px;height:18px}
+.nav a .badge{margin-left:auto;font-size:11px;font-weight:700;background:var(--danger);color:#fff;border-radius:20px;padding:1px 7px}
+.nav .grp{font-size:10.5px;color:var(--side-mut);padding:14px 12px 6px;font-weight:700;letter-spacing:.05em}
+.side-foot{margin-top:auto;border:1px solid var(--border);border-radius:var(--radius-sm);padding:10px 12px;display:flex;align-items:center;gap:9px;cursor:pointer}
+.side-foot .dot{width:8px;height:8px;border-radius:50%;background:var(--ok)}
+.side-foot b{font-size:13px;font-weight:600}.side-foot span{font-size:11px;color:var(--muted)}
+.main{padding:20px 26px;min-width:0}
+
+/* ---------- 顶栏 ---------- */
+.top{display:flex;align-items:center;justify-content:space-between;margin-bottom:18px;gap:16px}
+.top h1{font-size:21px;font-weight:700;letter-spacing:-.01em}
+.top .sub{font-size:12.5px;color:var(--muted);margin-top:3px}
+.top-r{display:flex;align-items:center;gap:10px;flex-shrink:0}
+.search{display:flex;align-items:center;gap:8px;background:var(--surface);border:1px solid var(--border);padding:8px 12px;border-radius:var(--radius-sm);color:var(--muted);font-size:13px;min-width:220px}
+.ibtn{width:38px;height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:grid;place-items:center;cursor:pointer;position:relative;color:var(--muted)}
+.ibtn .dot{position:absolute;top:8px;right:9px;width:7px;height:7px;border-radius:50%;background:var(--danger)}
+.avatar{height:38px;border-radius:var(--radius-sm);background:var(--surface);border:1px solid var(--border);display:flex;align-items:center;gap:8px;padding:0 12px 0 6px;cursor:pointer}
+.avatar i{width:28px;height:28px;border-radius:7px;background:var(--primary);color:#fff;display:grid;place-items:center;font-size:12px;font-weight:600;font-style:normal}
+.avatar b{font-size:13px;font-weight:600}
+
+/* ---------- 页头 / 工具条 ---------- */
+.page-hd{display:flex;align-items:flex-end;justify-content:space-between;margin-bottom:16px;gap:16px}
+.crumb{font-size:12px;color:var(--muted);margin-bottom:6px;display:flex;gap:6px;align-items:center}
+.page-hd h1{font-size:20px;font-weight:700}
+.toolbar{display:flex;align-items:center;gap:10px;flex-wrap:wrap;margin-bottom:14px}
+.toolbar .spacer{flex:1}
+
+/* ---------- 按钮 ---------- */
+.btn{display:inline-flex;align-items:center;gap:7px;height:36px;padding:0 15px;border-radius:var(--radius-sm);font-size:13.5px;font-weight:600;cursor:pointer;border:1px solid var(--border);background:var(--surface);color:var(--text);transition:.18s;white-space:nowrap}
+.btn:hover{border-color:#D6DBE4;background:var(--surface-2)}
+.btn svg{width:16px;height:16px}
+.btn-primary{background:var(--primary);border-color:var(--primary);color:#fff}
+.btn-primary:hover{background:var(--primary-700);border-color:var(--primary-700)}
+.btn-accent{background:var(--accent);border-color:var(--accent);color:#fff}
+.btn-accent:hover{filter:brightness(.96)}
+.btn-danger{background:var(--danger);border-color:var(--danger);color:#fff}
+.btn-ghost{background:transparent;border-color:transparent;color:var(--muted)}
+.btn-ghost:hover{background:var(--surface-2);color:var(--text)}
+.btn-lg{height:44px;padding:0 20px;font-size:14.5px}
+.btn-sm{height:30px;padding:0 11px;font-size:12.5px}
+
+/* ---------- 表单 ---------- */
+.field{display:flex;flex-direction:column;gap:6px}
+.field label{font-size:12.5px;font-weight:600;color:var(--text)}
+.field label .req{color:var(--danger);margin-left:2px}
+.input,.select,textarea.input{height:38px;border:1px solid var(--border);border-radius:var(--radius-sm);padding:0 12px;font-size:13.5px;font-family:var(--font);color:var(--text);background:var(--surface);outline:none;transition:.18s;width:100%}
+textarea.input{height:auto;padding:10px 12px;resize:vertical}
+.input:focus,.select:focus,textarea.input:focus{border-color:var(--primary);box-shadow:0 0 0 3px var(--primary-soft)}
+.input::placeholder{color:#A7AFBC}
+.select{appearance:none;background-image:url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='16' height='16' viewBox='0 0 24 24' fill='none' stroke='%2364748B' stroke-width='2'%3E%3Cpath d='m6 9 6 6 6-6'/%3E%3C/svg%3E");background-repeat:no-repeat;background-position:right 10px center;padding-right:32px}
+.form-grid{display:grid;grid-template-columns:1fr 1fr;gap:16px}
+.switch{width:40px;height:22px;border-radius:20px;background:#CBD5E1;position:relative;cursor:pointer;transition:.2s}
+.switch.on{background:var(--primary)}
+.switch::after{content:"";position:absolute;top:2px;left:2px;width:18px;height:18px;border-radius:50%;background:#fff;transition:.2s}
+.switch.on::after{left:20px}
+
+/* ---------- 卡片 / KPI ---------- */
+.card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow)}
+.card>.hd{display:flex;align-items:center;justify-content:space-between;padding:15px 18px;border-bottom:1px solid var(--border)}
+.card>.hd h2{font-size:15px;font-weight:600}
+.card>.bd{padding:18px}
+.kpi{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);padding:16px;box-shadow:var(--shadow)}
+.kpi .lab{font-size:12.5px;color:var(--muted);font-weight:500;display:flex;align-items:center;gap:8px}
+.kpi .lab i{width:28px;height:28px;border-radius:8px;display:grid;place-items:center;background:var(--primary-soft);color:var(--primary)}
+.kpi .lab i svg{width:15px;height:15px}
+.kpi .num{font-size:28px;font-weight:700;margin-top:10px;letter-spacing:-.02em;font-variant-numeric:tabular-nums}
+.kpi .delta{font-size:11.5px;margin-top:4px;color:var(--ok);font-weight:600}
+
+/* ---------- 表格 ---------- */
+.table-card{background:var(--surface);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow);overflow:hidden}
+table{width:100%;border-collapse:collapse}
+thead th{text-align:left;font-size:12px;color:var(--muted);font-weight:500;padding:12px 18px;background:var(--surface-2);white-space:nowrap}
+tbody td{padding:13px 18px;font-size:13px;border-top:1px solid var(--border-2);font-variant-numeric:tabular-nums}
+tbody tr:hover{background:var(--surface-2)}
+.code{font-weight:700;color:var(--primary)}
+.op{color:var(--primary);font-weight:600;font-size:12.5px;cursor:pointer}
+.op+.op{margin-left:14px}
+.op.danger{color:var(--danger)}
+
+/* ---------- 标签 / 徽章 ---------- */
+.tag{display:inline-flex;align-items:center;gap:5px;font-size:11.5px;font-weight:600;padding:3px 9px;border-radius:7px}
+.tag .d{width:6px;height:6px;border-radius:50%;background:currentColor}
+.tag.blue{background:var(--primary-soft);color:var(--primary)}
+.tag.green{background:var(--ok-soft);color:var(--ok)}
+.tag.red{background:var(--danger-soft);color:var(--danger)}
+.tag.amber{background:var(--warn-soft);color:var(--warn)}
+.tag.gray{background:#F1F5F9;color:#64748B}
+.tag.purple{background:var(--purple-soft);color:var(--purple)}
+
+/* ---------- 标签页 / 分页 ---------- */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs .tab{padding:10px 14px;font-size:13.5px;font-weight:600;color:var(--muted);cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs .tab.on{color:var(--primary);border-bottom-color:var(--primary)}
+.pager{display:flex;align-items:center;justify-content:flex-end;gap:6px;padding:14px 18px}
+.pager .pg{min-width:32px;height:32px;border-radius:8px;border:1px solid var(--border);display:grid;place-items:center;font-size:13px;cursor:pointer;background:var(--surface)}
+.pager .pg.on{background:var(--primary);border-color:var(--primary);color:#fff}
+
+/* ---------- 进度条 / 弹窗 / 抽屉 ---------- */
+.progress{height:6px;border-radius:6px;background:#EAEEF3;overflow:hidden}
+.progress span{display:block;height:100%;background:var(--primary);border-radius:6px}
+.mask{position:fixed;inset:0;background:rgba(15,23,42,.4);display:grid;place-items:center;z-index:50}
+.modal{background:var(--surface);border-radius:var(--radius-lg);box-shadow:var(--shadow-lg);width:560px;max-width:92vw;overflow:hidden}
+.modal>.hd{display:flex;align-items:center;justify-content:space-between;padding:18px 22px;border-bottom:1px solid var(--border)}
+.modal>.hd h3{font-size:16px;font-weight:700}
+.modal>.bd{padding:22px}
+.modal>.ft{display:flex;justify-content:flex-end;gap:10px;padding:16px 22px;border-top:1px solid var(--border);background:var(--surface-2)}
+.drawer{position:fixed;top:0;right:0;height:100vh;width:480px;max-width:94vw;background:var(--surface);box-shadow:var(--shadow-lg);z-index:50;display:flex;flex-direction:column}
+
+/* ---------- 空状态 ---------- */
+.empty{display:flex;flex-direction:column;align-items:center;gap:10px;padding:48px;color:var(--muted)}
+.empty svg{width:40px;height:40px;opacity:.5}
+
+/* ---------- 本页特有 ---------- */
+.modal-row{display:flex;gap:16px}
+.modal-row+.modal-row{margin-top:18px}
+.dl{display:grid;grid-template-columns:88px 1fr;gap:10px 14px;font-size:13px}
+.dl dt{color:var(--muted);font-weight:500}
+.dl dd{color:var(--text);font-weight:600}
+.license-thumb{width:128px;height:88px;border-radius:var(--radius-sm);border:1px solid var(--border);background:
+  repeating-linear-gradient(45deg,#F3F6FB,#F3F6FB 8px,#EDF1F8 8px,#EDF1F8 16px);
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:6px;color:var(--muted);flex-shrink:0;cursor:pointer}
+.license-thumb svg{width:24px;height:24px;opacity:.6}
+.license-thumb span{font-size:11px}
+.divider{height:1px;background:var(--border);margin:18px 0}
+.subhd{font-size:12.5px;font-weight:700;color:var(--muted);letter-spacing:.04em;margin-bottom:12px;display:flex;align-items:center;gap:7px}
+.subhd svg{width:14px;height:14px}
+</style>
+</head>
+<body>
+<div class="app">
+  <!-- ============ 侧栏 ============ -->
+  <aside class="side">
+    <div class="brand">
+      <div class="logo">
+        <svg viewBox="0 0 24 24" width="22" height="22"><path d="M3 9.5 12 3l9 6.5"/><path d="M5 10v10h14V10"/><path d="M9 21v-6h6v6"/></svg>
+      </div>
+      <div>
+        <b>菜鸟驿站</b><br>
+        <span>平台运营后台</span>
+      </div>
+    </div>
+    <nav class="nav">
+      <div class="grp">运营</div>
+      <a><svg viewBox="0 0 24 24"><rect x="3" y="3" width="7" height="9"/><rect x="14" y="3" width="7" height="5"/><rect x="14" y="12" width="7" height="9"/><rect x="3" y="16" width="7" height="5"/></svg>平台总览</a>
+      <a><svg viewBox="0 0 24 24"><path d="M3 21h18"/><path d="M5 21V7l8-4v18"/><path d="M19 21V11l-6-4"/><path d="M9 9h.01M9 12h.01M9 15h.01"/></svg>租户管理</a>
+      <a class="on"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>入驻审核<span class="badge tnum">5</span></a>
+      <a><svg viewBox="0 0 24 24"><path d="M2 12h4l3 8 4-16 3 8h4"/></svg>门店监控</a>
+      <div class="grp">商业化</div>
+      <a><svg viewBox="0 0 24 24"><rect x="2" y="5" width="20" height="14" rx="2"/><path d="M2 10h20"/></svg>订阅与账单</a>
+      <a><svg viewBox="0 0 24 24"><path d="M12 2 2 7l10 5 10-5-10-5Z"/><path d="m2 17 10 5 10-5"/><path d="m2 12 10 5 10-5"/></svg>套餐配置</a>
+      <div class="grp">系统</div>
+      <a><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/><path d="M22 21v-2a4 4 0 0 0-3-3.87"/></svg>平台用户</a>
+      <a><svg viewBox="0 0 24 24"><path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10Z"/></svg>角色权限</a>
+      <a><svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 1 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06.06a2 2 0 1 1-2.83-2.83l.06-.06a1.65 1.65 0 0 0 .33-1.82 1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 1 1 2.83-2.83l.06.06a1.65 1.65 0 0 0 1.82.33H9a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 1 1 2.83 2.83l-.06.06a1.65 1.65 0 0 0-.33 1.82V9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1Z"/></svg>系统配置</a>
+      <a><svg viewBox="0 0 24 24"><path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8Z"/><path d="M14 2v6h6"/><path d="M9 15h6M9 11h2"/></svg>操作审计</a>
+    </nav>
+    <div class="side-foot">
+      <span class="dot"></span>
+      <div style="flex:1">
+        <b>系统状态正常</b><br>
+        <span>API 99.98% · 队列 0</span>
+      </div>
+      <svg viewBox="0 0 24 24" width="16" height="16" style="color:var(--muted)"><path d="m9 18 6-6-6-6"/></svg>
+    </div>
+  </aside>
+
+  <!-- ============ 主区 ============ -->
+  <main class="main">
+    <!-- 顶栏 -->
+    <header class="top">
+      <div>
+        <h1>入驻审核</h1>
+        <div class="sub">审核商户入驻申请 · 分配套餐并开通租户 · 2026年6月18日 周四</div>
+      </div>
+      <div class="top-r">
+        <div class="search">
+          <svg viewBox="0 0 24 24" width="16" height="16"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.3-4.3"/></svg>
+          <span>搜索申请编号 / 主体 / 联系人</span>
+        </div>
+        <div class="ibtn"><span class="dot"></span><svg viewBox="0 0 24 24" width="18" height="18"><path d="M6 8a6 6 0 0 1 12 0c0 7 3 9 3 9H3s3-2 3-9"/><path d="M10.3 21a1.94 1.94 0 0 0 3.4 0"/></svg></div>
+        <div class="avatar">
+          <i>运</i>
+          <div><b>运营管理员</b><br><span style="font-size:11px;color:var(--muted)">平台</span></div>
+        </div>
+      </div>
+    </header>
+
+    <!-- 状态标签页 -->
+    <div class="tabs">
+      <div class="tab on">待审核 <span class="tnum">(5)</span></div>
+      <div class="tab">已通过</div>
+      <div class="tab">已驳回</div>
+    </div>
+
+    <!-- 工具条 -->
+    <div class="toolbar">
+      <button class="btn"><svg viewBox="0 0 24 24"><path d="M3 6h18M7 12h10M11 18h2"/></svg>城市筛选</button>
+      <button class="btn"><svg viewBox="0 0 24 24"><path d="M12 2v4M12 18v4M4.93 4.93l2.83 2.83M16.24 16.24l2.83 2.83M2 12h4M18 12h4M4.93 19.07l2.83-2.83M16.24 7.76l2.83-2.83"/></svg>提交时间</button>
+      <div class="spacer"></div>
+      <span class="muted" style="font-size:12.5px">共 <b class="tnum" style="color:var(--text)">5</b> 条待审核申请</span>
+      <button class="btn btn-primary"><svg viewBox="0 0 24 24"><path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"/><path d="M7 10l5 5 5-5"/><path d="M12 15V3"/></svg>导出清单</button>
+    </div>
+
+    <!-- 表格 -->
+    <div class="table-card">
+      <table>
+        <thead>
+          <tr>
+            <th>申请编号</th>
+            <th>申请主体</th>
+            <th>联系人</th>
+            <th>联系电话</th>
+            <th>拟开门店（城市）</th>
+            <th>提交时间</th>
+            <th>资质材料</th>
+            <th>状态</th>
+            <th style="text-align:right">操作</th>
+          </tr>
+        </thead>
+        <tbody>
+          <tr>
+            <td><span class="code">AP-20260618-013</span></td>
+            <td><b>杭州临安申通服务部</b></td>
+            <td>陈**</td>
+            <td>138****6721</td>
+            <td>城西综合驿站（杭州）</td>
+            <td>2026-06-18 09:12</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag amber"><span class="d"></span>待审核</span></td>
+            <td style="text-align:right"><span class="op" onclick="openModal()">审核</span><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260618-012</span></td>
+            <td><b>南京江宁中通快递点</b></td>
+            <td>王**</td>
+            <td>159****3308</td>
+            <td>东山驿站（南京）</td>
+            <td>2026-06-18 08:47</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag amber"><span class="d"></span>待审核</span></td>
+            <td style="text-align:right"><span class="op" onclick="openModal()">审核</span><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260617-011</span></td>
+            <td><b>苏州工业园圆通代收点</b></td>
+            <td>李**</td>
+            <td>136****9954</td>
+            <td>金鸡湖综合驿站（苏州）</td>
+            <td>2026-06-17 21:05</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag amber"><span class="d"></span>待审核</span></td>
+            <td style="text-align:right"><span class="op" onclick="openModal()">审核</span><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260617-010</span></td>
+            <td><b>合肥蜀山韵达服务站</b></td>
+            <td>赵**</td>
+            <td>177****2186</td>
+            <td>政务区驿站（合肥）</td>
+            <td>2026-06-17 17:38</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag amber"><span class="d"></span>待审核</span></td>
+            <td style="text-align:right"><span class="op" onclick="openModal()">审核</span><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260617-009</span></td>
+            <td><b>宁波鄞州极兔代收驿站</b></td>
+            <td>周**</td>
+            <td>188****4470</td>
+            <td>万达广场驿站（宁波）</td>
+            <td>2026-06-17 15:22</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag amber"><span class="d"></span>待审核</span></td>
+            <td style="text-align:right"><span class="op" onclick="openModal()">审核</span><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260616-008</span></td>
+            <td><b>无锡梁溪百世汇通点</b></td>
+            <td>吴**</td>
+            <td>131****7755</td>
+            <td>崇安寺驿站（无锡）</td>
+            <td>2026-06-16 19:10</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag green"><span class="d"></span>已通过</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260616-007</span></td>
+            <td><b>常州天宁德邦服务部</b></td>
+            <td>郑**</td>
+            <td>150****6612</td>
+            <td>红梅公园驿站（常州）</td>
+            <td>2026-06-16 14:33</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag green"><span class="d"></span>已通过</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260616-006</span></td>
+            <td><b>徐州云龙申通代收站</b></td>
+            <td>孙**</td>
+            <td>185****0091</td>
+            <td>云龙湖驿站（徐州）</td>
+            <td>2026-06-16 11:08</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag red"><span class="d"></span>已驳回</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260615-005</span></td>
+            <td><b>温州鹿城中通快递站</b></td>
+            <td>冯**</td>
+            <td>137****8843</td>
+            <td>五马街驿站（温州）</td>
+            <td>2026-06-15 20:51</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag green"><span class="d"></span>已通过</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260615-004</span></td>
+            <td><b>嘉兴南湖圆通服务部</b></td>
+            <td>蒋**</td>
+            <td>199****5520</td>
+            <td>南湖天地驿站（嘉兴）</td>
+            <td>2026-06-15 16:27</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag red"><span class="d"></span>已驳回</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260615-003</span></td>
+            <td><b>绍兴越城韵达代收点</b></td>
+            <td>韩**</td>
+            <td>176****3367</td>
+            <td>鲁迅故里驿站（绍兴）</td>
+            <td>2026-06-15 10:14</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag green"><span class="d"></span>已通过</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+          <tr>
+            <td><span class="code">AP-20260614-002</span></td>
+            <td><b>金华婺城极兔综合站</b></td>
+            <td>杨**</td>
+            <td>189****1129</td>
+            <td>八咏楼驿站（金华）</td>
+            <td>2026-06-14 18:02</td>
+            <td><span class="link">查看</span></td>
+            <td><span class="tag green"><span class="d"></span>已通过</span></td>
+            <td style="text-align:right"><span class="op" style="color:var(--muted)">详情</span></td>
+          </tr>
+        </tbody>
+      </table>
+      <div class="pager">
+        <span class="muted tnum" style="margin-right:auto;font-size:12.5px">显示 1–12 条 · 共 38 条</span>
+        <div class="pg"><svg viewBox="0 0 24 24" width="15" height="15"><path d="m15 18-6-6 6-6"/></svg></div>
+        <div class="pg on">1</div>
+        <div class="pg">2</div>
+        <div class="pg">3</div>
+        <div class="pg">4</div>
+        <div class="pg"><svg viewBox="0 0 24 24" width="15" height="15"><path d="m9 18 6-6-6-6"/></svg></div>
+      </div>
+    </div>
+  </main>
+</div>
+
+<!-- ============ 审核弹窗 ============ -->
+<div class="mask" id="reviewMask">
+  <div class="modal">
+    <div class="hd">
+      <h3>入驻审核</h3>
+      <div class="ibtn" style="border:none;background:transparent" onclick="closeModal()">
+        <svg viewBox="0 0 24 24" width="18" height="18"><path d="M18 6 6 18M6 6l12 12"/></svg>
+      </div>
+    </div>
+    <div class="bd">
+      <!-- 申请详情 -->
+      <div class="subhd"><svg viewBox="0 0 24 24"><path d="M16 21v-2a4 4 0 0 0-4-4H6a4 4 0 0 0-4 4v2"/><circle cx="9" cy="7" r="4"/></svg>申请详情</div>
+      <div class="modal-row">
+        <div class="license-thumb" title="点击查看大图">
+          <svg viewBox="0 0 24 24"><rect x="3" y="3" width="18" height="18" rx="2"/><circle cx="9" cy="9" r="2"/><path d="m21 15-3.1-3.1a2 2 0 0 0-2.8 0L6 21"/></svg>
+          <span>营业执照</span>
+        </div>
+        <dl class="dl" style="flex:1">
+          <dt>申请主体</dt><dd>杭州临安申通服务部</dd>
+          <dt>申请编号</dt><dd class="tnum">AP-20260618-013</dd>
+          <dt>联系人</dt><dd>陈**（138****6721）</dd>
+          <dt>拟开门店</dt><dd>城西综合驿站</dd>
+          <dt>门店地址</dt><dd style="font-weight:500">杭州市临安区锦城街道苕溪南路 88 号</dd>
+        </dl>
+      </div>
+
+      <div class="divider"></div>
+
+      <!-- 审核处理 -->
+      <div class="subhd"><svg viewBox="0 0 24 24"><path d="M9 11l3 3L22 4"/><path d="M21 12v7a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h11"/></svg>审核处理</div>
+      <div class="field" style="margin-bottom:16px">
+        <label>分配套餐 <span class="req">*</span></label>
+        <select class="select">
+          <option>基础版 · ¥199/月 · 1 门店 / 单收单发</option>
+          <option selected>标准版 · ¥399/月 · 3 门店 / 多渠道代收</option>
+          <option>旗舰版 · ¥899/月 · 不限门店 / 全功能 + API</option>
+        </select>
+      </div>
+      <div class="field">
+        <label>审核意见</label>
+        <textarea class="input" rows="3" placeholder="请填写审核意见，驳回时需说明原因（资质不全 / 信息不符 / 区域已饱和等）"></textarea>
+      </div>
+    </div>
+    <div class="ft">
+      <button class="btn btn-danger" onclick="closeModal()">
+        <svg viewBox="0 0 24 24"><path d="M18 6 6 18M6 6l12 12"/></svg>驳回
+      </button>
+      <button class="btn btn-primary" onclick="closeModal()">
+        <svg viewBox="0 0 24 24"><path d="M20 6 9 17l-5-5"/></svg>通过并开通
+      </button>
+    </div>
+  </div>
+</div>
+
+<script>
+function openModal(){document.getElementById('reviewMask').style.display='grid';}
+function closeModal(){document.getElementById('reviewMask').style.display='none';}
+document.getElementById('reviewMask').addEventListener('click',function(e){if(e.target===this)closeModal();});
+document.querySelectorAll('.tabs .tab').forEach(function(t){t.addEventListener('click',function(){document.querySelectorAll('.tabs .tab').forEach(function(x){x.classList.remove('on')});t.classList.add('on');});});
+</script>
+</body>
+</html>
