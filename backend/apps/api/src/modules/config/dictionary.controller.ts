@@ -1,4 +1,12 @@
-import { Body, Controller, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Get,
+  Param,
+  Patch,
+  Post,
+  Query,
+} from '@nestjs/common';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { Audit } from '../audit/audit.decorator';
 import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
@@ -15,6 +23,11 @@ import {
   SystemConfigService,
   UpdateSystemConfigInput,
 } from './system-config.service';
+import {
+  CreateNotifyTemplateInput,
+  NotifyTemplateService,
+  UpdateNotifyTemplateInput,
+} from './notify-template.service';
 
 @Controller('admin/config')
 export class AdminDictionaryController {
@@ -143,6 +156,52 @@ export class AdminChannelConfigController {
   ) {
     this.requirePlatform(user);
     return this.channels.update(channel, body, user.userId);
+  }
+
+  private requirePlatform(user: any) {
+    if (!user?.isPlatform) {
+      throw new BizError(ApiCode.FORBIDDEN, '仅平台用户可管理系统配置');
+    }
+  }
+}
+
+@Controller('admin/config/notify-templates')
+export class AdminNotifyTemplateController {
+  constructor(private readonly templates: NotifyTemplateService) {}
+
+  @RequirePermission('config:view')
+  @Get()
+  list(@CurrentUser() user: any, @Query() query: any) {
+    this.requirePlatform(user);
+    return this.templates.list({ code: query.code, channel: query.channel });
+  }
+
+  @Audit({
+    action: 'config.notify_template.create',
+    resourceType: 'notify_template',
+    summary: '新增通知模板',
+  })
+  @RequirePermission('config:manage')
+  @Post()
+  create(@CurrentUser() user: any, @Body() body: CreateNotifyTemplateInput) {
+    this.requirePlatform(user);
+    return this.templates.create(body);
+  }
+
+  @Audit({
+    action: 'config.notify_template.update',
+    resourceType: 'notify_template',
+    summary: '更新通知模板',
+  })
+  @RequirePermission('config:manage')
+  @Patch(':id')
+  update(
+    @CurrentUser() user: any,
+    @Param('id') id: string,
+    @Body() body: UpdateNotifyTemplateInput,
+  ) {
+    this.requirePlatform(user);
+    return this.templates.update(id, body);
   }
 
   private requirePlatform(user: any) {

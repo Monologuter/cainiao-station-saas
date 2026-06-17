@@ -5,10 +5,12 @@ import { ChannelResolver } from './channel-resolver';
 import {
   AdminChannelConfigController,
   AdminDictionaryController,
+  AdminNotifyTemplateController,
   AdminSystemConfigController,
   PublicDictionaryController,
 } from './dictionary.controller';
 import { DictionaryService } from './dictionary.service';
+import { NotifyTemplateService } from './notify-template.service';
 import { ProviderRegistry } from './provider-registry';
 import { RuntimeConfigService } from './runtime-config.service';
 import { SystemConfigService } from './system-config.service';
@@ -17,6 +19,7 @@ import { SystemConfigService } from './system-config.service';
   controllers: [
     AdminChannelConfigController,
     AdminDictionaryController,
+    AdminNotifyTemplateController,
     AdminSystemConfigController,
     PublicDictionaryController,
   ],
@@ -24,6 +27,7 @@ import { SystemConfigService } from './system-config.service';
     ChannelConfigService,
     ChannelResolver,
     DictionaryService,
+    NotifyTemplateService,
     ProviderRegistry,
     RuntimeConfigService,
     SystemConfigService,
@@ -33,6 +37,7 @@ import { SystemConfigService } from './system-config.service';
     ChannelConfigService,
     ChannelResolver,
     DictionaryService,
+    NotifyTemplateService,
     RuntimeConfigService,
     SystemConfigService,
   ],
