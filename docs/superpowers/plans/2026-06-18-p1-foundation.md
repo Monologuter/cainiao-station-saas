@@ -1,0 +1,1285 @@
+# P1-1 后端地基（Foundation）Implementation Plan
+
+> **For agentic workers:** REQUIRED SUB-SKILL: Use superpowers:subagent-driven-development (recommended) or superpowers:executing-plans to implement this plan task-by-task. Steps use checkbox (`- [ ]`) syntax for tracking.
+
+**Goal:** 搭起菜鸟驿站 SaaS 后端的可运行、可测试地基：NestJS 模块化单体 + PostgreSQL/Prisma + 行级安全(RLS)多租户隔离 + JWT 鉴权 + RBAC 权限 + 统一响应/异常，最终能「平台开店 → 店长登录 → 带权限访问受保护接口 → 跨租户数据被 RLS 隔离」并有 e2e 冒烟测试通过。
+
+**Architecture:** 单一 NestJS 应用按限界上下文分模块（`core` 基础设施 / `tenant` 租户 / `identity` 鉴权与 RBAC）。多租户用「共享库 + `tenant_id` 列 + Postgres RLS」：每次请求从 JWT 解出 `tenantId` 存入 `AsyncLocalStorage`，Prisma 在事务内 `set_config('app.tenant_id', ...)`，RLS Policy 自动过滤。平台超管走 bypass 角色可跨租户。
+
+**Tech Stack:** Node 22 · NestJS 10 · TypeScript · Prisma 5 · PostgreSQL 16 · Redis 7(ioredis) · Jest + supertest · Docker Compose · argon2(密码) · @nestjs/jwt + passport-jwt · class-validator。
+
+**约定：** 所有命令在 `backend/` 目录下执行（除非注明）。每个 Task 结束 commit。测试先行（TDD）。
+
+---
+
+## File Structure（先锁定文件职责）
+
+```
+backend/
+├── docker-compose.yml              # postgres + redis（本地开发依赖）
+├── .env / .env.example             # DATABASE_URL / JWT_SECRET / REDIS_URL
+├── package.json / tsconfig.json / nest-cli.json
+├── prisma/
+│   ├── schema.prisma               # 数据模型（tenant/user/role/permission/...）
+│   ├── migrations/                 # prisma migrate 生成
+│   └── seed.ts                     # 平台超管 + 种子角色/权限
+├── src/
+│   ├── main.ts                     # 启动 + 全局管道/过滤器/前缀
+│   ├── app.module.ts               # 根模块
+│   ├── core/                       # 基础设施（无业务）
+│   │   ├── prisma/prisma.service.ts        # PrismaClient 封装
+│   │   ├── prisma/tenant-prisma.service.ts # 按租户上下文注入 RLS 的客户端
+│   │   ├── tenant-context/tenant-context.ts# AsyncLocalStorage 存 {userId,tenantId,roles,isPlatform}
+│   │   ├── http/response.interceptor.ts    # 统一响应 {code,message,data}
+│   │   ├── http/all-exceptions.filter.ts   # 统一异常
+│   │   └── http/api-code.ts                # 业务错误码枚举
+│   ├── tenant/                     # 租户上下文域
+│   │   ├── tenant.module.ts
+│   │   ├── tenant.service.ts       # createTenant(开店)
+│   │   └── tenant.controller.ts    # POST /platform/tenants（平台开店）
+│   └── identity/                   # 鉴权 + RBAC
+│       ├── identity.module.ts
+│       ├── auth.service.ts         # login / 校验密码 / 解析「我的权限」
+│       ├── auth.controller.ts      # POST /auth/login, GET /auth/me
+│       ├── jwt.strategy.ts         # passport-jwt 校验 + 注入 tenant-context
+│       ├── jwt-auth.guard.ts       # 全局守卫（@Public 跳过）
+│       ├── permission.guard.ts     # @RequirePermission 校验
+│       └── decorators.ts           # @Public / @RequirePermission / @CurrentUser
+└── test/
+    ├── jest-e2e.json
+    └── foundation.e2e-spec.ts      # 冒烟：开店→登录→受保护接口→RLS 隔离
+```
+
+---
+
+## Task 1: 初始化 NestJS 工程与依赖
+
+**Files:**
+- Create: `backend/package.json`, `backend/tsconfig.json`, `backend/nest-cli.json`, `backend/.gitignore`
+- Create: `backend/src/main.ts`, `backend/src/app.module.ts`
+
+- [ ] **Step 1: 用 Nest CLI 生成工程骨架**
+
+在仓库根目录执行：
+```bash
+npx -y @nestjs/cli@10 new backend --package-manager npm --skip-git --language TypeScript
+```
+预期：生成 `backend/`，含 `src/main.ts`、`src/app.module.ts`、`package.json`、`tsconfig.json`。
+
+- [ ] **Step 2: 安装地基依赖**
+
+```bash
+cd backend
+npm i @nestjs/config @nestjs/jwt passport passport-jwt @nestjs/passport @prisma/client argon2 class-validator class-transformer ioredis
+npm i -D prisma @types/passport-jwt
+```
+预期：依赖写入 `package.json`，无报错。
+
+- [ ] **Step 3: 配置全局前缀、校验管道（编辑 `src/main.ts`）**
+
+```typescript
+import { NestFactory } from '@nestjs/core';
+import { ValidationPipe } from '@nestjs/common';
+import { AppModule } from './app.module';
+
+async function bootstrap() {
+  const app = await NestFactory.create(AppModule);
+  app.setGlobalPrefix('api');
+  app.useGlobalPipes(
+    new ValidationPipe({ whitelist: true, transform: true }),
+  );
+  await app.listen(process.env.PORT ?? 3000);
+}
+bootstrap();
+```
+
+- [ ] **Step 4: 启动验证**
+
+Run: `npm run start`
+预期：控制台输出 `Nest application successfully started`，无报错。`Ctrl+C` 结束。
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd .. && git add backend && git commit -m "chore(backend): 初始化 NestJS 工程与地基依赖"
+```
+
+---
+
+## Task 2: 本地依赖容器（Postgres + Redis）与环境变量
+
+**Files:**
+- Create: `backend/docker-compose.yml`, `backend/.env`, `backend/.env.example`
+
+- [ ] **Step 1: 写 `backend/docker-compose.yml`**
+
+```yaml
+services:
+  postgres:
+    image: postgres:16
+    environment:
+      POSTGRES_USER: cainiao
+      POSTGRES_PASSWORD: cainiao
+      POSTGRES_DB: cainiao
+    ports: ['5432:5432']
+    volumes: ['pgdata:/var/lib/postgresql/data']
+  redis:
+    image: redis:7
+    ports: ['6379:6379']
+volumes:
+  pgdata:
+```
+
+- [ ] **Step 2: 写 `backend/.env.example` 和 `backend/.env`**
+
+两个文件内容相同：
+```
+DATABASE_URL="postgresql://cainiao:cainiao@localhost:5432/cainiao?schema=public"
+JWT_SECRET="dev-secret-change-me"
+JWT_EXPIRES_IN="2h"
+REDIS_URL="redis://localhost:6379"
+PORT=3000
+```
+
+- [ ] **Step 3: 启动容器**
+
+Run: `docker compose up -d`
+预期：`postgres` 与 `redis` 容器 running。`docker compose ps` 可见两者 Up。
+
+- [ ] **Step 4: 确认 `.env` 不入库、`.env.example` 入库**
+
+确认根 `.gitignore` 含 `.env`（已在仓库根存在）。
+
+- [ ] **Step 5: Commit**
+
+```bash
+git add backend/docker-compose.yml backend/.env.example
+git commit -m "chore(backend): postgres+redis 容器与环境变量样例"
+```
+
+---
+
+## Task 3: Prisma 接入与初始数据模型
+
+**Files:**
+- Create: `backend/prisma/schema.prisma`
+- Create: `backend/src/core/prisma/prisma.service.ts`
+
+- [ ] **Step 1: 初始化 Prisma**
+
+```bash
+cd backend && npx prisma init --datasource-provider postgresql
+```
+预期：生成 `prisma/schema.prisma`（会用 `.env` 的 `DATABASE_URL`）。
+
+- [ ] **Step 2: 写数据模型（覆盖 `prisma/schema.prisma`）**
+
+```prisma
+generator client {
+  provider = "prisma-client-js"
+}
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserType { PLATFORM STAFF }
+enum RoleScope { PLATFORM TENANT }
+enum TenantStatus { ACTIVE SUSPENDED CLOSED }
+
+model Tenant {
+  id           String       @id @default(uuid()) @db.Uuid
+  name         String
+  ownerName    String
+  contactPhone String
+  status       TenantStatus @default(ACTIVE)
+  createdAt    DateTime     @default(now())
+  users        User[]
+  stations     Station[]
+}
+
+model Station {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @db.Uuid
+  name      String
+  code      String
+  createdAt DateTime @default(now())
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  @@index([tenantId])
+}
+
+model User {
+  id           String     @id @default(uuid()) @db.Uuid
+  tenantId     String?    @db.Uuid
+  type         UserType
+  username     String
+  passwordHash String
+  phone        String?
+  status       String     @default("active")
+  createdAt    DateTime   @default(now())
+  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
+  roles        UserRole[]
+  @@unique([tenantId, username])
+}
+
+model Role {
+  id          String           @id @default(uuid()) @db.Uuid
+  tenantId    String?          @db.Uuid
+  code        String
+  name        String
+  scope       RoleScope
+  isBuiltin   Boolean          @default(false)
+  users       UserRole[]
+  permissions RolePermission[]
+  @@unique([tenantId, code])
+}
+
+model Permission {
+  id    String           @id @default(uuid()) @db.Uuid
+  code  String           @unique
+  name  String
+  module String
+  roles RolePermission[]
+}
+
+model UserRole {
+  userId String @db.Uuid
+  roleId String @db.Uuid
+  user   User   @relation(fields: [userId], references: [id])
+  role   Role   @relation(fields: [roleId], references: [id])
+  @@id([userId, roleId])
+}
+
+model RolePermission {
+  roleId       String     @db.Uuid
+  permissionId String     @db.Uuid
+  role         Role       @relation(fields: [roleId], references: [id])
+  permission   Permission @relation(fields: [permissionId], references: [id])
+  @@id([roleId, permissionId])
+}
+```
+
+- [ ] **Step 3: 生成首个迁移并应用**
+
+```bash
+npx prisma migrate dev --name init
+```
+预期：`prisma/migrations/xxxx_init/` 生成，表创建成功，`npx prisma generate` 自动跑。
+
+- [ ] **Step 4: 写 `src/core/prisma/prisma.service.ts`**
+
+```typescript
+import { Injectable, OnModuleInit } from '@nestjs/common';
+import { PrismaClient } from '@prisma/client';
+
+@Injectable()
+export class PrismaService extends PrismaClient implements OnModuleInit {
+  async onModuleInit() {
+    await this.$connect();
+  }
+}
+```
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd .. && git add backend/prisma backend/src/core
+git commit -m "feat(backend): Prisma 接入与初始数据模型(租户/用户/RBAC)"
+```
+
+---
+
+## Task 4: 统一响应与异常（core/http）
+
+**Files:**
+- Create: `backend/src/core/http/api-code.ts`
+- Create: `backend/src/core/http/response.interceptor.ts`
+- Create: `backend/src/core/http/all-exceptions.filter.ts`
+- Test: `backend/src/core/http/response.interceptor.spec.ts`
+- Modify: `backend/src/main.ts`
+
+- [ ] **Step 1: 写错误码 `src/core/http/api-code.ts`**
+
+```typescript
+export const ApiCode = {
+  OK: 0,
+  BAD_REQUEST: 1001,
+  UNAUTHORIZED: 1002,
+  FORBIDDEN: 1003,
+  NOT_FOUND: 1004,
+  INTERNAL: 5000,
+} as const;
+
+export class BizError extends Error {
+  constructor(public code: number, message: string) {
+    super(message);
+  }
+}
+```
+
+- [ ] **Step 2: 写失败测试 `src/core/http/response.interceptor.spec.ts`**
+
+```typescript
+import { of } from 'rxjs';
+import { ResponseInterceptor } from './response.interceptor';
+
+describe('ResponseInterceptor', () => {
+  it('wraps payload into {code,message,data}', (done) => {
+    const interceptor = new ResponseInterceptor();
+    const next = { handle: () => of({ a: 1 }) } as any;
+    interceptor.intercept({} as any, next).subscribe((res) => {
+      expect(res).toEqual({ code: 0, message: 'ok', data: { a: 1 } });
+      done();
+    });
+  });
+});
+```
+
+- [ ] **Step 3: 运行确认失败**
+
+Run: `npx jest src/core/http/response.interceptor.spec.ts`
+预期：FAIL（`Cannot find module './response.interceptor'`）。
+
+- [ ] **Step 4: 写 `src/core/http/response.interceptor.ts`**
+
+```typescript
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { map } from 'rxjs/operators';
+import { ApiCode } from './api-code';
+
+@Injectable()
+export class ResponseInterceptor implements NestInterceptor {
+  intercept(_ctx: ExecutionContext, next: CallHandler): Observable<any> {
+    return next.handle().pipe(map((data) => ({ code: ApiCode.OK, message: 'ok', data })));
+  }
+}
+```
+
+- [ ] **Step 5: 运行确认通过**
+
+Run: `npx jest src/core/http/response.interceptor.spec.ts`
+预期：PASS。
+
+- [ ] **Step 6: 写异常过滤器 `src/core/http/all-exceptions.filter.ts`**
+
+```typescript
+import { ArgumentsHost, Catch, ExceptionFilter, HttpException, HttpStatus } from '@nestjs/common';
+import { ApiCode, BizError } from './api-code';
+
+@Catch()
+export class AllExceptionsFilter implements ExceptionFilter {
+  catch(exception: unknown, host: ArgumentsHost) {
+    const res = host.switchToHttp().getResponse();
+    let status = HttpStatus.INTERNAL_SERVER_ERROR;
+    let code: number = ApiCode.INTERNAL;
+    let message = 'internal error';
+
+    if (exception instanceof BizError) {
+      status = HttpStatus.OK;
+      code = exception.code;
+      message = exception.message;
+    } else if (exception instanceof HttpException) {
+      status = exception.getStatus();
+      code = status;
+      const r = exception.getResponse() as any;
+      message = typeof r === 'string' ? r : r.message?.toString() ?? exception.message;
+    }
+    res.status(status).json({ code, message, data: null });
+  }
+}
+```
+
+- [ ] **Step 7: 全局注册（编辑 `src/main.ts`，在 setGlobalPrefix 后加）**
+
+```typescript
+import { ResponseInterceptor } from './core/http/response.interceptor';
+import { AllExceptionsFilter } from './core/http/all-exceptions.filter';
+// ...在 useGlobalPipes 之后：
+app.useGlobalInterceptors(new ResponseInterceptor());
+app.useGlobalFilters(new AllExceptionsFilter());
+```
+
+- [ ] **Step 8: Commit**
+
+```bash
+cd .. && git add backend/src/core/http backend/src/main.ts
+git commit -m "feat(backend): 统一响应与全局异常过滤"
+```
+
+---
+
+## Task 5: 租户上下文（AsyncLocalStorage）
+
+**Files:**
+- Create: `backend/src/core/tenant-context/tenant-context.ts`
+- Test: `backend/src/core/tenant-context/tenant-context.spec.ts`
+
+- [ ] **Step 1: 写失败测试 `tenant-context.spec.ts`**
+
+```typescript
+import { TenantContext } from './tenant-context';
+
+describe('TenantContext', () => {
+  it('runs callback with isolated store', () => {
+    const ctx = { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false };
+    TenantContext.run(ctx, () => {
+      expect(TenantContext.get()?.tenantId).toBe('t1');
+    });
+    expect(TenantContext.get()).toBeUndefined();
+  });
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx jest src/core/tenant-context/tenant-context.spec.ts`
+预期：FAIL（模块不存在）。
+
+- [ ] **Step 3: 写 `tenant-context.ts`**
+
+```typescript
+import { AsyncLocalStorage } from 'node:async_hooks';
+
+export interface RequestContext {
+  userId: string;
+  tenantId: string | null;
+  roles: string[];
+  isPlatform: boolean;
+}
+
+const als = new AsyncLocalStorage<RequestContext>();
+
+export const TenantContext = {
+  run<T>(ctx: RequestContext, fn: () => T): T {
+    return als.run(ctx, fn);
+  },
+  get(): RequestContext | undefined {
+    return als.getStore();
+  },
+};
+```
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx jest src/core/tenant-context/tenant-context.spec.ts`
+预期：PASS。
+
+- [ ] **Step 5: Commit**
+
+```bash
+cd .. && git add backend/src/core/tenant-context
+git commit -m "feat(backend): 请求级租户上下文(AsyncLocalStorage)"
+```
+
+---
+
+## Task 6: Postgres 行级安全(RLS) 与按租户注入的 Prisma
+
+**Files:**
+- Create: `backend/prisma/migrations/<ts>_rls/migration.sql`（手写迁移）
+- Create: `backend/src/core/prisma/tenant-prisma.service.ts`
+- Test: `backend/test/rls.e2e-spec.ts`
+
+- [ ] **Step 1: 新建空迁移用于写 RLS Policy**
+
+```bash
+cd backend && npx prisma migrate dev --create-only --name rls
+```
+预期：生成空的 `migrations/<ts>_rls/migration.sql`。
+
+- [ ] **Step 2: 写 RLS SQL（编辑该 `migration.sql`）**
+
+对带 `tenantId` 的表开启 RLS，并按 GUC `app.tenant_id` 过滤；平台连接可用 `app.bypass_rls='on'` 绕过：
+```sql
+-- 对 Station 与 User 启用 RLS（示例，后续业务表照此追加）
+ALTER TABLE "Station" ENABLE ROW LEVEL SECURITY;
+ALTER TABLE "User"    ENABLE ROW LEVEL SECURITY;
+
+CREATE POLICY tenant_isolation_station ON "Station"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR "tenantId" = current_setting('app.tenant_id', true)::uuid
+  );
+
+CREATE POLICY tenant_isolation_user ON "User"
+  USING (
+    current_setting('app.bypass_rls', true) = 'on'
+    OR "tenantId" = current_setting('app.tenant_id', true)::uuid
+  );
+```
+> 注意：应用连接用的数据库角色不能是表 owner / superuser（否则 RLS 默认被绕过）。本地用 `cainiao` 角色，并在迁移末尾追加 `ALTER TABLE "Station" FORCE ROW LEVEL SECURITY; ALTER TABLE "User" FORCE ROW LEVEL SECURITY;` 以对 owner 也强制生效。
+
+在 `migration.sql` 末尾追加：
+```sql
+ALTER TABLE "Station" FORCE ROW LEVEL SECURITY;
+ALTER TABLE "User"    FORCE ROW LEVEL SECURITY;
+```
+
+- [ ] **Step 3: 应用迁移**
+
+```bash
+npx prisma migrate dev
+```
+预期：RLS 迁移应用成功。
+
+- [ ] **Step 4: 写按租户注入的 Prisma 服务 `src/core/prisma/tenant-prisma.service.ts`**
+
+用 Prisma client extension：每次查询包进一个事务，先 `set_config` 注入当前请求的 `tenant_id` / `bypass`：
+```typescript
+import { Injectable } from '@nestjs/common';
+import { PrismaService } from './prisma.service';
+import { TenantContext } from '../tenant-context/tenant-context';
+
+@Injectable()
+export class TenantPrismaService {
+  constructor(private readonly base: PrismaService) {}
+
+  /** 在注入了租户 GUC 的事务里执行回调 */
+  async withTenant<T>(fn: (tx: any) => Promise<T>): Promise<T> {
+    const ctx = TenantContext.get();
+    const tenantId = ctx?.tenantId ?? null;
+    const bypass = ctx?.isPlatform ? 'on' : 'off';
+    return this.base.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls', $1, true)`, bypass);
+      if (tenantId) {
+        await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tenantId);
+      }
+      return fn(tx);
+    });
+  }
+}
+```
+> `set_config(key, value, true)` 的第三参 `true` = 仅本事务有效，避免污染连接池中其它请求。
+
+- [ ] **Step 5: 写 RLS 隔离 e2e 测试 `test/rls.e2e-spec.ts`**
+
+```typescript
+import { PrismaService } from '../src/core/prisma/prisma.service';
+
+describe('RLS 隔离', () => {
+  const prisma = new PrismaService();
+  beforeAll(() => prisma.$connect());
+  afterAll(() => prisma.$disconnect());
+
+  it('设置 app.tenant_id 后只能看到本租户的 Station', async () => {
+    // 准备：两个租户各一个门店（用 bypass 写入）
+    const tA = await prisma.tenant.create({ data: { name: 'A', ownerName: 'a', contactPhone: '1' } });
+    const tB = await prisma.tenant.create({ data: { name: 'B', ownerName: 'b', contactPhone: '2' } });
+    await prisma.station.create({ data: { tenantId: tA.id, name: 'SA', code: 'SA' } });
+    await prisma.station.create({ data: { tenantId: tB.id, name: 'SB', code: 'SB' } });
+
+    const rows = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls','off', true)`);
+      await tx.$executeRawUnsafe(`SELECT set_config('app.tenant_id', $1, true)`, tA.id);
+      return tx.station.findMany();
+    });
+    expect(rows.every((r) => r.tenantId === tA.id)).toBe(true);
+    expect(rows.length).toBe(1);
+  });
+});
+```
+
+- [ ] **Step 6: 运行确认通过**
+
+Run: `npx jest --config test/jest-e2e.json test/rls.e2e-spec.ts`（若无 e2e 配置，临时 `npx jest test/rls.e2e-spec.ts`）
+预期：PASS（只看到 1 条且都属于租户 A）。
+
+- [ ] **Step 7: Commit**
+
+```bash
+cd .. && git add backend/prisma backend/src/core/prisma backend/test
+git commit -m "feat(backend): Postgres RLS 多租户隔离 + 按租户注入的 Prisma"
+```
+
+---
+
+## Task 7: 鉴权（登录 + JWT + 全局守卫）
+
+**Files:**
+- Create: `backend/src/identity/decorators.ts`
+- Create: `backend/src/identity/jwt.strategy.ts`
+- Create: `backend/src/identity/jwt-auth.guard.ts`
+- Create: `backend/src/identity/auth.service.ts`
+- Create: `backend/src/identity/auth.controller.ts`
+- Create: `backend/src/identity/identity.module.ts`
+- Test: `backend/src/identity/auth.service.spec.ts`
+
+- [ ] **Step 1: 写装饰器 `src/identity/decorators.ts`**
+
+```typescript
+import { SetMetadata, createParamDecorator, ExecutionContext } from '@nestjs/common';
+export const IS_PUBLIC = 'isPublic';
+export const Public = () => SetMetadata(IS_PUBLIC, true);
+export const PERMS = 'requiredPerms';
+export const RequirePermission = (...perms: string[]) => SetMetadata(PERMS, perms);
+export const CurrentUser = createParamDecorator(
+  (_d, ctx: ExecutionContext) => ctx.switchToHttp().getRequest().user,
+);
+```
+
+- [ ] **Step 2: 写失败测试 `src/identity/auth.service.spec.ts`**
+
+```typescript
+import * as argon2 from 'argon2';
+import { AuthService } from './auth.service';
+
+describe('AuthService.validate', () => {
+  it('valid password returns user payload', async () => {
+    const hash = await argon2.hash('pw123456');
+    const prisma = {
+      user: { findFirst: async () => ({ id: 'u1', tenantId: 't1', username: 'boss', passwordHash: hash, type: 'STAFF', roles: [{ role: { code: '店长' } }] }) },
+    } as any;
+    const jwt = { signAsync: async () => 'tok' } as any;
+    const svc = new AuthService(prisma, jwt);
+    const out = await svc.login('boss', 'pw123456');
+    expect(out.accessToken).toBe('tok');
+    expect(out.user.roles).toContain('店长');
+  });
+
+  it('wrong password throws', async () => {
+    const hash = await argon2.hash('right');
+    const prisma = { user: { findFirst: async () => ({ id: 'u1', passwordHash: hash, roles: [] }) } } as any;
+    const jwt = { signAsync: async () => 'tok' } as any;
+    const svc = new AuthService(prisma, jwt);
+    await expect(svc.login('x', 'wrong')).rejects.toThrow();
+  });
+});
+```
+
+- [ ] **Step 3: 运行确认失败**
+
+Run: `npx jest src/identity/auth.service.spec.ts`
+预期：FAIL（模块不存在）。
+
+- [ ] **Step 4: 写 `src/identity/auth.service.ts`**
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { JwtService } from '@nestjs/jwt';
+import * as argon2 from 'argon2';
+import { PrismaService } from '../core/prisma/prisma.service';
+import { ApiCode, BizError } from '../core/http/api-code';
+
+@Injectable()
+export class AuthService {
+  constructor(private prisma: PrismaService, private jwt: JwtService) {}
+
+  async login(username: string, password: string) {
+    const user = await this.prisma.user.findFirst({
+      where: { username },
+      include: { roles: { include: { role: true } } },
+    });
+    if (!user || !(await argon2.verify(user.passwordHash, password))) {
+      throw new BizError(ApiCode.UNAUTHORIZED, '账号或密码错误');
+    }
+    const roles = user.roles.map((r) => r.role.code);
+    const isPlatform = user.type === 'PLATFORM';
+    const accessToken = await this.jwt.signAsync({
+      sub: user.id, tenantId: user.tenantId, roles, isPlatform,
+    });
+    return { accessToken, user: { id: user.id, username: user.username, tenantId: user.tenantId, roles, isPlatform } };
+  }
+}
+```
+> 登录查询需绕过 RLS（登录时还没有租户上下文）。这里直接用基础 `PrismaService`（platform 连接默认 `app.bypass_rls` 未设为 'on'，但 `User` 表 RLS 在无 `tenant_id` GUC 时 `current_setting(..., true)` 返回 NULL → 比较为 NULL → 行被过滤）。因此登录查询必须显式 bypass：改用事务设 `app.bypass_rls='on'`。**实现见下方修正**。
+
+修正 `login` 的查询为 bypass 事务：
+```typescript
+const user = await this.prisma.$transaction(async (tx) => {
+  await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls','on', true)`);
+  return tx.user.findFirst({ where: { username }, include: { roles: { include: { role: true } } } });
+});
+```
+
+- [ ] **Step 5: 运行确认通过**
+
+Run: `npx jest src/identity/auth.service.spec.ts`
+预期：PASS（两条用例）。
+
+- [ ] **Step 6: 写 JWT 策略 `src/identity/jwt.strategy.ts`**
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import { PassportStrategy } from '@nestjs/passport';
+import { ExtractJwt, Strategy } from 'passport-jwt';
+
+@Injectable()
+export class JwtStrategy extends PassportStrategy(Strategy) {
+  constructor() {
+    super({
+      jwtFromRequest: ExtractJwt.fromAuthHeaderAsBearerToken(),
+      secretOrKey: process.env.JWT_SECRET!,
+    });
+  }
+  async validate(payload: any) {
+    return { userId: payload.sub, tenantId: payload.tenantId, roles: payload.roles, isPlatform: payload.isPlatform };
+  }
+}
+```
+
+- [ ] **Step 7: 写全局守卫 `src/identity/jwt-auth.guard.ts`（兼顾 @Public 与注入租户上下文）**
+
+```typescript
+import { ExecutionContext, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { AuthGuard } from '@nestjs/passport';
+import { IS_PUBLIC } from './decorators';
+import { TenantContext } from '../core/tenant-context/tenant-context';
+
+@Injectable()
+export class JwtAuthGuard extends AuthGuard('jwt') {
+  constructor(private reflector: Reflector) { super(); }
+
+  canActivate(context: ExecutionContext) {
+    const isPublic = this.reflector.getAllAndOverride<boolean>(IS_PUBLIC, [
+      context.getHandler(), context.getClass(),
+    ]);
+    if (isPublic) return true;
+    return super.canActivate(context);
+  }
+
+  handleRequest(err: any, user: any) {
+    if (err || !user) throw err || new Error('Unauthorized');
+    return user; // 实际的上下文注入在拦截器里做（见 Step 8）
+  }
+}
+```
+
+- [ ] **Step 8: 写 `src/identity/auth.controller.ts` 与 DTO**
+
+```typescript
+import { Body, Controller, Get, Post } from '@nestjs/common';
+import { IsString, MinLength } from 'class-validator';
+import { AuthService } from './auth.service';
+import { Public, CurrentUser } from './decorators';
+
+class LoginDto {
+  @IsString() username: string;
+  @IsString() @MinLength(6) password: string;
+}
+
+@Controller('auth')
+export class AuthController {
+  constructor(private auth: AuthService) {}
+
+  @Public()
+  @Post('login')
+  login(@Body() dto: LoginDto) {
+    return this.auth.login(dto.username, dto.password);
+  }
+
+  @Get('me')
+  me(@CurrentUser() user: any) {
+    return user;
+  }
+}
+```
+
+- [ ] **Step 9: 写 `src/identity/identity.module.ts`**
+
+```typescript
+import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
+import { AuthService } from './auth.service';
+import { AuthController } from './auth.controller';
+import { JwtStrategy } from './jwt.strategy';
+import { PrismaService } from '../core/prisma/prisma.service';
+
+@Module({
+  imports: [JwtModule.register({
+    secret: process.env.JWT_SECRET,
+    signOptions: { expiresIn: process.env.JWT_EXPIRES_IN ?? '2h' },
+  })],
+  controllers: [AuthController],
+  providers: [AuthService, JwtStrategy, PrismaService],
+  exports: [AuthService],
+})
+export class IdentityModule {}
+```
+
+- [ ] **Step 10: Commit**
+
+```bash
+cd .. && git add backend/src/identity
+git commit -m "feat(backend): JWT 登录鉴权与全局守卫"
+```
+
+---
+
+## Task 8: RBAC 权限守卫 + 请求上下文注入
+
+**Files:**
+- Create: `backend/src/identity/permission.guard.ts`
+- Create: `backend/src/core/http/context.interceptor.ts`
+- Modify: `backend/src/app.module.ts`（全局注册守卫/拦截器、装配模块）
+- Test: `backend/src/identity/permission.guard.spec.ts`
+
+- [ ] **Step 1: 写上下文拦截器 `src/core/http/context.interceptor.ts`**
+
+把已鉴权的 `req.user` 放进 `TenantContext`，让后续 service / TenantPrisma 拿得到：
+```typescript
+import { CallHandler, ExecutionContext, Injectable, NestInterceptor } from '@nestjs/common';
+import { Observable } from 'rxjs';
+import { TenantContext } from '../tenant-context/tenant-context';
+
+@Injectable()
+export class ContextInterceptor implements NestInterceptor {
+  intercept(ctx: ExecutionContext, next: CallHandler): Observable<any> {
+    const req = ctx.switchToHttp().getRequest();
+    const u = req.user;
+    if (!u) return next.handle();
+    return new Observable((sub) => {
+      TenantContext.run(
+        { userId: u.userId, tenantId: u.tenantId ?? null, roles: u.roles ?? [], isPlatform: !!u.isPlatform },
+        () => next.handle().subscribe(sub),
+      );
+    });
+  }
+}
+```
+
+- [ ] **Step 2: 写失败测试 `src/identity/permission.guard.spec.ts`**
+
+```typescript
+import { PermissionGuard } from './permission.guard';
+
+function ctxWith(perms: string[] | undefined) {
+  return {
+    getHandler: () => ({}), getClass: () => ({}),
+    switchToHttp: () => ({ getRequest: () => ({ user: { perms: ['parcel:inbound'] } }) }),
+  } as any;
+}
+
+describe('PermissionGuard', () => {
+  it('allows when no perm required', () => {
+    const reflector = { getAllAndOverride: () => undefined } as any;
+    expect(new PermissionGuard(reflector).canActivate(ctxWith(undefined))).toBe(true);
+  });
+  it('denies when missing required perm', () => {
+    const reflector = { getAllAndOverride: () => ['staff:manage'] } as any;
+    expect(() => new PermissionGuard(reflector).canActivate(ctxWith(['staff:manage']))).toThrow();
+  });
+});
+```
+
+- [ ] **Step 3: 运行确认失败**
+
+Run: `npx jest src/identity/permission.guard.spec.ts`
+预期：FAIL（模块不存在）。
+
+- [ ] **Step 4: 写 `src/identity/permission.guard.ts`**
+
+`req.user.perms` 由 JWT 策略补全（见 Step 6）。平台超管 / 拥有该权限码即放行：
+```typescript
+import { CanActivate, ExecutionContext, Injectable } from '@nestjs/common';
+import { Reflector } from '@nestjs/core';
+import { PERMS } from './decorators';
+import { ApiCode, BizError } from '../core/http/api-code';
+
+@Injectable()
+export class PermissionGuard implements CanActivate {
+  constructor(private reflector: Reflector) {}
+  canActivate(context: ExecutionContext): boolean {
+    const required = this.reflector.getAllAndOverride<string[]>(PERMS, [
+      context.getHandler(), context.getClass(),
+    ]);
+    if (!required || required.length === 0) return true;
+    const user = context.switchToHttp().getRequest().user;
+    const owned: string[] = user?.perms ?? [];
+    if (user?.isPlatform || required.every((p) => owned.includes(p))) return true;
+    throw new BizError(ApiCode.FORBIDDEN, '无权限执行该操作');
+  }
+}
+```
+
+- [ ] **Step 5: 运行确认通过**
+
+Run: `npx jest src/identity/permission.guard.spec.ts`
+预期：PASS（两条）。
+
+- [ ] **Step 6: 让 JWT 策略补全权限码（编辑 `src/identity/jwt.strategy.ts` 的 validate）**
+
+```typescript
+import { PrismaService } from '../core/prisma/prisma.service';
+// 构造函数注入 prisma：
+constructor(private prisma: PrismaService) { super({ /* 同前 */ }); }
+
+async validate(payload: any) {
+  const perms = await this.prisma.$transaction(async (tx) => {
+    await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls','on', true)`);
+    const rows = await tx.rolePermission.findMany({
+      where: { role: { code: { in: payload.roles ?? [] } } },
+      include: { permission: true },
+    });
+    return [...new Set(rows.map((r) => r.permission.code))];
+  });
+  return { userId: payload.sub, tenantId: payload.tenantId, roles: payload.roles, isPlatform: payload.isPlatform, perms };
+}
+```
+> 同步把 `JwtStrategy` 的 providers 依赖加上 `PrismaService`（identity.module 已提供）。
+
+- [ ] **Step 7: 全局装配（覆盖 `src/app.module.ts`）**
+
+```typescript
+import { Module } from '@nestjs/common';
+import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { ConfigModule } from '@nestjs/config';
+import { IdentityModule } from './identity/identity.module';
+import { TenantModule } from './tenant/tenant.module';
+import { JwtAuthGuard } from './identity/jwt-auth.guard';
+import { PermissionGuard } from './identity/permission.guard';
+import { ContextInterceptor } from './core/http/context.interceptor';
+import { PrismaService } from './core/prisma/prisma.service';
+import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
+
+@Module({
+  imports: [ConfigModule.forRoot({ isGlobal: true }), IdentityModule, TenantModule],
+  providers: [
+    PrismaService,
+    TenantPrismaService,
+    { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },
+    { provide: APP_GUARD, useClass: PermissionGuard },
+  ],
+})
+export class AppModule {}
+```
+> 守卫执行顺序：JwtAuthGuard 先验明身份，PermissionGuard 再校验权限。ContextInterceptor 在守卫之后、handler 之前注入上下文。
+
+- [ ] **Step 8: 运行全部单测**
+
+Run: `npx jest`
+预期：已写的单测全部 PASS。
+
+- [ ] **Step 9: Commit**
+
+```bash
+cd .. && git add backend/src
+git commit -m "feat(backend): RBAC 权限守卫与请求上下文注入"
+```
+
+---
+
+## Task 9: 平台开店（租户创建）+ 种子数据
+
+**Files:**
+- Create: `backend/src/tenant/tenant.service.ts`
+- Create: `backend/src/tenant/tenant.controller.ts`
+- Create: `backend/src/tenant/tenant.module.ts`
+- Create: `backend/prisma/seed.ts`
+- Modify: `backend/package.json`（prisma seed 配置）
+- Test: `backend/src/tenant/tenant.service.spec.ts`
+
+- [ ] **Step 1: 写失败测试 `src/tenant/tenant.service.spec.ts`**
+
+```typescript
+import { TenantService } from './tenant.service';
+
+describe('TenantService.createTenant', () => {
+  it('creates tenant + default station + 店长 user with 店长 role', async () => {
+    const created: any = {};
+    const tx = {
+      tenant: { create: async ({ data }: any) => (created.tenant = { id: 't1', ...data }) },
+      station: { create: async ({ data }: any) => (created.station = { id: 's1', ...data }) },
+      role: { create: async ({ data }: any) => ({ id: 'r1', ...data }) },
+      user: { create: async ({ data }: any) => (created.user = { id: 'u1', ...data }) },
+      userRole: { create: async () => ({}) },
+      $executeRawUnsafe: async () => {},
+    };
+    const prisma = { $transaction: async (fn: any) => fn(tx) } as any;
+    const svc = new TenantService(prisma);
+    const out = await svc.createTenant({ name: '城南驿站', ownerName: '张三', ownerPhone: '13800000000', ownerPassword: 'pw123456' });
+    expect(out.tenantId).toBe('t1');
+    expect(created.station.tenantId).toBe('t1');
+    expect(created.user.tenantId).toBe('t1');
+  });
+});
+```
+
+- [ ] **Step 2: 运行确认失败**
+
+Run: `npx jest src/tenant/tenant.service.spec.ts`
+预期：FAIL（模块不存在）。
+
+- [ ] **Step 3: 写 `src/tenant/tenant.service.ts`**
+
+```typescript
+import { Injectable } from '@nestjs/common';
+import * as argon2 from 'argon2';
+import { PrismaService } from '../core/prisma/prisma.service';
+
+interface CreateTenantInput {
+  name: string; ownerName: string; ownerPhone: string; ownerPassword: string;
+}
+
+@Injectable()
+export class TenantService {
+  constructor(private prisma: PrismaService) {}
+
+  async createTenant(input: CreateTenantInput) {
+    const passwordHash = await argon2.hash(input.ownerPassword);
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(`SELECT set_config('app.bypass_rls','on', true)`);
+      const tenant = await tx.tenant.create({
+        data: { name: input.name, ownerName: input.ownerName, contactPhone: input.ownerPhone },
+      });
+      const station = await tx.station.create({
+        data: { tenantId: tenant.id, name: input.name, code: 'S001' },
+      });
+      const ownerRole = await tx.role.create({
+        data: { tenantId: tenant.id, code: '店长', name: '店长', scope: 'TENANT', isBuiltin: true },
+      });
+      const user = await tx.user.create({
+        data: { tenantId: tenant.id, type: 'STAFF', username: input.ownerPhone, passwordHash, phone: input.ownerPhone },
+      });
+      await tx.userRole.create({ data: { userId: user.id, roleId: ownerRole.id } });
+      return { tenantId: tenant.id, stationId: station.id, ownerUserId: user.id };
+    });
+  }
+}
+```
+
+- [ ] **Step 4: 运行确认通过**
+
+Run: `npx jest src/tenant/tenant.service.spec.ts`
+预期：PASS。
+
+- [ ] **Step 5: 写 `src/tenant/tenant.controller.ts`（仅平台超管可调）**
+
+```typescript
+import { Body, Controller, Post } from '@nestjs/common';
+import { IsString, MinLength } from 'class-validator';
+import { TenantService } from './tenant.service';
+import { RequirePermission } from '../identity/decorators';
+
+class CreateTenantDto {
+  @IsString() name: string;
+  @IsString() ownerName: string;
+  @IsString() ownerPhone: string;
+  @IsString() @MinLength(6) ownerPassword: string;
+}
+
+@Controller('platform/tenants')
+export class TenantController {
+  constructor(private tenant: TenantService) {}
+
+  @RequirePermission('tenant:create')
+  @Post()
+  create(@Body() dto: CreateTenantDto) {
+    return this.tenant.createTenant(dto);
+  }
+}
+```
+
+- [ ] **Step 6: 写 `src/tenant/tenant.module.ts`**
+
+```typescript
+import { Module } from '@nestjs/common';
+import { TenantService } from './tenant.service';
+import { TenantController } from './tenant.controller';
+import { PrismaService } from '../core/prisma/prisma.service';
+
+@Module({
+  controllers: [TenantController],
+  providers: [TenantService, PrismaService],
+})
+export class TenantModule {}
+```
+
+- [ ] **Step 7: 写种子 `prisma/seed.ts`（平台超管 + 平台权限）**
+
+```typescript
+import { PrismaClient } from '@prisma/client';
+import * as argon2 from 'argon2';
+const prisma = new PrismaClient();
+
+async function main() {
+  const perms = [
+    { code: 'tenant:create', name: '开店', module: 'tenant' },
+    { code: 'tenant:read', name: '查看租户', module: 'tenant' },
+  ];
+  for (const p of perms) {
+    await prisma.permission.upsert({ where: { code: p.code }, update: {}, create: p });
+  }
+  const superRole = await prisma.role.upsert({
+    where: { tenantId_code: { tenantId: null as any, code: '平台超管' } },
+    update: {},
+    create: { code: '平台超管', name: '平台超级管理员', scope: 'PLATFORM', isBuiltin: true },
+  }).catch(async () =>
+    prisma.role.create({ data: { code: '平台超管', name: '平台超级管理员', scope: 'PLATFORM', isBuiltin: true } }),
+  );
+  const allPerms = await prisma.permission.findMany();
+  for (const p of allPerms) {
+    await prisma.rolePermission.upsert({
+      where: { roleId_permissionId: { roleId: superRole.id, permissionId: p.id } },
+      update: {}, create: { roleId: superRole.id, permissionId: p.id },
+    });
+  }
+  const admin = await prisma.user.upsert({
+    where: { tenantId_username: { tenantId: null as any, username: 'admin' } },
+    update: {},
+    create: { type: 'PLATFORM', username: 'admin', passwordHash: await argon2.hash('admin123456') },
+  }).catch(async () =>
+    prisma.user.create({ data: { type: 'PLATFORM', username: 'admin', passwordHash: await argon2.hash('admin123456') } }),
+  );
+  await prisma.userRole.upsert({
+    where: { userId_roleId: { userId: admin.id, roleId: superRole.id } },
+    update: {}, create: { userId: admin.id, roleId: superRole.id },
+  });
+  console.log('seed done: platform admin = admin / admin123456');
+}
+main().finally(() => prisma.$disconnect());
+```
+
+- [ ] **Step 8: 配置 seed 命令（编辑 `backend/package.json`，加顶层字段）**
+
+```json
+"prisma": { "seed": "ts-node prisma/seed.ts" }
+```
+安装 ts-node：`npm i -D ts-node`，然后 `npx prisma db seed`。
+预期：输出 `seed done: platform admin = admin / admin123456`。
+
+- [ ] **Step 9: Commit**
+
+```bash
+cd .. && git add backend/src/tenant backend/prisma/seed.ts backend/package.json
+git commit -m "feat(backend): 平台开店接口与平台超管种子数据"
+```
+
+---
+
+## Task 10: e2e 冒烟（开店 → 登录 → 受保护接口 → RLS 隔离）
+
+**Files:**
+- Create: `backend/test/jest-e2e.json`
+- Create: `backend/test/foundation.e2e-spec.ts`
+
+- [ ] **Step 1: 写 `test/jest-e2e.json`**
+
+```json
+{
+  "moduleFileExtensions": ["js", "json", "ts"],
+  "rootDir": ".",
+  "testEnvironment": "node",
+  "testRegex": ".e2e-spec.ts$",
+  "transform": { "^.+\\.(t|j)s$": "ts-jest" }
+}
+```
+安装：`cd backend && npm i -D ts-jest`。
+
+- [ ] **Step 2: 写冒烟测试 `test/foundation.e2e-spec.ts`**
+
+```typescript
+import { Test } from '@nestjs/testing';
+import { INestApplication, ValidationPipe } from '@nestjs/common';
+import * as request from 'supertest';
+import { AppModule } from '../src/app.module';
+import { ResponseInterceptor } from '../src/core/http/response.interceptor';
+import { AllExceptionsFilter } from '../src/core/http/all-exceptions.filter';
+
+describe('Foundation e2e', () => {
+  let app: INestApplication;
+  beforeAll(async () => {
+    const mod = await Test.createTestingModule({ imports: [AppModule] }).compile();
+    app = mod.createNestApplication();
+    app.setGlobalPrefix('api');
+    app.useGlobalPipes(new ValidationPipe({ whitelist: true, transform: true }));
+    app.useGlobalInterceptors(new ResponseInterceptor());
+    app.useGlobalFilters(new AllExceptionsFilter());
+    await app.init();
+  });
+  afterAll(() => app.close());
+
+  it('平台登录 → 开店 → 店长登录 → /auth/me', async () => {
+    // 1. 平台超管登录（种子 admin/admin123456）
+    const login = await request(app.getHttpServer())
+      .post('/api/auth/login').send({ username: 'admin', password: 'admin123456' }).expect(201);
+    const adminToken = login.body.data.accessToken;
+    expect(adminToken).toBeDefined();
+
+    // 2. 开店（需要 tenant:create 权限）
+    const phone = '139' + Date.now().toString().slice(-8);
+    const open = await request(app.getHttpServer())
+      .post('/api/platform/tenants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({ name: '城南驿站', ownerName: '张三', ownerPhone: phone, ownerPassword: 'pw123456' })
+      .expect(201);
+    expect(open.body.data.tenantId).toBeDefined();
+
+    // 3. 店长登录
+    const bossLogin = await request(app.getHttpServer())
+      .post('/api/auth/login').send({ username: phone, password: 'pw123456' }).expect(201);
+    expect(bossLogin.body.data.user.roles).toContain('店长');
+
+    // 4. 未带 token 访问受保护接口 → 401
+    await request(app.getHttpServer()).get('/api/auth/me').expect(401);
+
+    // 5. 带 token → 拿到自己的上下文
+    const me = await request(app.getHttpServer())
+      .get('/api/auth/me').set('Authorization', `Bearer ${bossLogin.body.data.accessToken}`).expect(200);
+    expect(me.body.data.tenantId).toBe(open.body.data.tenantId);
+  });
+
+  it('店长无 tenant:create 权限 → 开店被拒(403 业务码)', async () => {
+    const phone = '138' + Date.now().toString().slice(-8);
+    // 先用平台号开一个店拿到店长
+    const admin = await request(app.getHttpServer()).post('/api/auth/login').send({ username: 'admin', password: 'admin123456' });
+    await request(app.getHttpServer()).post('/api/platform/tenants')
+      .set('Authorization', `Bearer ${admin.body.data.accessToken}`)
+      .send({ name: 'B 驿站', ownerName: '李四', ownerPhone: phone, ownerPassword: 'pw123456' });
+    const boss = await request(app.getHttpServer()).post('/api/auth/login').send({ username: phone, password: 'pw123456' });
+    const res = await request(app.getHttpServer()).post('/api/platform/tenants')
+      .set('Authorization', `Bearer ${boss.body.data.accessToken}`)
+      .send({ name: 'X', ownerName: 'x', ownerPhone: '13700000000', ownerPassword: 'pw123456' });
+    expect(res.body.code).toBe(1003); // FORBIDDEN
+  });
+});
+```
+
+- [ ] **Step 3: 加 e2e 脚本（编辑 `backend/package.json` 的 scripts）**
+
+```json
+"test:e2e": "jest --config ./test/jest-e2e.json"
+```
+
+- [ ] **Step 4: 确保依赖容器在跑并已 seed**
+
+```bash
+cd backend && docker compose up -d && npx prisma migrate deploy && npx prisma db seed
+```
+
+- [ ] **Step 5: 运行 e2e 确认通过**
+
+Run: `npm run test:e2e`
+预期：两条 e2e 用例 PASS（含 RLS 上下文、权限拒绝）。
+
+- [ ] **Step 6: Commit**
+
+```bash
+cd .. && git add backend/test backend/package.json
+git commit -m "test(backend): 地基 e2e 冒烟(开店/登录/鉴权/权限)"
+```
+
+---
+
+## Self-Review（计划自检）
+
+**Spec 覆盖：** 对照设计文档 §3 多租户(RLS)→Task 6；§5.1 identity(JWT+RBAC)→Task 7/8；§5.2 tenant(开店)→Task 9；§2 技术栈(NestJS/Prisma/PG/Redis)→Task 1-3；§9 统一响应/异常→Task 4；请求上下文→Task 5/8。Redis 仅装依赖未用（P1-2 取件码/验证码再用，符合 YAGNI）。
+
+**占位扫描：** 无 TBD/TODO；每个代码步骤均给出完整代码与命令、预期输出。
+
+**类型一致性：** `RequestContext`(Task5) 字段与 ContextInterceptor(Task8)、TenantPrismaService(Task6) 使用一致；`login()` 返回 `{accessToken,user}` 与 e2e 断言一致；权限码 `tenant:create` 在 seed(Task9)、controller(Task9)、e2e(Task10) 一致。
+
+**已知约束：** RLS 要求应用连接角色非超级用户且对表 `FORCE ROW LEVEL SECURITY`（Task6 已处理）；登录/开店/权限解析等「无租户上下文」查询统一用 `app.bypass_rls='on'` 事务（Task7/8/9 已处理）。
+
+---
+
+## Execution Handoff
+
+计划已完成。两种执行方式：
+
+1. **Subagent-Driven（推荐）** — 每个 Task 派一个新的子代理实现，任务间我来评审，迭代快。
+2. **Inline Execution** — 在本会话内按批次执行，带检查点评审。
+
+选哪种？另外注意：执行前需本机有 Docker（起 Postgres/Redis）。后续还有 **P1-2 驿站核心闭环** 与 **P1-3 前端接入** 两份计划，我可在本计划跑通后接着写。
