@@ -1,0 +1,23 @@
+name: cainiao-station
+
+services:
+  postgres:
+    image: postgres:16
+    container_name: cainiao-station-postgres
+    environment:
+      POSTGRES_USER: cainiao
+      POSTGRES_PASSWORD: cainiao
+      POSTGRES_DB: cainiao
+    ports:
+      - "15432:5432"
+    volumes:
+      - cainiao-pgdata:/var/lib/postgresql/data
+
+  redis:
+    image: redis:7
+    container_name: cainiao-station-redis
+    ports:
+      - "16379:6379"
+
+volumes:
+  cainiao-pgdata:
