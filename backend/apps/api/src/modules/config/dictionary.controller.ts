@@ -7,6 +7,10 @@ import {
   DictionaryService,
   UpdateDictItemInput,
 } from './dictionary.service';
+import {
+  SystemConfigService,
+  UpdateSystemConfigInput,
+} from './system-config.service';
 
 @Controller('admin/config')
 export class AdminDictionaryController {
@@ -73,5 +77,39 @@ export class PublicDictionaryController {
   @Get(':type')
   items(@Param('type') type: string) {
     return this.dictionaries.listItems(type, true);
+  }
+}
+
+@Controller('admin/config/system')
+export class AdminSystemConfigController {
+  constructor(private readonly systemConfigs: SystemConfigService) {}
+
+  @RequirePermission('config:view')
+  @Get()
+  list(@CurrentUser() user: any) {
+    this.requirePlatform(user);
+    return this.systemConfigs.list();
+  }
+
+  @Audit({
+    action: 'config.system.update',
+    resourceType: 'system_config',
+    summary: '更新系统参数',
+  })
+  @RequirePermission('config:manage')
+  @Patch(':key')
+  update(
+    @CurrentUser() user: any,
+    @Param('key') key: string,
+    @Body() body: UpdateSystemConfigInput,
+  ) {
+    this.requirePlatform(user);
+    return this.systemConfigs.update(key, body, user.userId);
+  }
+
+  private requirePlatform(user: any) {
+    if (!user?.isPlatform) {
+      throw new BizError(ApiCode.FORBIDDEN, '仅平台用户可管理系统配置');
+    }
   }
 }
