@@ -92,4 +92,80 @@ describe('Foundation e2e', () => {
 
     expect(res.body.code).toBe(1003);
   });
+
+  it('登录用户可拉取权限码与按 RBAC 过滤后的菜单', async () => {
+    const adminLogin = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ username: 'admin', password: 'admin123456' })
+      .expect(201);
+    const adminToken = adminLogin.body.data.accessToken;
+
+    const adminPermissions = await request(app.getHttpServer())
+      .get('/api/auth/permissions')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(adminPermissions.body.data).toEqual(
+      expect.arrayContaining(['tenant:create', 'parcel:read']),
+    );
+
+    const adminMenus = await request(app.getHttpServer())
+      .get('/api/auth/menus')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .expect(200);
+    expect(adminMenus.body.data).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          group: '平台运营',
+          items: expect.arrayContaining([
+            expect.objectContaining({ code: 'tenant-open' }),
+          ]),
+        }),
+      ]),
+    );
+
+    const phone = `137${Date.now().toString().slice(-8)}`;
+    await request(app.getHttpServer())
+      .post('/api/platform/tenants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: 'RBAC 菜单驿站',
+        ownerName: '赵六',
+        ownerPhone: phone,
+        ownerPassword: 'pw123456',
+      })
+      .expect(201);
+
+    const bossLogin = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ username: phone, password: 'pw123456' })
+      .expect(201);
+    const bossToken = bossLogin.body.data.accessToken;
+
+    const bossPermissions = await request(app.getHttpServer())
+      .get('/api/auth/permissions')
+      .set('Authorization', `Bearer ${bossToken}`)
+      .expect(200);
+    expect(bossPermissions.body.data).toEqual(
+      expect.arrayContaining(['parcel:inbound', 'parcel:pickup']),
+    );
+    expect(bossPermissions.body.data).not.toContain('tenant:create');
+
+    const bossMenus = await request(app.getHttpServer())
+      .get('/api/auth/menus')
+      .set('Authorization', `Bearer ${bossToken}`)
+      .expect(200);
+    const flattened = bossMenus.body.data.flatMap((group: any) => group.items);
+    expect(flattened).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'inbound' }),
+        expect.objectContaining({ code: 'pickup' }),
+        expect.objectContaining({ code: 'shelves' }),
+      ]),
+    );
+    expect(flattened).not.toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({ code: 'tenant-open' }),
+      ]),
+    );
+  });
 });

@@ -26,4 +26,14 @@ export class AuthController {
   me(@CurrentUser() user: any) {
     return user;
   }
+
+  @Get('permissions')
+  permissions(@CurrentUser() user: any) {
+    return user.perms ?? [];
+  }
+
+  @Get('menus')
+  menus(@CurrentUser() user: any) {
+    return this.auth.menusFor(user.perms ?? []);
+  }
 }
