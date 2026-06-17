@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import { EventBus } from '../../core/event-bus/event-bus';
 import { ApiCode, BizError } from '../../core/http/api-code';
+import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { CourierSelectorService } from './courier-selector.service';
@@ -30,6 +31,7 @@ export class ShippingService {
     private readonly pricing: PricingService,
     private readonly tenantPrisma: TenantPrismaService,
     private readonly eventBus: EventBus,
+    private readonly basePrisma?: PrismaService,
   ) {}
 
   quote(input: QuoteDto) {
@@ -74,7 +76,8 @@ export class ShippingService {
             ruleId: quote.ruleId,
             breakdown: quote.breakdown,
           },
-          createdBy: ctx.userId,
+          consumerId: (input as any).consumerId,
+          createdBy: this.uuidOrUndefined(ctx.userId),
         },
       }),
     );
@@ -92,6 +95,42 @@ export class ShippingService {
     );
 
     return order;
+  }
+
+  async quoteForConsumer(input: QuoteDto) {
+    if (!input.stationId) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少寄件受理门店');
+    }
+    const tenantId = await this.tenantIdByStation(input.stationId);
+    return TenantContext.run(
+      { userId: 'consumer', tenantId, roles: [], isPlatform: false },
+      () => this.quote(input),
+    );
+  }
+
+  async createConsumerOrder(
+    input: CreateShipOrderDto,
+    consumer: { sub: string; phone: string },
+  ) {
+    if (!input.stationId) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少寄件受理门店');
+    }
+    if (input.sender.phone !== consumer.phone) {
+      throw new BizError(ApiCode.FORBIDDEN, '只能为当前登录手机号寄件');
+    }
+    const tenantId = await this.tenantIdByStation(input.stationId);
+    return TenantContext.run(
+      { userId: 'consumer', tenantId, roles: [], isPlatform: false },
+      () =>
+        this.createOrder(
+          {
+            ...input,
+            channel: 'ONLINE',
+            consumerId: consumer.sub,
+          } as any,
+          { tenantId },
+        ),
+    );
   }
 
   async listOrders(input: ListShipOrdersInput, user?: RequestUser) {
@@ -146,6 +185,41 @@ export class ShippingService {
     });
   }
 
+  async listConsumerOrders(consumer: { sub: string }, status?: string) {
+    return this.basePrisma!.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      const where: Record<string, unknown> = {
+        consumerId: consumer.sub,
+        deletedAt: null,
+      };
+      if (status) {
+        where.status = status;
+      }
+      const list = await tx.shipOrder.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+      });
+      return {
+        list: list.map((order: any) => this.toOrderDto(order)),
+        total: list.length,
+        page: 1,
+        size: list.length,
+      };
+    });
+  }
+
+  async getConsumerOrder(id: string, consumer: { sub: string }) {
+    const order = await this.findConsumerOrder(id, consumer.sub);
+    return this.toOrderDto(order);
+  }
+
+  async tenantForConsumerOrder(id: string, consumer: { sub: string }) {
+    const order = await this.findConsumerOrder(id, consumer.sub);
+    return order.tenantId;
+  }
+
   private requireContext(user?: RequestUser) {
     if (user?.tenantId) {
       return {
@@ -165,6 +239,49 @@ export class ShippingService {
   private nextOrderNo() {
     const random = randomInt(1000, 9999);
     return `SO${Date.now()}${random}`;
+  }
+
+  private async tenantIdByStation(stationId: string) {
+    const station = await this.basePrisma!.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.station.findUnique({ where: { id: stationId } });
+    });
+    if (!station) {
+      throw new BizError(ApiCode.NOT_FOUND, '寄件受理门店不存在');
+    }
+    return station.tenantId;
+  }
+
+  private async findConsumerOrder(id: string, consumerId: string) {
+    const order = await this.basePrisma!.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.shipOrder.findFirst({
+        where: { id, consumerId, deletedAt: null },
+        include: {
+          station: true,
+          logisticsTracks: { orderBy: { seq: 'asc' } },
+        },
+      });
+    });
+    if (!order) {
+      throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
+    }
+    return order;
+  }
+
+  private uuidOrUndefined(value: string | undefined) {
+    if (!value) {
+      return undefined;
+    }
+    return /^[0-9a-f]{8}-[0-9a-f]{4}-[1-5][0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}$/i.test(
+      value,
+    )
+      ? value
+      : undefined;
   }
 
   private parsePositiveInt(value: string | undefined, fallback: number) {

@@ -13,5 +13,6 @@ import { MemberService } from './member.service';
   ],
   controllers: [MemberController],
   providers: [MemberService, PrismaService],
+  exports: [MemberService],
 })
 export class MemberModule {}

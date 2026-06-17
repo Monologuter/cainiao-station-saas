@@ -48,7 +48,12 @@ describe('ShippingService', () => {
     );
 
     const result = await TenantContext.run(
-      { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+      {
+        userId: '00000000-0000-4000-8000-000000000001',
+        tenantId: 't1',
+        roles: ['店长'],
+        isPlatform: false,
+      },
       () =>
         service.createOrder({
           channel: 'STATION',
@@ -84,7 +89,7 @@ describe('ShippingService', () => {
       courierCode: 'YTO',
       courierName: '圆通速递',
       quoteAmount: 1300,
-      createdBy: 'u1',
+      createdBy: '00000000-0000-4000-8000-000000000001',
     });
     expect(created.order.quoteSnapshotJson).toMatchObject({
       zone: 'CROSS_PROVINCE',

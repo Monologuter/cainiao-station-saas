@@ -4,6 +4,7 @@ import {
   IsInt,
   IsOptional,
   IsString,
+  IsUUID,
   Matches,
   Min,
   ValidateNested,
@@ -31,6 +32,10 @@ export class ShippingAddressDto {
 }
 
 export class QuoteDto {
+  @IsOptional()
+  @IsUUID()
+  stationId?: string;
+
   @ValidateNested()
   @Type(() => ShippingAddressDto)
   sender: ShippingAddressDto;

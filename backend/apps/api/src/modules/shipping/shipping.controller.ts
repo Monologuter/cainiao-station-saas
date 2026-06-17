@@ -10,8 +10,9 @@ import {
 import { IsOptional, IsString } from 'class-validator';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { LogisticsService } from '../logistics/logistics.service';
+import { MemberService } from '../member/member.service';
 import { PayService } from '../pay/pay.service';
-import { CurrentUser, RequirePermission } from '../identity/decorators';
+import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
 import { ShippingService } from './shipping.service';
@@ -39,8 +40,78 @@ export class ShippingController {
   constructor(
     private readonly shipping: ShippingService,
     private readonly logistics: LogisticsService,
+    private readonly member: MemberService,
     private readonly pay: PayService,
   ) {}
+
+  @Public()
+  @Post('consumer/quote')
+  async consumerQuote(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() dto: QuoteDto,
+  ) {
+    await this.member.requireConsumer(authorization);
+    return this.shipping.quoteForConsumer(dto);
+  }
+
+  @Public()
+  @Post('consumer/orders')
+  async createConsumerOrder(
+    @Headers('authorization') authorization: string | undefined,
+    @Body() dto: any,
+  ) {
+    const consumer = await this.member.requireConsumer(authorization);
+    return this.shipping.createConsumerOrder(
+      { ...dto, channel: 'ONLINE' },
+      consumer,
+    );
+  }
+
+  @Public()
+  @Get('my-orders')
+  async listMyOrders(
+    @Headers('authorization') authorization: string | undefined,
+    @Query('status') status?: string,
+  ) {
+    const consumer = await this.member.requireConsumer(authorization);
+    return this.shipping.listConsumerOrders(consumer, status);
+  }
+
+  @Public()
+  @Get('consumer/orders/:id/tracks')
+  async getConsumerTracks(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const consumer = await this.member.requireConsumer(authorization);
+    const tenantId = await this.shipping.tenantForConsumerOrder(id, consumer);
+    return this.logistics.getTracks(id, { tenantId });
+  }
+
+  @Public()
+  @Get('consumer/orders/:id')
+  async getConsumerOrder(
+    @Headers('authorization') authorization: string | undefined,
+    @Param('id') id: string,
+  ) {
+    const consumer = await this.member.requireConsumer(authorization);
+    return this.shipping.getConsumerOrder(id, consumer);
+  }
+
+  @Public()
+  @Post('consumer/orders/:id/pay')
+  async payConsumerOrder(
+    @Headers('authorization') authorization: string | undefined,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @Param('id') id: string,
+  ) {
+    if (!idempotencyKey) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少支付幂等键');
+    }
+    const consumer = await this.member.requireConsumer(authorization);
+    const tenantId = await this.shipping.tenantForConsumerOrder(id, consumer);
+    return this.pay.payShipOrder(id, idempotencyKey, { tenantId });
+  }
 
   @RequirePermission('shipping:quote')
   @Post('quote')

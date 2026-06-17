@@ -29,6 +29,17 @@ export class PayService {
     idempotencyKey: string,
     user?: RequestUser,
   ) {
+    if (user?.tenantId && !TenantContext.get()?.tenantId) {
+      return TenantContext.run(
+        {
+          userId: user.userId ?? 'consumer',
+          tenantId: user.tenantId,
+          roles: user.roles ?? [],
+          isPlatform: !!user.isPlatform,
+        },
+        () => this.payShipOrder(orderId, idempotencyKey, user),
+      );
+    }
     const ctx = this.requireContext(user);
     const paid = await this.tenantPrisma.withTenant(async (tx) => {
       const existing = await tx.payment.findUnique({

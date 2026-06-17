@@ -26,6 +26,17 @@ export class LogisticsService {
   ) {}
 
   async collectShipOrder(orderId: string, user?: RequestUser) {
+    if (user?.tenantId && !TenantContext.get()?.tenantId) {
+      return TenantContext.run(
+        {
+          userId: user.userId ?? 'consumer',
+          tenantId: user.tenantId,
+          roles: user.roles ?? [],
+          isPlatform: !!user.isPlatform,
+        },
+        () => this.collectShipOrder(orderId, user),
+      );
+    }
     const ctx = this.requireContext(user);
 
     return this.tenantPrisma.withTenant(async (tx) => {
@@ -80,6 +91,17 @@ export class LogisticsService {
   }
 
   async getTracks(orderId: string, user?: RequestUser) {
+    if (user?.tenantId && !TenantContext.get()?.tenantId) {
+      return TenantContext.run(
+        {
+          userId: user.userId ?? 'consumer',
+          tenantId: user.tenantId,
+          roles: user.roles ?? [],
+          isPlatform: !!user.isPlatform,
+        },
+        () => this.getTracks(orderId, user),
+      );
+    }
     const ctx = this.requireContext(user);
 
     return this.tenantPrisma.withTenant(async (tx) => {

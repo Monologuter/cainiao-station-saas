@@ -7,7 +7,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 const MOCK_CODE = '123456';
 const CONSUMER_SCOPE = 'consumer:parcel-read';
 
-interface ConsumerTokenPayload {
+export interface ConsumerTokenPayload {
   sub: string;
   phone: string;
   scope: string;
@@ -101,7 +101,7 @@ export class MemberService {
     return this.toConsumerParcel(parcel);
   }
 
-  private async requireConsumer(authHeader?: string) {
+  async requireConsumer(authHeader?: string) {
     const token = this.extractBearer(authHeader);
     if (!token) {
       throw new BizError(ApiCode.UNAUTHORIZED, '缺少取件查询令牌');
