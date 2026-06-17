@@ -1,0 +1,49 @@
+<script setup lang="ts">
+import { computed, onMounted, ref } from 'vue';
+import { statusLabel, type ConsumerParcelStatus } from '@/api/parcel';
+import { useParcelStore } from '@/store/parcel';
+
+const parcel = useParcelStore();
+const active = ref<ConsumerParcelStatus | ''>('STORED');
+const tabs: Array<{ label: string; status: ConsumerParcelStatus | '' }> = [
+  { label: '待取', status: 'STORED' },
+  { label: '已取', status: 'PICKED_UP' },
+  { label: '全部', status: '' },
+];
+const emptyText = computed(() => (active.value === 'STORED' ? '暂无待取包裹' : '暂无包裹'));
+
+onMounted(() => parcel.load(active.value));
+
+function switchTab(status: ConsumerParcelStatus | '') {
+  active.value = status;
+  parcel.load(status);
+}
+
+function openCode(id: string) {
+  uni.navigateTo({ url: `/pages/pickup-code/index?id=${id}` });
+}
+</script>
+
+<template>
+  <view class="mobile-page">
+    <view class="tabs-mobile">
+      <button
+        v-for="tab in tabs"
+        :key="tab.label"
+        class="tab-mobile"
+        :class="{ on: active === tab.status }"
+        type="button"
+        @click="switchTab(tab.status)"
+      >
+        {{ tab.label }}
+      </button>
+    </view>
+
+    <view v-if="parcel.list.length === 0" class="mobile-card empty-mobile">{{ emptyText }}</view>
+    <view v-for="item in parcel.list" :key="item.id" class="mobile-card parcel-card" @click="openCode(item.id)">
+      <text class="parcel-code">{{ item.pickupCode ?? item.waybillNo }}</text>
+      <text class="parcel-meta">{{ item.station?.name ?? '驿站' }} · {{ item.slot?.code ?? '未分配' }}</text>
+      <text class="parcel-status">{{ statusLabel(item.status) }}</text>
+    </view>
+  </view>
+</template>

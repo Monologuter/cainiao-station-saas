@@ -11,6 +11,18 @@
       "style": {
         "navigationBarTitleText": "我的包裹"
       }
+    },
+    {
+      "path": "pages/parcels/index",
+      "style": {
+        "navigationBarTitleText": "包裹列表"
+      }
+    },
+    {
+      "path": "pages/pickup-code/index",
+      "style": {
+        "navigationBarTitleText": "取件码"
+      }
     }
   ],
   "globalStyle": {

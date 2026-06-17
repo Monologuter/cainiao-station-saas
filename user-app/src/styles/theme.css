@@ -97,3 +97,90 @@ page {
   height: 48px;
   font-size: 16px;
 }
+
+.home-action {
+  width: 100%;
+  margin: 14px 0;
+}
+
+.tabs-mobile {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 6px;
+  margin-bottom: 14px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: 14px;
+  background: var(--surface);
+}
+
+.tab-mobile {
+  height: 38px;
+  border: 0;
+  border-radius: 10px;
+  color: var(--muted);
+  background: transparent;
+  font-weight: 700;
+}
+
+.tab-mobile.on {
+  color: var(--primary-fg);
+  background: var(--primary);
+}
+
+.parcel-card {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-bottom: 10px;
+  padding: 16px;
+}
+
+.parcel-code {
+  color: var(--primary);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.parcel-meta,
+.parcel-status {
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.empty-mobile {
+  padding: 28px;
+  color: var(--muted);
+  text-align: center;
+}
+
+.pickup-code-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 24px;
+  text-align: center;
+}
+
+.big-code {
+  color: var(--primary);
+  font-size: 42px;
+  font-weight: 900;
+  letter-spacing: 2px;
+}
+
+.barcode-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  align-items: center;
+  margin-top: 14px;
+  padding: 18px;
+}
+
+.fake-barcode {
+  width: 220px;
+  height: 72px;
+  border-radius: 8px;
+  background: repeating-linear-gradient(90deg, #111 0 3px, #fff 3px 7px, #111 7px 9px, #fff 9px 14px);
+}
