@@ -6,6 +6,9 @@ describe('permission metadata', () => {
     const groups = groupPermissions([
       'parcel:read',
       'parcel:pickup',
+      'parcel:overdue:scan',
+      'exception:create',
+      'exception:read',
       'station:manage',
       'shipping:read',
     ]);
@@ -16,6 +19,14 @@ describe('permission metadata', () => {
         items: [
           { code: 'parcel:read', name: '查看包裹' },
           { code: 'parcel:pickup', name: '取件核销' },
+          { code: 'parcel:overdue:scan', name: '手动滞留扫描' },
+        ],
+      },
+      {
+        module: '异常',
+        items: [
+          { code: 'exception:create', name: '标记异常件' },
+          { code: 'exception:read', name: '查看异常件' },
         ],
       },
       {

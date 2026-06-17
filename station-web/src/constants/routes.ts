@@ -1,4 +1,5 @@
 import type { Component } from 'vue';
+import ExceptionsView from '@/views/ExceptionsView.vue';
 import InboundView from '@/views/InboundView.vue';
 import ParcelsView from '@/views/ParcelsView.vue';
 import PickupView from '@/views/PickupView.vue';
@@ -49,6 +50,14 @@ export const stationRouteDefs: StationRouteDef[] = [
     title: '取件核销',
     perm: 'parcel:pickup',
     component: PickupView,
+  },
+  {
+    code: 'exceptions',
+    name: 'Exceptions',
+    path: 'exceptions',
+    title: '异常件',
+    perm: 'exception:read',
+    component: ExceptionsView,
   },
   {
     code: 'shelves',
