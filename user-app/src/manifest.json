@@ -1,0 +1,16 @@
+{
+  "name": "驿小站用户端",
+  "appid": "__UNI__CAINIAO_STATION",
+  "description": "菜鸟驿站 SaaS 用户端 H5 与小程序",
+  "versionName": "0.0.1",
+  "versionCode": "1",
+  "h5": {
+    "router": {
+      "mode": "history",
+      "base": "/"
+    }
+  },
+  "mp-weixin": {
+    "appid": ""
+  }
+}

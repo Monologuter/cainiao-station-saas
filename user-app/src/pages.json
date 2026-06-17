@@ -1,0 +1,22 @@
+{
+  "pages": [
+    {
+      "path": "pages/login/index",
+      "style": {
+        "navigationBarTitleText": "登录"
+      }
+    },
+    {
+      "path": "pages/home/index",
+      "style": {
+        "navigationBarTitleText": "我的包裹"
+      }
+    }
+  ],
+  "globalStyle": {
+    "navigationBarTextStyle": "black",
+    "navigationBarTitleText": "驿小站",
+    "navigationBarBackgroundColor": "#ffffff",
+    "backgroundColor": "#f7f8fa"
+  }
+}

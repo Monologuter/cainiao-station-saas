@@ -1,0 +1,99 @@
+:root,
+page {
+  --bg: #f7f8fa;
+  --surface: #ffffff;
+  --text: #1e293b;
+  --muted: #64748b;
+  --border: #e8ebf0;
+  --primary: #3b6ef6;
+  --primary-fg: #ffffff;
+  --primary-soft: #ebf1fe;
+  --radius: 18px;
+  font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
+  color: var(--text);
+  background: var(--bg);
+}
+
+.mobile-page {
+  min-height: 100vh;
+  padding: 18px;
+  background: var(--bg);
+}
+
+.mobile-card {
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.08);
+}
+
+.hero-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 22px;
+}
+
+.eyebrow {
+  color: var(--primary);
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.title {
+  color: var(--text);
+  font-size: 26px;
+  font-weight: 800;
+}
+
+.desc {
+  color: var(--muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+
+.form-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 16px;
+}
+
+.mobile-input {
+  height: 46px;
+  padding: 0 14px;
+  border: 1px solid var(--border);
+  border-radius: 12px;
+  color: var(--text);
+  background: var(--surface);
+  font-size: 15px;
+}
+
+.code-row {
+  display: grid;
+  grid-template-columns: 1fr 96px;
+  gap: 10px;
+}
+
+.mini-btn,
+.primary-btn {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 0;
+  border-radius: 12px;
+  color: var(--primary-fg);
+  background: var(--primary);
+  font-weight: 700;
+}
+
+.mini-btn {
+  height: 46px;
+  font-size: 14px;
+}
+
+.primary-btn {
+  height: 48px;
+  font-size: 16px;
+}

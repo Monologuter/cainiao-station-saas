@@ -1,0 +1,28 @@
+{
+  "name": "user-app",
+  "version": "0.0.1",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "dev:h5": "uni -p h5",
+    "build:h5": "uni build -p h5",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@dcloudio/uni-app": "3.0.0-alpha-5010320260611001",
+    "@dcloudio/uni-h5": "3.0.0-alpha-5010320260611001",
+    "pinia": "^2.3.0",
+    "vue": "^3.5.13"
+  },
+  "devDependencies": {
+    "@dcloudio/types": "3.4.31",
+    "@dcloudio/vite-plugin-uni": "3.0.0-alpha-5010320260611001",
+    "@types/node": "^20.17.10",
+    "@vitejs/plugin-vue": "^5.2.1",
+    "jsdom": "^25.0.1",
+    "typescript": "^5.7.2",
+    "vite": "5.2.8",
+    "vitest": "^2.1.9",
+    "vue-tsc": "^2.2.0"
+  }
+}
