@@ -5,6 +5,7 @@ import {
   Building2,
   ChartNoAxesColumn,
   ChevronRight,
+  CreditCard,
   LayoutDashboard,
   PackageSearch,
   ScanLine,
@@ -35,13 +36,33 @@ const iconMap: Record<string, Component> = {
   Warehouse,
   Truck,
   ChartNoAxesColumn,
+  CreditCard,
   UsersRound,
   Settings,
   Store,
   Building2,
 };
 
-const menuGroups = computed(() => auth.menus);
+const menuGroups = computed(() => {
+  const groups = auth.menus.map((group) => ({
+    ...group,
+    items: [...group.items],
+  }));
+  if (auth.hasPerm('subscription:read') && auth.hasPerm('invoice:read')) {
+    const target =
+      groups.find((group) => group.group === '网点管理') ?? groups[groups.length - 1];
+    if (target && !target.items.some((item) => item.code === 'billing-settings')) {
+      target.items.push({
+        code: 'billing-settings',
+        title: '订阅账单',
+        path: '/billing',
+        icon: 'CreditCard',
+        perm: 'invoice:read',
+      });
+    }
+  }
+  return groups;
+});
 
 const themeLabels: Record<StationTheme, string> = {
   blue: '清爽蓝',

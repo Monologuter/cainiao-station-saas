@@ -2,6 +2,7 @@ import type { Component } from "vue";
 import ExceptionsView from "@/views/ExceptionsView.vue";
 import ComplaintsView from "@/views/ComplaintsView.vue";
 import CouponsView from "@/views/CouponsView.vue";
+import BillingSettingsView from "@/views/BillingSettingsView.vue";
 import InboundView from "@/views/InboundView.vue";
 import ParcelsView from "@/views/ParcelsView.vue";
 import PickupView from "@/views/PickupView.vue";
@@ -18,7 +19,7 @@ export interface StationRouteDef {
   name: string;
   path: string;
   title: string;
-  perm?: string;
+  perm?: string | string[];
   component: Component;
 }
 
@@ -103,6 +104,14 @@ export const stationRouteDefs: StationRouteDef[] = [
     component: SettingsView,
   },
   {
+    code: "billing-settings",
+    name: "BillingSettings",
+    path: "billing",
+    title: "订阅账单",
+    perm: ["subscription:read", "invoice:read"],
+    component: BillingSettingsView,
+  },
+  {
     code: "shipping",
     name: "Shipping",
     path: "shipping",
@@ -130,6 +139,10 @@ export const stationRouteDefs: StationRouteDef[] = [
 
 export function availableRoutes(perms: string[]) {
   return stationRouteDefs.filter(
-    (route) => !route.perm || perms.includes(route.perm),
+    (route) =>
+      !route.perm ||
+      (Array.isArray(route.perm)
+        ? route.perm.every((perm) => perms.includes(perm))
+        : perms.includes(route.perm)),
   );
 }

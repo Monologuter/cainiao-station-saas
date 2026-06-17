@@ -3,6 +3,7 @@ import ExceptionsView from "@/views/ExceptionsView.vue";
 import PlaceholderView from "@/views/PlaceholderView.vue";
 import ComplaintsView from "@/views/ComplaintsView.vue";
 import CouponsView from "@/views/CouponsView.vue";
+import BillingSettingsView from "@/views/BillingSettingsView.vue";
 import ReviewsView from "@/views/ReviewsView.vue";
 import StatisticsView from "@/views/StatisticsView.vue";
 import { availableRoutes, stationRouteDefs } from "./routes";
@@ -66,5 +67,23 @@ describe("station route definitions", () => {
     expect(
       stationRouteDefs.find((route) => route.code === "statistics")?.component,
     ).toBe(StatisticsView);
+  });
+
+  it("exposes billing settings only when subscription and invoice read permissions are both present", () => {
+    expect(
+      availableRoutes(["subscription:read"]).map((route) => route.code),
+    ).not.toContain("billing-settings");
+    expect(
+      availableRoutes(["invoice:read"]).map((route) => route.code),
+    ).not.toContain("billing-settings");
+    expect(
+      availableRoutes(["subscription:read", "invoice:read"]).map(
+        (route) => route.code,
+      ),
+    ).toContain("billing-settings");
+    expect(
+      stationRouteDefs.find((route) => route.code === "billing-settings")
+        ?.component,
+    ).toBe(BillingSettingsView);
   });
 });

@@ -86,7 +86,17 @@ router.beforeEach(async (to) => {
     }
   }
 
-  if (typeof to.meta.perm === 'string' && !auth.hasPerm(to.meta.perm)) {
+  if (
+    typeof to.meta.perm === 'string' &&
+    !auth.hasPerm(to.meta.perm)
+  ) {
+    return '/workbench';
+  }
+
+  if (
+    Array.isArray(to.meta.perm) &&
+    !to.meta.perm.every((perm) => auth.hasPerm(String(perm)))
+  ) {
     return '/workbench';
   }
 

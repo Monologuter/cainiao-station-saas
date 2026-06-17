@@ -893,6 +893,117 @@
   top: 16px;
 }
 
+.billing-hero {
+  display: flex;
+  align-items: stretch;
+  justify-content: space-between;
+  gap: 18px;
+  padding: 20px;
+  margin-bottom: 18px;
+}
+
+.billing-plan-main h2 {
+  margin-top: 12px;
+  font-size: 24px;
+}
+
+.billing-plan-main p {
+  margin-top: 6px;
+  color: var(--muted);
+}
+
+.billing-price {
+  margin-top: 16px;
+  font-size: 34px;
+  font-weight: 800;
+}
+
+.billing-price span {
+  color: var(--muted);
+  font-size: 13px;
+  font-weight: 500;
+}
+
+.billing-hero-side {
+  display: flex;
+  min-width: 190px;
+  flex-direction: column;
+  align-items: flex-end;
+  justify-content: space-between;
+}
+
+.billing-kpis {
+  display: grid;
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.billing-quota-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 14px;
+  padding: 18px;
+}
+
+.billing-quota-grid article {
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.billing-quota-grid b {
+  display: block;
+  margin-bottom: 8px;
+}
+
+.billing-quota-grid span {
+  display: block;
+  margin-bottom: 12px;
+  color: var(--primary);
+  font-size: 22px;
+  font-weight: 800;
+}
+
+.tabs {
+  display: flex;
+  gap: 4px;
+  padding: 0 18px;
+  border-bottom: 1px solid var(--border);
+}
+
+.tab {
+  padding: 12px 14px;
+  border: 0;
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+  background: transparent;
+  color: var(--muted);
+  cursor: pointer;
+  font: inherit;
+  font-weight: 600;
+}
+
+.tab.on {
+  border-bottom-color: var(--primary);
+  color: var(--primary);
+}
+
+.progress {
+  height: 7px;
+  overflow: hidden;
+  border-radius: 999px;
+  background: var(--border-2);
+}
+
+.progress span {
+  display: block;
+  height: 100%;
+  border-radius: inherit;
+  background: var(--primary);
+}
+
 @media (max-width: 1100px) {
   .inbound-grid {
     grid-template-columns: 1fr;
@@ -912,7 +1023,18 @@
   .staff-grid,
   .settings-grid,
   .review-kpis,
-  .coupon-grid {
+  .coupon-grid,
+  .billing-kpis,
+  .billing-quota-grid {
     grid-template-columns: 1fr;
+  }
+
+  .billing-hero {
+    flex-direction: column;
+  }
+
+  .billing-hero-side {
+    align-items: flex-start;
+    gap: 12px;
   }
 }
