@@ -8,6 +8,7 @@ import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
 import { RedisLockService } from './core/redis/redis-lock.service';
 import { RedisService } from './core/redis/redis.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { BillingModule } from './modules/billing/billing.module';
 import { ExceptionModule } from './modules/exceptions/exception.module';
 import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
@@ -27,6 +28,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     ConfigModule.forRoot({ isGlobal: true }),
     EventBusModule,
     AnalyticsModule,
+    BillingModule,
     ExceptionModule,
     IdentityModule,
     InboundModule,
