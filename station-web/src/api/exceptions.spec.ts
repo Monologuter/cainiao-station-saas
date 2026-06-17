@@ -3,6 +3,8 @@ import { http } from './http';
 import {
   claimExceptionApi,
   createParcelExceptionApi,
+  exceptionStatusMeta,
+  exceptionTypeMeta,
   listExceptionsApi,
   resolveExceptionApi,
   toExceptionQueryParams,
@@ -45,5 +47,11 @@ describe('exceptions api mapping', () => {
       resolution: 'RESTOCK',
       note: '归位',
     });
+  });
+
+  it('maps exception labels to stable tag semantics', () => {
+    expect(exceptionStatusMeta('OPEN')).toEqual({ label: '待处理', tag: 'amber' });
+    expect(exceptionStatusMeta('RESOLVED')).toEqual({ label: '已解决', tag: 'green' });
+    expect(exceptionTypeMeta('DAMAGED')).toEqual({ label: '破损', tag: 'red' });
   });
 });

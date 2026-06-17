@@ -43,3 +43,12 @@ export function listOverdueParcelsApi(query: OverdueQuery) {
 export function runOverdueScanApi() {
   return http.post<never, OverdueScanResult>('/parcels/overdue/scan');
 }
+
+export function overdueLevelMeta(level: 1 | 2 | 3) {
+  const metas: Record<1 | 2 | 3, { label: string; tag: string }> = {
+    1: { label: '提醒', tag: 'blue' },
+    2: { label: '催取', tag: 'amber' },
+    3: { label: '最终提醒', tag: 'red' },
+  };
+  return metas[level];
+}

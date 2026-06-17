@@ -2,6 +2,7 @@ import { describe, expect, it, vi } from 'vitest';
 import { http } from './http';
 import {
   listOverdueParcelsApi,
+  overdueLevelMeta,
   runOverdueScanApi,
   toOverdueQueryParams,
 } from './overdue';
@@ -25,5 +26,11 @@ describe('overdue api mapping', () => {
       params: { level: 2 },
     });
     expect(post).toHaveBeenCalledWith('/parcels/overdue/scan');
+  });
+
+  it('maps overdue levels to stable tag semantics', () => {
+    expect(overdueLevelMeta(1)).toEqual({ label: '提醒', tag: 'blue' });
+    expect(overdueLevelMeta(2)).toEqual({ label: '催取', tag: 'amber' });
+    expect(overdueLevelMeta(3)).toEqual({ label: '最终提醒', tag: 'red' });
   });
 });

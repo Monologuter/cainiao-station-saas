@@ -1,7 +1,16 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus';
-import { ChevronLeft, ChevronRight, PackageSearch, RotateCcw, Search, X } from 'lucide-vue-next';
+import {
+  AlertTriangle,
+  ChevronLeft,
+  ChevronRight,
+  PackageSearch,
+  RotateCcw,
+  Search,
+  X,
+} from 'lucide-vue-next';
+import { createParcelExceptionApi } from '@/api/exceptions';
 import {
   eventTypeLabel,
   listParcelsApi,
@@ -86,6 +95,19 @@ async function openDetail(parcel: ParcelItem) {
   } finally {
     detailLoading.value = false;
   }
+}
+
+async function markException(parcel: ParcelItem) {
+  const description = window.prompt('请输入异常说明', '包裹异常待处理');
+  if (!description) {
+    return;
+  }
+  await createParcelExceptionApi(parcel.id, {
+    type: 'DAMAGED',
+    description,
+  });
+  ElMessage.success('已标记异常件');
+  await load();
 }
 
 function changePage(next: number) {
@@ -174,7 +196,20 @@ function formatTime(value?: string | null) {
             </span>
           </td>
           <td>{{ formatTime(parcel.storedAt ?? parcel.createdAt) }}</td>
-          <td><button class="op op-btn" type="button" @click="openDetail(parcel)">详情</button></td>
+          <td>
+            <div class="row-actions">
+              <button class="op op-btn" type="button" @click="openDetail(parcel)">详情</button>
+              <button
+                v-if="parcel.status === 'STORED'"
+                class="op op-btn danger"
+                type="button"
+                @click="markException(parcel)"
+              >
+                <AlertTriangle />
+                异常
+              </button>
+            </div>
+          </td>
         </tr>
       </tbody>
     </table>

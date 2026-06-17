@@ -246,6 +246,68 @@
   margin-bottom: 18px;
 }
 
+.exception-grid {
+  display: grid;
+  grid-template-columns: 320px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.exception-toolbar {
+  margin: 14px 16px;
+}
+
+.overdue-list {
+  display: grid;
+  gap: 10px;
+  padding: 14px;
+}
+
+.overdue-row {
+  display: grid;
+  grid-template-columns: auto minmax(0, 1fr);
+  gap: 10px;
+  align-items: center;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.overdue-row b {
+  display: block;
+  color: var(--text);
+  font-size: 13px;
+}
+
+.overdue-row p {
+  margin-top: 2px;
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.row-actions {
+  display: flex;
+  gap: 8px;
+  align-items: center;
+  flex-wrap: wrap;
+}
+
+.op-btn.danger {
+  color: var(--danger);
+}
+
+.op-btn svg {
+  width: 14px;
+  height: 14px;
+}
+
+@media (max-width: 1100px) {
+  .exception-grid {
+    grid-template-columns: 1fr;
+  }
+}
+
 .shipping-form {
   display: grid;
   gap: 16px;

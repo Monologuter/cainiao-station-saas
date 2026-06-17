@@ -87,3 +87,33 @@ export function claimExceptionApi(id: string) {
 export function resolveExceptionApi(id: string, payload: ResolveExceptionPayload) {
   return http.post<never, ExceptionTicket>(`/exceptions/${id}/resolve`, payload);
 }
+
+export function exceptionStatusMeta(status: ExceptionStatus) {
+  const metas: Record<ExceptionStatus, { label: string; tag: string }> = {
+    OPEN: { label: '待处理', tag: 'amber' },
+    IN_PROGRESS: { label: '处理中', tag: 'blue' },
+    RESOLVED: { label: '已解决', tag: 'green' },
+  };
+  return metas[status];
+}
+
+export function exceptionTypeMeta(type: ExceptionType) {
+  const metas: Record<ExceptionType, { label: string; tag: string }> = {
+    DAMAGED: { label: '破损', tag: 'red' },
+    MISDELIVERED: { label: '错件', tag: 'amber' },
+    UNCLAIMED: { label: '无主件', tag: 'gray' },
+    REJECTED: { label: '拒收', tag: 'blue' },
+    OVERSIZED: { label: '超大件', tag: 'amber' },
+  };
+  return metas[type];
+}
+
+export function exceptionResolutionMeta(resolution: ExceptionResolution) {
+  const metas: Record<ExceptionResolution, { label: string; tag: string }> = {
+    CONTACT_COURIER: { label: '联系快递', tag: 'blue' },
+    RETURN: { label: '退回', tag: 'red' },
+    RESTOCK: { label: '重新入库', tag: 'green' },
+    VOID: { label: '作废', tag: 'gray' },
+  };
+  return metas[resolution];
+}
