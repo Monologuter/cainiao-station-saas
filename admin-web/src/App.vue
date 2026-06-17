@@ -1,4 +1,5 @@
 <script setup lang="ts">
+import { computed, ref } from "vue";
 import {
   Bell,
   Building2,
@@ -10,34 +11,67 @@ import {
   Store,
   UsersRound,
 } from "lucide-vue-next";
+import BillingView from "@/views/BillingView.vue";
 import OverviewView from "@/views/OverviewView.vue";
+import PlansView from "@/views/PlansView.vue";
+
+type ViewKey = "overview" | "billing" | "plans";
+
+const currentView = ref<ViewKey>("overview");
 
 const navGroups = [
   {
     group: "运营",
     items: [
-      { label: "平台总览", icon: LayoutDashboard, on: true },
-      { label: "租户管理", icon: Building2 },
-      { label: "入驻审核", icon: ClipboardCheck },
-      { label: "门店监控", icon: Store },
+      { key: "overview", label: "平台总览", icon: LayoutDashboard },
+      { key: "tenants", label: "租户管理", icon: Building2 },
+      { key: "applications", label: "入驻审核", icon: ClipboardCheck },
+      { key: "stores", label: "门店监控", icon: Store },
     ],
   },
   {
     group: "商业化",
     items: [
-      { label: "订阅与账单", icon: CreditCard },
-      { label: "套餐配置", icon: ShieldCheck },
+      { key: "billing", label: "订阅与账单", icon: CreditCard },
+      { key: "plans", label: "套餐配置", icon: ShieldCheck },
     ],
   },
   {
     group: "系统",
     items: [
-      { label: "平台用户", icon: UsersRound },
-      { label: "角色权限", icon: ShieldCheck },
-      { label: "系统配置", icon: Settings },
+      { key: "platform-users", label: "平台用户", icon: UsersRound },
+      { key: "roles", label: "角色权限", icon: ShieldCheck },
+      { key: "settings", label: "系统配置", icon: Settings },
     ],
   },
 ];
+
+const viewMeta = computed(() => {
+  const meta: Record<ViewKey, { title: string; sub: string; component: any }> = {
+    overview: {
+      title: "平台总览",
+      sub: "2026年6月18日 周四 · 营业中",
+      component: OverviewView,
+    },
+    billing: {
+      title: "订阅与账单",
+      sub: "2026年6月18日 周四 · 管理租户订阅、账单回款与计费周期",
+      component: BillingView,
+    },
+    plans: {
+      title: "套餐配置",
+      sub: "2026年6月18日 周四 · 管理平台订阅套餐与用量加费规则",
+      component: PlansView,
+    },
+  };
+  return meta[currentView.value];
+});
+
+function selectView(key: string) {
+  if (key === "overview" || key === "billing" || key === "plans") {
+    currentView.value = key;
+  }
+}
 </script>
 
 <template>
@@ -56,7 +90,8 @@ const navGroups = [
           <a
             v-for="item in group.items"
             :key="item.label"
-            :class="{ on: item.on }"
+            :class="{ on: item.key === currentView }"
+            @click="selectView(item.key)"
           >
             <component :is="item.icon" />
             {{ item.label }}
@@ -75,8 +110,8 @@ const navGroups = [
     <main class="main">
       <header class="top">
         <div>
-          <h1>平台总览</h1>
-          <div class="sub">2026年6月18日 周四 · 营业中</div>
+          <h1>{{ viewMeta.title }}</h1>
+          <div class="sub">{{ viewMeta.sub }}</div>
         </div>
         <div class="top-r">
           <div class="search">租户 / 门店 / 负责人</div>
@@ -90,7 +125,7 @@ const navGroups = [
           </div>
         </div>
       </header>
-      <OverviewView />
+      <component :is="viewMeta.component" />
     </main>
   </div>
 </template>
