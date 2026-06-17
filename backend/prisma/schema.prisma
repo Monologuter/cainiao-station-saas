@@ -131,6 +131,65 @@ enum Severity {
   HIGH
 }
 
+enum PointRecordType {
+  PICKUP
+  SHIP
+  CHECKIN
+  COUPON_REDEEM
+  EXPIRE
+  ADJUST
+  REFUND
+}
+
+model Consumer {
+  id        String   @id @default(uuid()) @db.Uuid
+  phone     String   @unique @db.VarChar(20)
+  createdAt DateTime @default(now()) @map("created_at")
+  updatedAt DateTime @updatedAt @map("updated_at")
+  member    Member?
+
+  @@map("consumers")
+}
+
+model Member {
+  id                    String        @id @default(uuid()) @db.Uuid
+  consumerId            String        @unique @map("consumer_id") @db.Uuid
+  phone                 String        @unique @db.VarChar(20)
+  level                 Int           @default(0) @db.SmallInt
+  totalPoints           Int           @default(0) @map("total_points")
+  availablePoints       Int           @default(0) @map("available_points")
+  frozenPoints          Int           @default(0) @map("frozen_points")
+  continuousCheckinDays Int           @default(0) @map("continuous_checkin_days")
+  lastCheckinDate       DateTime?     @map("last_checkin_date") @db.Date
+  createdAt             DateTime      @default(now()) @map("created_at")
+  updatedAt             DateTime      @updatedAt @map("updated_at")
+  deletedAt             DateTime?     @map("deleted_at")
+  consumer              Consumer      @relation(fields: [consumerId], references: [id])
+  pointRecords          PointRecord[]
+
+  @@index([level])
+  @@map("members")
+}
+
+model PointRecord {
+  id             String          @id @default(uuid()) @db.Uuid
+  memberId       String          @map("member_id") @db.Uuid
+  change         Int
+  balanceAfter   Int             @map("balance_after")
+  type           PointRecordType
+  sourceTenantId String?         @map("source_tenant_id") @db.Uuid
+  refType        String?         @map("ref_type") @db.VarChar(32)
+  refId          String?         @map("ref_id") @db.VarChar(64)
+  idempotencyKey String          @unique @map("idempotency_key") @db.VarChar(128)
+  remark         String?         @db.VarChar(200)
+  createdAt      DateTime        @default(now()) @map("created_at")
+  member         Member          @relation(fields: [memberId], references: [id])
+
+  @@index([memberId, createdAt])
+  @@index([sourceTenantId])
+  @@map("point_records")
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
