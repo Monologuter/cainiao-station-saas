@@ -52,6 +52,12 @@ interface ListParcelInput {
   size?: string;
 }
 
+interface ListOverdueInput {
+  level?: string;
+  page?: string;
+  size?: string;
+}
+
 @Injectable()
 export class ParcelService {
   constructor(
@@ -389,6 +395,62 @@ export class ParcelService {
         throw new BizError(ApiCode.NOT_FOUND, '包裹不存在');
       }
       return this.toParcelDto(parcel);
+    });
+  }
+
+  async listOverdue(input: ListOverdueInput) {
+    const page = this.parsePositiveInt(input.page, 1);
+    const size = Math.min(this.parsePositiveInt(input.size, 20), 100);
+    const expectedLevel = input.level ? Number(input.level) : null;
+
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const rows = await tx.parcel.findMany({
+        where: {
+          status: 'STORED',
+          storedAt: { not: null },
+        },
+        include: {
+          station: true,
+          slot: true,
+        },
+        orderBy: { storedAt: 'asc' },
+        take: 1000,
+      });
+      const now = new Date();
+      const list = rows
+        .map((parcel: any) => {
+          const daysOverdue = parcel.storedAt
+            ? Math.floor(
+                (now.getTime() - parcel.storedAt.getTime()) /
+                  (24 * 60 * 60 * 1000),
+              )
+            : 0;
+          const overdueLevel =
+            daysOverdue >= 11
+              ? 3
+              : daysOverdue >= 7
+                ? 2
+                : daysOverdue >= 3
+                  ? 1
+                  : 0;
+          return {
+            ...this.toParcelDto(parcel),
+            daysOverdue,
+            overdueLevel,
+            lastOverdueLevel: parcel.lastOverdueLevel,
+          };
+        })
+        .filter((parcel: any) => parcel.overdueLevel > 0)
+        .filter((parcel: any) =>
+          expectedLevel ? parcel.overdueLevel === expectedLevel : true,
+        );
+
+      return {
+        list: list.slice((page - 1) * size, page * size),
+        total: list.length,
+        page,
+        size,
+      };
     });
   }
 

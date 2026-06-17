@@ -1,10 +1,14 @@
-import { Controller, Get, Param, Query } from '@nestjs/common';
+import { Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { RequirePermission } from '../identity/decorators';
+import { OverdueScanProcessor } from './overdue/overdue-scan.processor';
 import { ParcelService } from './parcel.service';
 
 @Controller('parcels')
 export class ParcelController {
-  constructor(private readonly parcels: ParcelService) {}
+  constructor(
+    private readonly parcels: ParcelService,
+    private readonly overdueScan: OverdueScanProcessor,
+  ) {}
 
   @RequirePermission('parcel:read')
   @Get()
@@ -24,6 +28,22 @@ export class ParcelController {
       page,
       size,
     });
+  }
+
+  @RequirePermission('parcel:read')
+  @Get('overdue')
+  listOverdue(
+    @Query('level') level?: string,
+    @Query('page') page?: string,
+    @Query('size') size?: string,
+  ) {
+    return this.parcels.listOverdue({ level, page, size });
+  }
+
+  @RequirePermission('parcel:overdue:scan')
+  @Post('overdue/scan')
+  scanOverdue() {
+    return this.overdueScan.runOverdueScan();
   }
 
   @RequirePermission('parcel:read')

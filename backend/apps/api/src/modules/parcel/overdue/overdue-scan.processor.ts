@@ -9,6 +9,7 @@ import { classifyOverdue } from './overdue-policy';
 const OVERDUE_SCAN_LOCK_KEY = 'lock:overdue-scan';
 const OVERDUE_SCAN_LOCK_TTL_MS = 10 * 60 * 1000;
 const OVERDUE_SCAN_BATCH_SIZE = 1000;
+const SYSTEM_OPERATOR_ID = '00000000-0000-0000-0000-000000000000';
 
 interface StoredParcelForScan {
   id: string;
@@ -143,7 +144,7 @@ export class OverdueScanProcessor {
     await TenantContext.run(
       {
         tenantId: parcel.tenantId,
-        userId: 'overdue-scan',
+        userId: SYSTEM_OPERATOR_ID,
         roles: ['system'],
         isPlatform: false,
       },
