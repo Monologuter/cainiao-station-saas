@@ -35,12 +35,12 @@ export class PointService {
       throw new BizError(ApiCode.BAD_REQUEST, '加分必须大于 0');
     }
 
-    const record = await this.prisma.$transaction(async (tx) => {
+    const result = await this.prisma.$transaction(async (tx) => {
       const existing = await tx.pointRecord.findUnique({
         where: { idempotencyKey: ctx.idempotencyKey },
       });
       if (existing) {
-        return existing;
+        return { record: existing, created: false };
       }
 
       const member = await tx.member.update({
@@ -51,7 +51,7 @@ export class PointService {
         },
       });
 
-      return tx.pointRecord.create({
+      const record = await tx.pointRecord.create({
         data: {
           memberId,
           change,
@@ -64,14 +64,19 @@ export class PointService {
           remark: ctx.remark,
         },
       });
+      return { record, created: true };
     });
 
-    if (ctx.sourceTenantId && record.change > 0) {
+    if (result.created && ctx.sourceTenantId && result.record.change > 0) {
       await this.redis
         .getClient()
-        .zincrby(`rank:points:${ctx.sourceTenantId}`, record.change, memberId);
+        .zincrby(
+          `rank:points:${ctx.sourceTenantId}`,
+          result.record.change,
+          memberId,
+        );
     }
-    return record;
+    return result.record;
   }
 
   async spend(

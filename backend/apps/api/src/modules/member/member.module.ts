@@ -2,6 +2,8 @@ import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
+import { ParcelPickedUpListener } from './listeners/parcel-picked-up.listener';
+import { ShipOrderPaidListener } from './listeners/ship-order-paid.listener';
 import { MemberController } from './member.controller';
 import { MemberService } from './member.service';
 import { PointService } from './point.service';
@@ -14,7 +16,14 @@ import { PointService } from './point.service';
     }),
   ],
   controllers: [MemberController],
-  providers: [MemberService, PointService, PrismaService, RedisService],
+  providers: [
+    MemberService,
+    PointService,
+    ParcelPickedUpListener,
+    ShipOrderPaidListener,
+    PrismaService,
+    RedisService,
+  ],
   exports: [MemberService, PointService],
 })
 export class MemberModule {}

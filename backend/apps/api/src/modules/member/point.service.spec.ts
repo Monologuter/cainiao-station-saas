@@ -69,7 +69,10 @@ describe('PointService', () => {
     tx.pointRecord.findUnique.mockResolvedValue(existing);
 
     await expect(
-      service.earn('m1', 2, 'PICKUP', { idempotencyKey: 'pickup:p1' }),
+      service.earn('m1', 2, 'PICKUP', {
+        sourceTenantId: 't1',
+        idempotencyKey: 'pickup:p1',
+      }),
     ).resolves.toBe(existing);
     expect(tx.member.update).not.toHaveBeenCalled();
     expect(redisClient.zincrby).not.toHaveBeenCalled();
