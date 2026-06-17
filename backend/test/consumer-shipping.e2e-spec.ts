@@ -31,7 +31,7 @@ describe('Consumer shipping e2e', () => {
 
     const quote = await request(app.getHttpServer())
       .post('/api/shipping/consumer/quote')
-      .set('Authorization', `Bearer ${alice}`)
+      .set('Authorization', `Bearer ${alice.token}`)
       .send({ ...makeQuoteBody(), stationId })
       .expect(201);
     expect(quote.body.data[0]).toMatchObject({
@@ -41,25 +41,25 @@ describe('Consumer shipping e2e', () => {
 
     const created = await request(app.getHttpServer())
       .post('/api/shipping/consumer/orders')
-      .set('Authorization', `Bearer ${alice}`)
+      .set('Authorization', `Bearer ${alice.token}`)
       .send(makeOrderBody(stationId))
       .expect(201);
     expect(created.body.data).toMatchObject({
       status: 'CREATED',
-      consumerId: 'phone:13000000001',
+      consumerId: alice.consumerId,
       stationId,
     });
 
     const paid = await request(app.getHttpServer())
       .post(`/api/shipping/consumer/orders/${created.body.data.id}/pay`)
-      .set('Authorization', `Bearer ${alice}`)
+      .set('Authorization', `Bearer ${alice.token}`)
       .set('Idempotency-Key', `consumer-pay-${Date.now()}`)
       .expect(201);
     expect(paid.body.data.status).toBe('PAID');
 
     const mine = await request(app.getHttpServer())
       .get('/api/shipping/my-orders')
-      .set('Authorization', `Bearer ${alice}`)
+      .set('Authorization', `Bearer ${alice.token}`)
       .expect(200);
     expect(mine.body.data.list).toEqual(
       expect.arrayContaining([
@@ -69,7 +69,7 @@ describe('Consumer shipping e2e', () => {
 
     const otherMine = await request(app.getHttpServer())
       .get('/api/shipping/my-orders')
-      .set('Authorization', `Bearer ${bob}`)
+      .set('Authorization', `Bearer ${bob.token}`)
       .expect(200);
     expect(otherMine.body.data.list).not.toEqual(
       expect.arrayContaining([
@@ -79,12 +79,12 @@ describe('Consumer shipping e2e', () => {
 
     const bobDetail = await request(app.getHttpServer())
       .get(`/api/shipping/consumer/orders/${created.body.data.id}`)
-      .set('Authorization', `Bearer ${bob}`);
+      .set('Authorization', `Bearer ${bob.token}`);
     expect(bobDetail.body.code).toBe(1004);
 
     const tracks = await request(app.getHttpServer())
       .get(`/api/shipping/consumer/orders/${created.body.data.id}/tracks`)
-      .set('Authorization', `Bearer ${alice}`)
+      .set('Authorization', `Bearer ${alice.token}`)
       .expect(200);
     expect(tracks.body.data).toEqual([]);
   });
@@ -120,7 +120,10 @@ describe('Consumer shipping e2e', () => {
       .post('/api/consumer/auth/verify')
       .send({ phone, code: '123456' })
       .expect(201);
-    return verified.body.data.pickToken as string;
+    return {
+      token: verified.body.data.pickToken as string,
+      consumerId: verified.body.data.consumerId as string,
+    };
   }
 
   function makeQuoteBody() {

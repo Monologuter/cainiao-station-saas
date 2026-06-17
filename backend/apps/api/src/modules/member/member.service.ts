@@ -3,6 +3,7 @@ import { JwtService } from '@nestjs/jwt';
 import { ParcelStatus } from '@prisma/client';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { nextLevelProgress, levelForTotalPoints } from './point-rule.config';
 
 const MOCK_CODE = '123456';
 const CONSUMER_SCOPE = 'consumer:parcel-read';
@@ -34,17 +35,82 @@ export class MemberService {
       throw new BizError(ApiCode.UNAUTHORIZED, '验证码错误');
     }
 
-    const consumerId = `phone:${phone}`;
+    const consumer = await this.prisma.consumer.upsert({
+      where: { phone },
+      update: {},
+      create: { phone },
+    });
     const pickToken = await this.jwt.signAsync(
       {
-        sub: consumerId,
+        sub: consumer.id,
         phone,
         scope: CONSUMER_SCOPE,
       },
       { expiresIn: '7d' },
     );
 
-    return { pickToken, consumerId };
+    return { pickToken, consumerId: consumer.id };
+  }
+
+  async ensureMember(consumerId: string, phone: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const existing = await tx.member.findUnique({
+        where: { consumerId },
+      });
+      if (existing) {
+        return existing;
+      }
+
+      await tx.consumer.upsert({
+        where: { id: consumerId },
+        update: { phone },
+        create: { id: consumerId, phone },
+      });
+
+      return tx.member.create({
+        data: {
+          consumerId,
+          phone,
+        },
+      });
+    });
+  }
+
+  async getProfile(memberId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.member.findUniqueOrThrow({
+        where: { id: memberId },
+      });
+      const progress = nextLevelProgress(member.totalPoints);
+      return {
+        id: member.id,
+        consumerId: member.consumerId,
+        phone: member.phone,
+        level: member.level,
+        totalPoints: member.totalPoints,
+        availablePoints: member.availablePoints,
+        frozenPoints: member.frozenPoints,
+        continuousCheckinDays: member.continuousCheckinDays,
+        lastCheckinDate: member.lastCheckinDate,
+        ...progress,
+      };
+    });
+  }
+
+  async recalcLevel(memberId: string) {
+    return this.prisma.$transaction(async (tx) => {
+      const member = await tx.member.findUniqueOrThrow({
+        where: { id: memberId },
+      });
+      const nextLevel = levelForTotalPoints(member.totalPoints);
+      if (member.level !== nextLevel) {
+        await tx.member.update({
+          where: { id: memberId },
+          data: { level: nextLevel },
+        });
+      }
+      return nextLevel;
+    });
   }
 
   async listParcels(authHeader?: string, status?: string) {
