@@ -4,7 +4,7 @@ import * as argon2 from 'argon2';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
-interface MenuItem {
+export interface MenuItem {
   code: string;
   title: string;
   path: string;
@@ -14,7 +14,7 @@ interface MenuItem {
   badge?: string;
 }
 
-interface MenuGroup {
+export interface MenuGroup {
   group: string;
   items: MenuItem[];
 }
