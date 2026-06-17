@@ -183,4 +183,224 @@ describe('ParcelService', () => {
       runAsTenant(() => service.markPickedUp('p1', 2)),
     ).rejects.toThrow('包裹已被取走');
   });
+
+  it('marks stored parcel EXCEPTION and publishes ParcelMarkedException', async () => {
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'STORED',
+          version: 2,
+          slotId: 'slot1',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'EXCEPTION',
+          slotId: 'slot1',
+        }),
+      },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+
+    await runAsTenant(() =>
+      service.markException('p1', {
+        type: 'DAMAGED',
+        description: '外包装破损',
+        exceptionId: 'ex1',
+      }),
+    );
+
+    expect(tx.parcel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'STORED', version: 2 },
+      data: { status: 'EXCEPTION', version: { increment: 1 } },
+    });
+    expect(tx.parcelEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 't1',
+        parcelId: 'p1',
+        fromStatus: 'STORED',
+        toStatus: 'EXCEPTION',
+        eventType: 'EXCEPTION',
+        operatorId: 'u1',
+        payload: expect.objectContaining({
+          type: 'DAMAGED',
+          description: '外包装破损',
+          exceptionId: 'ex1',
+          slotId: 'slot1',
+        }),
+      }),
+    });
+    expect(bus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'ParcelMarkedException',
+        payload: expect.objectContaining({
+          parcelId: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          exceptionId: 'ex1',
+          type: 'DAMAGED',
+        }),
+      }),
+    );
+  });
+
+  it('restocks EXCEPTION parcel back to STORED and resets overdue level', async () => {
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'EXCEPTION',
+          version: 4,
+          slotId: 'slot1',
+          lastOverdueLevel: 2,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'STORED',
+          slotId: 'slot1',
+          lastOverdueLevel: 0,
+        }),
+      },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+
+    const out = await runAsTenant(() =>
+      service.restock('p1', { reason: '异常解除' }),
+    );
+
+    expect(out?.status).toBe('STORED');
+    expect(tx.parcel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'EXCEPTION', version: 4 },
+      data: {
+        status: 'STORED',
+        lastOverdueLevel: 0,
+        version: { increment: 1 },
+      },
+    });
+    expect(tx.parcelEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 't1',
+        parcelId: 'p1',
+        fromStatus: 'EXCEPTION',
+        toStatus: 'STORED',
+        eventType: 'STORED',
+        payload: expect.objectContaining({ reason: '异常解除' }),
+      }),
+    });
+    expect(bus.publish).not.toHaveBeenCalled();
+  });
+
+  it('returns STORED parcel with returned time and publishes ParcelReturned', async () => {
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'STORED',
+          version: 5,
+          slotId: 'slot1',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'RETURNED',
+          slotId: 'slot1',
+        }),
+      },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+
+    await runAsTenant(() =>
+      service.returnParcel('p1', { cause: 'OVERDUE', reason: '超期退回' }),
+    );
+
+    expect(tx.parcel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'STORED', version: 5 },
+      data: {
+        status: 'RETURNED',
+        overdueReturnedAt: expect.any(Date),
+        version: { increment: 1 },
+      },
+    });
+    expect(tx.parcelEvent.create).toHaveBeenCalledWith({
+      data: expect.objectContaining({
+        tenantId: 't1',
+        parcelId: 'p1',
+        fromStatus: 'STORED',
+        toStatus: 'RETURNED',
+        eventType: 'RETURNED',
+        payload: expect.objectContaining({
+          cause: 'OVERDUE',
+          reason: '超期退回',
+          slotId: 'slot1',
+        }),
+      }),
+    });
+    expect(bus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'ParcelReturned',
+        payload: expect.objectContaining({
+          parcelId: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          slotId: 'slot1',
+          cause: 'OVERDUE',
+        }),
+      }),
+    );
+  });
+
+  it('rejects exception and return transitions from picked up parcel', async () => {
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'PICKED_UP',
+          version: 1,
+        }),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+
+    await expect(
+      runAsTenant(() =>
+        service.markException('p1', {
+          type: 'DAMAGED',
+          description: '破损',
+        }),
+      ),
+    ).rejects.toThrow('包裹状态不可从 PICKED_UP 流转到 EXCEPTION');
+    await expect(
+      runAsTenant(() =>
+        service.returnParcel('p1', { cause: 'EXCEPTION_RETURN' }),
+      ),
+    ).rejects.toThrow('包裹状态不可从 PICKED_UP 流转到 RETURNED');
+    expect(bus.publish).not.toHaveBeenCalled();
+  });
 });

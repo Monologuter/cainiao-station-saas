@@ -17,6 +17,32 @@ interface StoreParcelInput {
   slotId: string;
 }
 
+type ExceptionParcelType =
+  | 'DAMAGED'
+  | 'MISDELIVERED'
+  | 'UNCLAIMED'
+  | 'REJECTED'
+  | 'OVERSIZED';
+
+interface MarkExceptionInput {
+  type: ExceptionParcelType;
+  description: string;
+  exceptionId?: string;
+  severity?: 'LOW' | 'MEDIUM' | 'HIGH';
+  evidenceUrls?: string[];
+}
+
+interface RestockInput {
+  reason?: string;
+}
+
+export type ReturnCause = 'OVERDUE' | 'EXCEPTION_RETURN';
+
+interface ReturnParcelInput {
+  cause: ReturnCause;
+  reason?: string;
+}
+
 interface ListParcelInput {
   status?: string;
   phoneTail?: string;
@@ -169,6 +195,157 @@ export class ParcelService {
     return event.parcel;
   }
 
+  async markException(parcelId: string, input: MarkExceptionInput) {
+    const ctx = this.requireContext();
+    const result = await this.tenantPrisma.withTenant(async (tx) => {
+      const before = await tx.parcel.findUniqueOrThrow({
+        where: { id: parcelId },
+      });
+      this.assertTransitionFrom(before.status as ParcelStatus, 'EXCEPTION', [
+        'STORED',
+      ]);
+
+      await this.optimisticParcelUpdate(tx, {
+        parcelId,
+        status: before.status as ParcelStatus,
+        version: before.version,
+        data: {
+          status: 'EXCEPTION',
+          version: { increment: 1 },
+        },
+      });
+
+      const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
+      await tx.parcelEvent.create({
+        data: {
+          tenantId: before.tenantId,
+          parcelId,
+          fromStatus: before.status,
+          toStatus: 'EXCEPTION',
+          eventType: 'EXCEPTION',
+          operatorId: ctx.userId,
+          payload: {
+            type: input.type,
+            description: input.description,
+            severity: input.severity,
+            evidenceUrls: input.evidenceUrls ?? [],
+            exceptionId: input.exceptionId,
+            slotId: before.slotId,
+          },
+        },
+      });
+
+      return {
+        parcel,
+        event: EventBus.createEvent('ParcelMarkedException', {
+          parcelId,
+          tenantId: before.tenantId,
+          stationId: before.stationId,
+          slotId: before.slotId,
+          exceptionId: input.exceptionId,
+          type: input.type,
+        }),
+      };
+    });
+
+    await this.eventBus.publish(result.event);
+    return result.parcel;
+  }
+
+  async restock(parcelId: string, input: RestockInput = {}) {
+    const ctx = this.requireContext();
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const before = await tx.parcel.findUniqueOrThrow({
+        where: { id: parcelId },
+      });
+      ParcelAggregate.assertTransit(before.status as ParcelStatus, 'STORED');
+
+      await this.optimisticParcelUpdate(tx, {
+        parcelId,
+        status: before.status as ParcelStatus,
+        version: before.version,
+        data: {
+          status: 'STORED',
+          lastOverdueLevel: 0,
+          version: { increment: 1 },
+        },
+      });
+
+      const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
+      await tx.parcelEvent.create({
+        data: {
+          tenantId: before.tenantId,
+          parcelId,
+          fromStatus: before.status,
+          toStatus: 'STORED',
+          eventType: 'STORED',
+          operatorId: ctx.userId,
+          payload: {
+            reason: input.reason,
+            slotId: before.slotId,
+            resetOverdueLevel: true,
+          },
+        },
+      });
+
+      return parcel;
+    });
+  }
+
+  async returnParcel(parcelId: string, input: ReturnParcelInput) {
+    const ctx = this.requireContext();
+    const result = await this.tenantPrisma.withTenant(async (tx) => {
+      const before = await tx.parcel.findUniqueOrThrow({
+        where: { id: parcelId },
+      });
+      ParcelAggregate.assertTransit(before.status as ParcelStatus, 'RETURNED');
+
+      const returnedAt = new Date();
+      await this.optimisticParcelUpdate(tx, {
+        parcelId,
+        status: before.status as ParcelStatus,
+        version: before.version,
+        data: {
+          status: 'RETURNED',
+          overdueReturnedAt: returnedAt,
+          version: { increment: 1 },
+        },
+      });
+
+      const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
+      await tx.parcelEvent.create({
+        data: {
+          tenantId: before.tenantId,
+          parcelId,
+          fromStatus: before.status,
+          toStatus: 'RETURNED',
+          eventType: 'RETURNED',
+          operatorId: ctx.userId,
+          payload: {
+            cause: input.cause,
+            reason: input.reason,
+            slotId: before.slotId,
+            returnedAt,
+          },
+        },
+      });
+
+      return {
+        parcel,
+        event: EventBus.createEvent('ParcelReturned', {
+          parcelId,
+          tenantId: before.tenantId,
+          stationId: before.stationId,
+          slotId: before.slotId,
+          cause: input.cause,
+        }),
+      };
+    });
+
+    await this.eventBus.publish(result.event);
+    return result.parcel;
+  }
+
   async list(input: ListParcelInput) {
     const page = this.parsePositiveInt(input.page, 1);
     const size = Math.min(this.parsePositiveInt(input.size, 20), 100);
@@ -260,6 +437,42 @@ export class ParcelService {
   private parsePositiveInt(value: string | undefined, fallback: number) {
     const parsed = Number(value);
     return Number.isInteger(parsed) && parsed > 0 ? parsed : fallback;
+  }
+
+  private assertTransitionFrom(
+    from: ParcelStatus,
+    to: ParcelStatus,
+    allowedFrom: ParcelStatus[],
+  ) {
+    if (!allowedFrom.includes(from)) {
+      throw new BizError(
+        ApiCode.ILLEGAL_TRANSITION,
+        `包裹状态不可从 ${from} 流转到 ${to}`,
+      );
+    }
+    ParcelAggregate.assertTransit(from, to);
+  }
+
+  private async optimisticParcelUpdate(
+    tx: any,
+    input: {
+      parcelId: string;
+      status: ParcelStatus;
+      version: number;
+      data: Record<string, unknown>;
+    },
+  ) {
+    const result = await tx.parcel.updateMany({
+      where: {
+        id: input.parcelId,
+        status: input.status,
+        version: input.version,
+      },
+      data: input.data,
+    });
+    if (result.count !== 1) {
+      throw new BizError(ApiCode.ILLEGAL_TRANSITION, '包裹状态已变化');
+    }
   }
 
   private toParcelDto(parcel: any) {
