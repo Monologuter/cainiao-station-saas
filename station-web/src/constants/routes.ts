@@ -1,4 +1,5 @@
 import type { Component } from 'vue';
+import InboundView from '@/views/InboundView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
 
@@ -25,7 +26,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: 'inbound',
     title: '扫码入库',
     perm: 'parcel:inbound',
-    component: PlaceholderView,
+    component: InboundView,
   },
   {
     code: 'parcels',

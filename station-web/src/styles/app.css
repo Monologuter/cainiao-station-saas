@@ -198,3 +198,79 @@
   align-items: flex-start;
   padding: 28px;
 }
+
+.inbound-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.scan-panel {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 18px;
+  padding: 18px;
+  border: 1px dashed var(--primary);
+  border-radius: var(--radius);
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.scan-panel svg {
+  width: 34px;
+  height: 34px;
+}
+
+.scan-panel b {
+  color: var(--text);
+  font-size: 16px;
+}
+
+.scan-panel p {
+  margin-top: 4px;
+  color: var(--muted);
+  font-size: 13px;
+}
+
+.inbound-form {
+  align-items: end;
+}
+
+.form-actions {
+  display: flex;
+  align-items: center;
+  min-height: 38px;
+}
+
+.result-card {
+  display: grid;
+  gap: 10px;
+}
+
+.pickup-code {
+  color: var(--primary);
+  font-family: var(--font-num);
+  font-size: 32px;
+  font-weight: 800;
+}
+
+.result-card p {
+  color: var(--muted);
+}
+
+.recent-inbound {
+  margin-bottom: 24px;
+}
+
+.compact-empty {
+  padding: 24px;
+}
+
+@media (max-width: 1100px) {
+  .inbound-grid {
+    grid-template-columns: 1fr;
+  }
+}
