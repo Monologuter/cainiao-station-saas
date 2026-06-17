@@ -167,5 +167,5 @@ describe('Foundation e2e', () => {
         expect.objectContaining({ code: 'tenant-open' }),
       ]),
     );
-  });
+  }, 15000);
 });

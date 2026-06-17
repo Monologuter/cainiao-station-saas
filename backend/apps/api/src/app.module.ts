@@ -12,6 +12,7 @@ import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
 import { PermissionGuard } from './modules/identity/permission.guard';
 import { InboundModule } from './modules/inbound/inbound.module';
+import { MemberModule } from './modules/member/member.module';
 import { NotifyModule } from './modules/notify/notify.module';
 import { ParcelModule } from './modules/parcel/parcel.module';
 import { PickupModule } from './modules/pickup/pickup.module';
@@ -25,6 +26,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     AnalyticsModule,
     IdentityModule,
     InboundModule,
+    MemberModule,
     NotifyModule,
     ParcelModule,
     PickupModule,
