@@ -49,9 +49,7 @@ export class OnboardingSubscriber implements OnModuleInit {
     );
   }
 
-  async onApplicationRejected(
-    event: DomainEvent<ApplicationRejectedPayload>,
-  ) {
+  async onApplicationRejected(event: DomainEvent<ApplicationRejectedPayload>) {
     await TenantContext.run(
       {
         userId: 'system',

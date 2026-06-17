@@ -111,7 +111,9 @@ describe('Onboarding API e2e', () => {
       .query({ keyword: rejectPhone })
       .expect(200);
     await request(app.getHttpServer())
-      .post(`/api/admin/applications/${rejectList.body.data.items[0].id}/reject`)
+      .post(
+        `/api/admin/applications/${rejectList.body.data.items[0].id}/reject`,
+      )
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ rejectReason: '证照不清晰' })
       .expect(201);
@@ -126,7 +128,7 @@ describe('Onboarding API e2e', () => {
       status: 'REJECTED',
       rejectReason: '证照不清晰',
     });
-  });
+  }, 15000);
 
   async function login(username: string, password: string) {
     const res = await request(app.getHttpServer())

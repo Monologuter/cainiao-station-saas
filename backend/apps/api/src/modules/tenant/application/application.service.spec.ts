@@ -45,7 +45,9 @@ describe('ApplicationService', () => {
         ...companyInput(),
         entityType: 'INDIVIDUAL',
         unifiedCreditCode: undefined,
-        qualifications: [{ type: 'ID_CARD_FRONT', fileKey: 'a', fileName: 'a' }],
+        qualifications: [
+          { type: 'ID_CARD_FRONT', fileKey: 'a', fileName: 'a' },
+        ],
       }),
     ).rejects.toMatchObject({
       code: ApiCode.BAD_REQUEST,

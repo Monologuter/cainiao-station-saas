@@ -23,7 +23,10 @@ describe('OnboardingSubscriber', () => {
       notifyTenantApproved: jest.fn(),
       notifyApplicationRejected: jest.fn(),
     };
-    const subscriber = new OnboardingSubscriber({ subscribe: jest.fn() } as any, notify as any);
+    const subscriber = new OnboardingSubscriber(
+      { subscribe: jest.fn() } as any,
+      notify as any,
+    );
 
     await subscriber.onTenantApproved(
       EventBus.createEvent('TenantApproved', {
@@ -45,7 +48,10 @@ describe('OnboardingSubscriber', () => {
     );
 
     expect(notify.notifyTenantApproved).toHaveBeenCalledWith(
-      expect.objectContaining({ tenantId: 'tenant-1', ownerUsername: '13800000001' }),
+      expect.objectContaining({
+        tenantId: 'tenant-1',
+        ownerUsername: '13800000001',
+      }),
     );
     expect(notify.notifyApplicationRejected).toHaveBeenCalledWith({
       applicationId: 'app-2',

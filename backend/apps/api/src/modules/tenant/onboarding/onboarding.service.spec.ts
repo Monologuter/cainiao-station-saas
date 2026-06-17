@@ -59,7 +59,11 @@ describe('OnboardingService', () => {
     expect(eventBus.publish).toHaveBeenCalledWith(
       expect.objectContaining({
         name: 'TenantStatusChanged',
-        payload: { tenantId: 'tenant-1', status: 'ACTIVE', reason: 'ONBOARDING' },
+        payload: {
+          tenantId: 'tenant-1',
+          status: 'ACTIVE',
+          reason: 'ONBOARDING',
+        },
       }),
     );
   });

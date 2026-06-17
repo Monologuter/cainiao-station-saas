@@ -8,9 +8,9 @@ describe('application state', () => {
   });
 
   it('rejects repeated review for terminal applications', () => {
-    expect(() =>
-      assertApplicationTransition('APPROVED', 'approve'),
-    ).toThrow(BizError);
+    expect(() => assertApplicationTransition('APPROVED', 'approve')).toThrow(
+      BizError,
+    );
     expect(() => assertApplicationTransition('REJECTED', 'reject')).toThrow(
       BizError,
     );

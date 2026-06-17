@@ -1,5 +1,6 @@
 import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, EventBus } from '../../../../core/event-bus/event-bus';
+import { ApiCode, BizError } from '../../../../core/http/api-code';
 import { TenantContext } from '../../../../core/tenant-context/tenant-context';
 import { UsageService } from '../usage.service';
 
@@ -26,24 +27,31 @@ export class SmsUsageSubscriber implements OnModuleInit {
   }
 
   async onSmsNotificationSent(event: DomainEvent<SmsNotificationSentPayload>) {
-    await TenantContext.run(
-      {
-        userId: 'system',
-        tenantId: event.payload.tenantId,
-        roles: [],
-        isPlatform: false,
-      },
-      () =>
-        this.usage.meter({
+    try {
+      await TenantContext.run(
+        {
+          userId: 'system',
           tenantId: event.payload.tenantId,
-          stationId: event.payload.stationId,
-          eventId: event.payload.usageEventId,
-          metric: 'SMS',
-          quantity: 1,
-          eventAt: event.payload.sentAt
-            ? new Date(event.payload.sentAt)
-            : event.occurredAt,
-        }),
-    );
+          roles: [],
+          isPlatform: false,
+        },
+        () =>
+          this.usage.meter({
+            tenantId: event.payload.tenantId,
+            stationId: event.payload.stationId,
+            eventId: event.payload.usageEventId,
+            metric: 'SMS',
+            quantity: 1,
+            eventAt: event.payload.sentAt
+              ? new Date(event.payload.sentAt)
+              : event.occurredAt,
+          }),
+      );
+    } catch (error) {
+      if (error instanceof BizError && error.code === ApiCode.NOT_FOUND) {
+        return;
+      }
+      throw error;
+    }
   }
 }

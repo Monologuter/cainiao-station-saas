@@ -93,10 +93,7 @@ describe('Onboarding application model e2e', () => {
     const reapplied = await prisma.$queryRawUnsafe<any[]>(
       `SELECT status FROM tenant_applications WHERE contact_phone = '${rejectedPhone}' ORDER BY created_at`,
     );
-    expect(reapplied.map((row) => row.status)).toEqual([
-      'REJECTED',
-      'PENDING',
-    ]);
+    expect(reapplied.map((row) => row.status)).toEqual(['REJECTED', 'PENDING']);
   });
 
   it('seeds tenant review permission for platform operators', async () => {

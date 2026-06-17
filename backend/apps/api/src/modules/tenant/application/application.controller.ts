@@ -1,12 +1,11 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
-import {
-  IsArray,
-  IsOptional,
-  IsString,
-  ValidateNested,
-} from 'class-validator';
+import { IsArray, IsOptional, IsString, ValidateNested } from 'class-validator';
 import { Type } from 'class-transformer';
-import { CurrentUser, Public, RequirePermission } from '../../identity/decorators';
+import {
+  CurrentUser,
+  Public,
+  RequirePermission,
+} from '../../identity/decorators';
 import { FileStorageService } from '../../file/file-storage.service';
 import { ApplicationService } from './application.service';
 
