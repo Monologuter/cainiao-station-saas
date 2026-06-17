@@ -231,6 +231,133 @@
   font-weight: 700;
 }
 
+.shelf-kpis {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.shelves-layout {
+  display: grid;
+  grid-template-columns: 330px minmax(0, 1fr);
+  gap: 18px;
+  align-items: start;
+}
+
+.shelf-forms,
+.shelf-side {
+  display: grid;
+  gap: 16px;
+}
+
+.one-col {
+  grid-template-columns: 1fr;
+}
+
+.batch-box {
+  display: grid;
+  gap: 12px;
+  padding-top: 16px;
+  border-top: 1px solid var(--border-2);
+}
+
+.batch-box h3 {
+  font-size: 14px;
+}
+
+.slot-batch-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.shelf-main {
+  display: grid;
+  gap: 14px;
+}
+
+.shelf-list {
+  display: flex;
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 2px;
+}
+
+.shelf-chip {
+  display: grid;
+  grid-template-columns: auto 1fr auto;
+  align-items: center;
+  gap: 8px;
+  min-width: 190px;
+  height: 42px;
+  padding: 0 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  color: var(--text);
+  background: var(--surface);
+  font-family: var(--font);
+  cursor: pointer;
+}
+
+.shelf-chip.on {
+  color: var(--primary);
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.shelf-chip span {
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.shelf-chip em {
+  font-style: normal;
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.shelf-progress {
+  margin-bottom: 16px;
+}
+
+.slot-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(88px, 1fr));
+  gap: 8px;
+}
+
+.slot-cell {
+  display: grid;
+  gap: 4px;
+  min-height: 70px;
+  place-items: center;
+  border-radius: var(--radius-sm);
+  border: 1px dashed var(--border);
+  color: var(--muted);
+  background: var(--surface);
+}
+
+.slot-cell.occupied {
+  color: var(--primary-fg);
+  border-color: var(--primary);
+  background: var(--primary);
+}
+
+.slot-cell.locked {
+  color: var(--muted);
+  border-style: solid;
+  background: var(--surface-2);
+}
+
+.slot-cell small {
+  font-size: 10.5px;
+  font-weight: 700;
+}
+
 .scan-panel {
   display: flex;
   align-items: center;
@@ -422,6 +549,11 @@
   }
 
   .pickup-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .shelf-kpis,
+  .shelves-layout {
     grid-template-columns: 1fr;
   }
 }

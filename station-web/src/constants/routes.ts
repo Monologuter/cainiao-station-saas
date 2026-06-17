@@ -2,6 +2,7 @@ import type { Component } from 'vue';
 import InboundView from '@/views/InboundView.vue';
 import ParcelsView from '@/views/ParcelsView.vue';
 import PickupView from '@/views/PickupView.vue';
+import ShelvesView from '@/views/ShelvesView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
 
@@ -52,7 +53,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: 'shelves',
     title: '货架库位',
     perm: 'station:manage',
-    component: PlaceholderView,
+    component: ShelvesView,
   },
   {
     code: 'staff-roles',
