@@ -7,9 +7,14 @@ import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
 import { IdentityModule } from './modules/identity/identity.module';
 import { JwtAuthGuard } from './modules/identity/jwt-auth.guard';
 import { PermissionGuard } from './modules/identity/permission.guard';
+import { TenantModule } from './modules/tenant/tenant.module';
 
 @Module({
-  imports: [ConfigModule.forRoot({ isGlobal: true }), IdentityModule],
+  imports: [
+    ConfigModule.forRoot({ isGlobal: true }),
+    IdentityModule,
+    TenantModule,
+  ],
   controllers: [],
   providers: [
     PrismaService,
