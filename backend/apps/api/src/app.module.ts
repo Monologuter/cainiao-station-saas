@@ -8,6 +8,8 @@ import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
 import { RedisLockService } from './core/redis/redis-lock.service';
 import { RedisService } from './core/redis/redis.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
+import { AuditInterceptor } from './modules/audit/audit.interceptor';
+import { AuditModule } from './modules/audit/audit.module';
 import { BillingModule } from './modules/billing/billing.module';
 import { ExceptionModule } from './modules/exceptions/exception.module';
 import { IdentityModule } from './modules/identity/identity.module';
@@ -28,6 +30,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     ConfigModule.forRoot({ isGlobal: true }),
     EventBusModule,
     AnalyticsModule,
+    AuditModule,
     BillingModule,
     ExceptionModule,
     IdentityModule,
@@ -49,6 +52,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     RedisLockService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
     { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_GUARD, useClass: PermissionGuard },
   ],
 })
