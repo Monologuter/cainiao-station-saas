@@ -14,6 +14,9 @@ async function main() {
       { code: 'tenant:read', name: '查看租户', module: 'tenant' },
       { code: 'station:manage', name: '货架库位管理', module: 'station' },
       { code: 'station:read', name: '查看门店货架库位', module: 'station' },
+      { code: 'parcel:inbound', name: '入库', module: 'parcel' },
+      { code: 'parcel:pickup', name: '取件核销', module: 'parcel' },
+      { code: 'parcel:read', name: '查看包裹通知', module: 'parcel' },
     ];
     for (const perm of perms) {
       await tx.permission.upsert({
@@ -68,14 +71,24 @@ async function main() {
       create: { userId: admin.id, roleId: superRole.id },
     });
 
-    const stationPerms = await tx.permission.findMany({
-      where: { code: { in: ['station:manage', 'station:read'] } },
+    const tenantDailyPerms = await tx.permission.findMany({
+      where: {
+        code: {
+          in: [
+            'station:manage',
+            'station:read',
+            'parcel:inbound',
+            'parcel:pickup',
+            'parcel:read',
+          ],
+        },
+      },
     });
     const bossRoles = await tx.role.findMany({
       where: { tenantId: { not: null }, code: '店长' },
     });
     for (const role of bossRoles) {
-      for (const perm of stationPerms) {
+      for (const perm of tenantDailyPerms) {
         await tx.rolePermission.upsert({
           where: {
             roleId_permissionId: {

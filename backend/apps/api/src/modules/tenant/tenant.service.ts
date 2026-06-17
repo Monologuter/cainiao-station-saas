@@ -40,7 +40,17 @@ export class TenantService {
         },
       });
       const ownerPerms = await tx.permission.findMany({
-        where: { code: { in: ['station:manage', 'station:read'] } },
+        where: {
+          code: {
+            in: [
+              'station:manage',
+              'station:read',
+              'parcel:inbound',
+              'parcel:pickup',
+              'parcel:read',
+            ],
+          },
+        },
       });
       if (ownerPerms.length > 0) {
         await tx.rolePermission.createMany({
