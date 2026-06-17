@@ -12,9 +12,14 @@ export interface MetricFrame {
 @Injectable()
 export class RealtimePublisher {
   readonly frames: Array<{ type: string; payload: unknown }> = [];
+  private readonly sinks: Array<(type: string, payload: any) => void> = [];
+
+  registerSink(sink: (type: string, payload: any) => void) {
+    this.sinks.push(sink);
+  }
 
   publishMetric(frame: MetricFrame) {
-    this.frames.push({ type: 'metric:update', payload: frame });
+    this.publish('metric:update', frame);
   }
 
   publishParcelStored(payload: {
@@ -24,6 +29,13 @@ export class RealtimePublisher {
     pickupCode?: string;
     ts: string;
   }) {
-    this.frames.push({ type: 'parcel:stored', payload });
+    this.publish('parcel:stored', payload);
+  }
+
+  private publish(type: string, payload: unknown) {
+    this.frames.push({ type, payload });
+    for (const sink of this.sinks) {
+      sink(type, payload);
+    }
   }
 }

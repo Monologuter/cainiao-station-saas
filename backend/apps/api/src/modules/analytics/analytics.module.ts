@@ -1,7 +1,9 @@
 import { Module } from '@nestjs/common';
+import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
+import { AnalyticsGateway } from './analytics.gateway';
 import {
   AdminAnalyticsController,
   AnalyticsController,
@@ -21,9 +23,16 @@ import { ReportProcessor } from './report.processor';
 import { ReportService } from './report.service';
 
 @Module({
+  imports: [
+    JwtModule.register({
+      secret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
+      signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? '2h') as any },
+    }),
+  ],
   controllers: [AnalyticsController, AdminAnalyticsController],
   providers: [
     AnalyticsService,
+    AnalyticsGateway,
     MetricsService,
     QueryService,
     RankingService,
