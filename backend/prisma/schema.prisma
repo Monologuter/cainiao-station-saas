@@ -183,21 +183,22 @@ model Consumer {
 }
 
 model Member {
-  id                    String        @id @default(uuid()) @db.Uuid
-  consumerId            String        @unique @map("consumer_id") @db.Uuid
-  phone                 String        @unique @db.VarChar(20)
-  level                 Int           @default(0) @db.SmallInt
-  totalPoints           Int           @default(0) @map("total_points")
-  availablePoints       Int           @default(0) @map("available_points")
-  frozenPoints          Int           @default(0) @map("frozen_points")
-  continuousCheckinDays Int           @default(0) @map("continuous_checkin_days")
-  lastCheckinDate       DateTime?     @map("last_checkin_date") @db.Date
-  createdAt             DateTime      @default(now()) @map("created_at")
-  updatedAt             DateTime      @updatedAt @map("updated_at")
-  deletedAt             DateTime?     @map("deleted_at")
-  consumer              Consumer      @relation(fields: [consumerId], references: [id])
+  id                    String          @id @default(uuid()) @db.Uuid
+  consumerId            String          @unique @map("consumer_id") @db.Uuid
+  phone                 String          @unique @db.VarChar(20)
+  level                 Int             @default(0) @db.SmallInt
+  totalPoints           Int             @default(0) @map("total_points")
+  availablePoints       Int             @default(0) @map("available_points")
+  frozenPoints          Int             @default(0) @map("frozen_points")
+  continuousCheckinDays Int             @default(0) @map("continuous_checkin_days")
+  lastCheckinDate       DateTime?       @map("last_checkin_date") @db.Date
+  createdAt             DateTime        @default(now()) @map("created_at")
+  updatedAt             DateTime        @updatedAt @map("updated_at")
+  deletedAt             DateTime?       @map("deleted_at")
+  consumer              Consumer        @relation(fields: [consumerId], references: [id])
   pointRecords          PointRecord[]
   coupons               Coupon[]
+  checkins              MemberCheckin[]
 
   @@index([level])
   @@map("members")
@@ -216,10 +217,26 @@ model PointRecord {
   remark         String?         @db.VarChar(200)
   createdAt      DateTime        @default(now()) @map("created_at")
   member         Member          @relation(fields: [memberId], references: [id])
+  checkin        MemberCheckin?
 
   @@index([memberId, createdAt])
   @@index([sourceTenantId])
   @@map("point_records")
+}
+
+model MemberCheckin {
+  id             String      @id @default(uuid()) @db.Uuid
+  memberId       String      @map("member_id") @db.Uuid
+  checkinDate    DateTime    @map("checkin_date") @db.Date
+  rewardPoints   Int         @map("reward_points")
+  continuousDays Int         @map("continuous_days")
+  pointRecordId  String      @unique @map("point_record_id") @db.Uuid
+  createdAt      DateTime    @default(now()) @map("created_at")
+  member         Member      @relation(fields: [memberId], references: [id])
+  pointRecord    PointRecord @relation(fields: [pointRecordId], references: [id])
+
+  @@unique([memberId, checkinDate])
+  @@map("member_checkins")
 }
 
 model CouponTemplate {
@@ -297,12 +314,12 @@ model Tenant {
 }
 
 model Station {
-  id         String      @id @default(uuid()) @db.Uuid
-  tenantId   String      @map("tenant_id") @db.Uuid
+  id         String            @id @default(uuid()) @db.Uuid
+  tenantId   String            @map("tenant_id") @db.Uuid
   name       String
   code       String
-  createdAt  DateTime    @default(now())
-  tenant     Tenant      @relation(fields: [tenantId], references: [id])
+  createdAt  DateTime          @default(now())
+  tenant     Tenant            @relation(fields: [tenantId], references: [id])
   shelves    Shelf[]
   slots      Slot[]
   parcels    Parcel[]
@@ -360,28 +377,28 @@ model Slot {
 }
 
 model Parcel {
-  id                String         @id @default(uuid()) @db.Uuid
-  tenantId          String         @map("tenant_id") @db.Uuid
-  stationId         String         @map("station_id") @db.Uuid
-  waybillNo         String         @map("waybill_no")
+  id                String            @id @default(uuid()) @db.Uuid
+  tenantId          String            @map("tenant_id") @db.Uuid
+  stationId         String            @map("station_id") @db.Uuid
+  waybillNo         String            @map("waybill_no")
   carrier           String?
-  receiverPhone     String         @map("receiver_phone")
-  receiverPhoneTail String         @map("receiver_phone_tail")
-  pickupCode        String?        @map("pickup_code")
-  slotId            String?        @map("slot_id") @db.Uuid
-  status            ParcelStatus   @default(PENDING)
-  storedAt          DateTime?      @map("stored_at")
-  pickedUpAt        DateTime?      @map("picked_up_at")
-  lastOverdueLevel   Int            @default(0) @map("last_overdue_level")
-  overdueReturnedAt  DateTime?      @map("overdue_returned_at")
-  version           Int            @default(0)
-  createdAt         DateTime       @default(now()) @map("created_at")
-  updatedAt         DateTime       @updatedAt @map("updated_at")
-  deletedAt         DateTime?      @map("deleted_at")
-  createdBy         String?        @map("created_by") @db.Uuid
-  tenant            Tenant         @relation(fields: [tenantId], references: [id])
-  station           Station        @relation(fields: [stationId], references: [id])
-  slot              Slot?          @relation(fields: [slotId], references: [id])
+  receiverPhone     String            @map("receiver_phone")
+  receiverPhoneTail String            @map("receiver_phone_tail")
+  pickupCode        String?           @map("pickup_code")
+  slotId            String?           @map("slot_id") @db.Uuid
+  status            ParcelStatus      @default(PENDING)
+  storedAt          DateTime?         @map("stored_at")
+  pickedUpAt        DateTime?         @map("picked_up_at")
+  lastOverdueLevel  Int               @default(0) @map("last_overdue_level")
+  overdueReturnedAt DateTime?         @map("overdue_returned_at")
+  version           Int               @default(0)
+  createdAt         DateTime          @default(now()) @map("created_at")
+  updatedAt         DateTime          @updatedAt @map("updated_at")
+  deletedAt         DateTime?         @map("deleted_at")
+  createdBy         String?           @map("created_by") @db.Uuid
+  tenant            Tenant            @relation(fields: [tenantId], references: [id])
+  station           Station           @relation(fields: [stationId], references: [id])
+  slot              Slot?             @relation(fields: [slotId], references: [id])
   events            ParcelEvent[]
   notifications     Notification[]
   exceptionTickets  ExceptionTicket[]

@@ -5,6 +5,7 @@ import { RedisService } from '../../core/redis/redis.service';
 import { ParcelPickedUpListener } from './listeners/parcel-picked-up.listener';
 import { ShipOrderPaidListener } from './listeners/ship-order-paid.listener';
 import { CouponService } from './coupon.service';
+import { CheckinService } from './checkin.service';
 import { MemberController } from './member.controller';
 import { MemberService } from './member.service';
 import { PointService } from './point.service';
@@ -21,11 +22,12 @@ import { PointService } from './point.service';
     MemberService,
     PointService,
     CouponService,
+    CheckinService,
     ParcelPickedUpListener,
     ShipOrderPaidListener,
     PrismaService,
     RedisService,
   ],
-  exports: [MemberService, PointService, CouponService],
+  exports: [MemberService, PointService, CouponService, CheckinService],
 })
 export class MemberModule {}
