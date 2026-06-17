@@ -11,8 +11,10 @@ const ACTIVE_STATUSES = ['TRIALING', 'ACTIVE', 'PAST_DUE', 'SUSPENDED'];
 interface SubscribeInput {
   tenantId: string;
   stationId?: string;
-  planId: string;
+  planId?: string;
+  planCode?: string;
   now?: Date;
+  tx?: any;
 }
 
 @Injectable()
@@ -22,7 +24,7 @@ export class SubscriptionService {
   async subscribe(input: SubscribeInput) {
     const now = input.now ?? new Date();
     const periodEnd = this.addMonths(now, 1);
-    const subscription = await this.tenantPrisma.withTenant(async (tx) => {
+    const subscribeWithTx = async (tx: any) => {
       const existing = await tx.subscription.findFirst({
         where: {
           tenantId: input.tenantId,
@@ -34,8 +36,13 @@ export class SubscriptionService {
       if (existing) {
         throw new BizError(ApiCode.BAD_REQUEST, '门店已有有效订阅');
       }
+      if (!input.planId && !input.planCode) {
+        throw new BizError(ApiCode.BAD_REQUEST, '请选择套餐');
+      }
       const plan = await tx.billingPlan.findFirst({
-        where: { id: input.planId, status: 'ACTIVE', deletedAt: null },
+        where: input.planId
+          ? { id: input.planId, status: 'ACTIVE', deletedAt: null }
+          : { code: input.planCode, status: 'ACTIVE', deletedAt: null },
       });
       if (!plan) {
         throw new BizError(ApiCode.NOT_FOUND, '套餐不存在或未上架');
@@ -54,7 +61,10 @@ export class SubscriptionService {
           planSnapshot: this.snapshotPlan(plan),
         },
       });
-    });
+    };
+    const subscription = input.tx
+      ? await subscribeWithTx(input.tx)
+      : await this.tenantPrisma.withTenant(subscribeWithTx);
     return this.toDto(subscription);
   }
 

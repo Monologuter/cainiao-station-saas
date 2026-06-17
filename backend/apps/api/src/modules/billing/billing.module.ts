@@ -41,5 +41,6 @@ import { UsageService } from './usage/usage.service';
     RedisService,
     RedisLockService,
   ],
+  exports: [SubscriptionService],
 })
 export class BillingModule {}

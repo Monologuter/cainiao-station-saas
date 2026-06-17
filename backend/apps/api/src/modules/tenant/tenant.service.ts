@@ -7,6 +7,8 @@ interface CreateTenantInput {
   ownerName: string;
   ownerPhone: string;
   ownerPassword: string;
+  stationName?: string;
+  stationAddress?: string;
 }
 
 const TENANT_DEFAULT_PERMISSIONS = [
@@ -75,10 +77,10 @@ const ZONES = [
 export class TenantService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async createTenant(input: CreateTenantInput) {
+  async createTenant(input: CreateTenantInput, externalTx?: any) {
     const passwordHash = await argon2.hash(input.ownerPassword);
 
-    return this.prisma.$transaction(async (tx) => {
+    const createWithTx = async (tx: any) => {
       await tx.$executeRawUnsafe(
         `SELECT set_config('app.bypass_rls', 'on', true)`,
       );
@@ -90,7 +92,11 @@ export class TenantService {
         },
       });
       const station = await tx.station.create({
-        data: { tenantId: tenant.id, name: input.name, code: 'S001' },
+        data: {
+          tenantId: tenant.id,
+          name: input.stationName ?? input.name,
+          code: 'S001',
+        },
       });
       const ownerRole = await tx.role.create({
         data: {
@@ -152,7 +158,12 @@ export class TenantService {
         stationId: station.id,
         ownerUserId: user.id,
       };
-    });
+    };
+
+    if (externalTx) {
+      return createWithTx(externalTx);
+    }
+    return this.prisma.$transaction(createWithTx);
   }
 
   private defaultPriceRules(tenantId: string) {
