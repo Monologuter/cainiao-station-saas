@@ -1,6 +1,7 @@
 import type { Component } from 'vue';
 import InboundView from '@/views/InboundView.vue';
 import ParcelsView from '@/views/ParcelsView.vue';
+import PickupView from '@/views/PickupView.vue';
 import WorkbenchView from '@/views/WorkbenchView.vue';
 import PlaceholderView from '@/views/PlaceholderView.vue';
 
@@ -43,7 +44,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: 'pickup',
     title: '取件核销',
     perm: 'parcel:pickup',
-    component: PlaceholderView,
+    component: PickupView,
   },
   {
     code: 'shelves',

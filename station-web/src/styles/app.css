@@ -207,6 +207,30 @@
   margin-bottom: 18px;
 }
 
+.pickup-grid {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) 320px;
+  gap: 18px;
+  align-items: start;
+  margin-bottom: 18px;
+}
+
+.pickup-scan {
+  border-color: var(--accent);
+  color: var(--accent);
+  background: var(--accent-soft);
+}
+
+.pickup-form {
+  align-items: end;
+}
+
+.pickup-result-title {
+  color: var(--ok);
+  font-size: 18px;
+  font-weight: 700;
+}
+
 .scan-panel {
   display: flex;
   align-items: center;
@@ -394,6 +418,10 @@
 
 @media (max-width: 1100px) {
   .inbound-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .pickup-grid {
     grid-template-columns: 1fr;
   }
 }
