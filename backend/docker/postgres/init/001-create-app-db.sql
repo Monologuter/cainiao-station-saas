@@ -1,0 +1,2 @@
+CREATE USER cainiao WITH PASSWORD 'cainiao' CREATEDB;
+CREATE DATABASE cainiao OWNER cainiao;
