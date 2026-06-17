@@ -50,4 +50,23 @@ describe('RedisLockService', () => {
     ).resolves.toBe('ok');
     expect(client.eval).toHaveBeenCalledTimes(1);
   });
+
+  it('allows only one concurrent acquire for the same key', async () => {
+    const client = {
+      set: jest.fn().mockResolvedValueOnce('OK').mockResolvedValueOnce(null),
+      eval: jest.fn(),
+    };
+    const service = serviceWith(client);
+
+    const [first, second] = await Promise.all([
+      service.acquire('lock:overdue-scan', 30000),
+      service.acquire('lock:overdue-scan', 30000),
+    ]);
+
+    expect(first.ok).toBe(true);
+    expect(second.ok).toBe(false);
+
+    await first.release();
+    expect(client.eval).toHaveBeenCalledTimes(1);
+  });
 });
