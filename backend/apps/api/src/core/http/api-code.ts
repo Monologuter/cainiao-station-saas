@@ -15,6 +15,7 @@ export const ApiCode = {
   SHIPPING_ILLEGAL_TRANSITION: 2101,
   SHIPPING_NO_PRICE_RULE: 2102,
   INTERNAL: 5000,
+  NOT_IMPLEMENTED: 5001,
 } as const;
 
 export class BizError extends Error {

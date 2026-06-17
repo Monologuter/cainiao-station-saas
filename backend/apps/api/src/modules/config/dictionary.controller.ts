@@ -3,6 +3,10 @@ import { ApiCode, BizError } from '../../core/http/api-code';
 import { Audit } from '../audit/audit.decorator';
 import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
 import {
+  ChannelConfigService,
+  UpdateChannelConfigInput,
+} from './channel-config.service';
+import {
   CreateDictItemInput,
   DictionaryService,
   UpdateDictItemInput,
@@ -105,6 +109,40 @@ export class AdminSystemConfigController {
   ) {
     this.requirePlatform(user);
     return this.systemConfigs.update(key, body, user.userId);
+  }
+
+  private requirePlatform(user: any) {
+    if (!user?.isPlatform) {
+      throw new BizError(ApiCode.FORBIDDEN, '仅平台用户可管理系统配置');
+    }
+  }
+}
+
+@Controller('admin/config/channels')
+export class AdminChannelConfigController {
+  constructor(private readonly channels: ChannelConfigService) {}
+
+  @RequirePermission('config:view')
+  @Get()
+  list(@CurrentUser() user: any) {
+    this.requirePlatform(user);
+    return this.channels.list();
+  }
+
+  @Audit({
+    action: 'config.channel.update',
+    resourceType: 'channel_config',
+    summary: '更新渠道开关',
+  })
+  @RequirePermission('config:manage')
+  @Patch(':channel')
+  update(
+    @CurrentUser() user: any,
+    @Param('channel') channel: string,
+    @Body() body: UpdateChannelConfigInput,
+  ) {
+    this.requirePlatform(user);
+    return this.channels.update(channel, body, user.userId);
   }
 
   private requirePlatform(user: any) {

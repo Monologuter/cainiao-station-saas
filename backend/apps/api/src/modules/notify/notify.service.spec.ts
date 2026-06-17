@@ -24,6 +24,14 @@ describe('TemplateRenderer', () => {
 });
 
 describe('NotifyService', () => {
+  const channelResolver = {
+    resolve: jest.fn().mockResolvedValue({ channel: 'sms', provider: 'mock' }),
+  };
+
+  beforeEach(() => {
+    channelResolver.resolve.mockClear();
+  });
+
   it('creates IN_APP and SMS notification records for ParcelStored', async () => {
     const created: any[] = [];
     const tx = {
@@ -41,7 +49,12 @@ describe('NotifyService', () => {
       })),
     } as any;
     const eventBus = { publish: jest.fn() };
-    const service = new NotifyService(tenantPrisma, renderer, eventBus as any);
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      eventBus as any,
+      channelResolver as any,
+    );
 
     await service.notifyParcelStored({
       parcelId: 'p1',
@@ -72,6 +85,7 @@ describe('NotifyService', () => {
         }),
       }),
     );
+    expect(channelResolver.resolve).toHaveBeenCalledWith('sms');
   });
 
   it('dedups repeated ParcelStored notifications by dedup key', async () => {
@@ -88,9 +102,14 @@ describe('NotifyService', () => {
     const renderer = {
       render: jest.fn(async () => ({ content: 'ok' })),
     } as any;
-    const service = new NotifyService(tenantPrisma, renderer, {
-      publish: jest.fn(),
-    } as any);
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      {
+        publish: jest.fn(),
+      } as any,
+      channelResolver as any,
+    );
 
     await service.notifyParcelStored({
       parcelId: 'p1',
@@ -126,9 +145,14 @@ describe('NotifyService', () => {
         content: `${code}:${channel}:${vars.daysOverdue}`,
       })),
     } as any;
-    const service = new NotifyService(tenantPrisma, renderer, {
-      publish: jest.fn(),
-    } as any);
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      {
+        publish: jest.fn(),
+      } as any,
+      channelResolver as any,
+    );
 
     await service.notifyParcelOverdue({
       parcelId: 'p1',
@@ -181,7 +205,12 @@ describe('NotifyService', () => {
       })),
     } as any;
     const eventBus = { publish: jest.fn() };
-    const service = new NotifyService(tenantPrisma, renderer, eventBus as any);
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      eventBus as any,
+      channelResolver as any,
+    );
 
     await service.notifyTenantApproved({
       applicationId: 'app-1',
@@ -223,9 +252,14 @@ describe('NotifyService', () => {
         content: `${code}:${channel}:${vars.reason}`,
       })),
     } as any;
-    const service = new NotifyService(tenantPrisma, renderer, {
-      publish: jest.fn(),
-    } as any);
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      {
+        publish: jest.fn(),
+      } as any,
+      channelResolver as any,
+    );
 
     await expect(
       service.notifyApplicationRejected({

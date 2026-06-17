@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { EventBus } from '../../core/event-bus/event-bus';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
+import { ChannelResolver } from '../config/channel-resolver';
 import { NotifyChannelType } from './notify-channel';
 import { TemplateRenderer } from './template-renderer';
 
@@ -53,10 +54,12 @@ export class NotifyService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly renderer: TemplateRenderer,
     private readonly eventBus: EventBus,
+    private readonly channelResolver: ChannelResolver,
   ) {}
 
   async notifyParcelStored(payload: ParcelStoredNotification) {
     for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+      await this.ensureChannelReady(channel);
       const rendered = await this.renderer.render('PARCEL_STORED', channel, {
         code: payload.pickupCode,
         slot: payload.slotCode ?? '',
@@ -99,6 +102,7 @@ export class NotifyService {
   async notifyParcelOverdue(payload: ParcelOverdueNotification) {
     const templateCode = OVERDUE_TEMPLATE_BY_LEVEL[payload.level];
     for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+      await this.ensureChannelReady(channel);
       const rendered = await this.renderer.render(templateCode, channel, {
         code: payload.pickupCode ?? '',
         slot: payload.slotCode ?? '',
@@ -140,6 +144,7 @@ export class NotifyService {
 
   async notifyTenantApproved(payload: TenantApprovedNotification) {
     for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+      await this.ensureChannelReady(channel);
       const rendered = await this.renderer.render('TENANT_APPROVED', channel, {
         username: payload.ownerUsername,
         tempPassword: payload.tempPassword ?? '',
@@ -182,6 +187,7 @@ export class NotifyService {
   }
 
   async notifyApplicationRejected(payload: ApplicationRejectedNotification) {
+    await this.ensureChannelReady('SMS');
     const rendered = await this.renderer.render('APPLICATION_REJECTED', 'SMS', {
       reason: payload.rejectReason,
     });
@@ -192,6 +198,12 @@ export class NotifyService {
         content: rendered.content,
       },
     ];
+  }
+
+  private async ensureChannelReady(channel: NotifyChannelType) {
+    if (channel === 'SMS') {
+      await this.channelResolver.resolve('sms');
+    }
   }
 
   private async publishSmsSent(
