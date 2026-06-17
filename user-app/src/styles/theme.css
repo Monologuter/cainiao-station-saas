@@ -103,6 +103,137 @@ page {
   margin: 14px 0;
 }
 
+.home-actions {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+  margin: 14px 0;
+}
+
+.home-actions .primary-btn {
+  grid-column: 1 / -1;
+}
+
+.mini-btn.ghost {
+  color: var(--primary);
+  border: 1px solid var(--primary);
+  background: var(--primary-soft);
+}
+
+.ship-page {
+  padding-bottom: 120px;
+}
+
+.ship-hero {
+  border-color: #d6e2fd;
+  background: linear-gradient(135deg, #ffffff 0%, #edf4ff 100%);
+}
+
+.section-title {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+}
+
+.triple-row {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 8px;
+}
+
+.dual-row {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 10px;
+}
+
+.quote-stack {
+  display: grid;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.quote-mobile {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  gap: 4px 10px;
+  width: 100%;
+  padding: 14px;
+  border: 1px solid var(--border);
+  color: var(--text);
+  text-align: left;
+}
+
+.quote-mobile.on {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.quote-name {
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.quote-meta {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.quote-amount {
+  grid-row: 1 / span 2;
+  grid-column: 2;
+  align-self: center;
+  color: var(--primary);
+  font-size: 18px;
+  font-weight: 900;
+}
+
+.checkout-mobile {
+  position: fixed;
+  right: 0;
+  bottom: 0;
+  left: 0;
+  z-index: 20;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 14px;
+  padding: 12px 18px 18px;
+  border-top: 1px solid var(--border);
+  background: var(--surface);
+  box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.08);
+}
+
+.checkout-label,
+.checkout-amount {
+  display: block;
+}
+
+.checkout-label {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.checkout-amount {
+  color: #dc2626;
+  font-size: 24px;
+  font-weight: 900;
+}
+
+.pay-mobile {
+  width: 148px;
+  border-radius: 999px;
+}
+
+.plain-link {
+  width: 100%;
+  height: 42px;
+  border: 0;
+  color: var(--primary);
+  background: transparent;
+  font-weight: 800;
+}
+
 .tabs-mobile {
   display: grid;
   grid-template-columns: repeat(3, 1fr);
@@ -148,10 +279,134 @@ page {
   font-size: 13px;
 }
 
+.ship-order-card {
+  cursor: pointer;
+}
+
+.ship-order-top {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.mini-tag {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  min-width: 58px;
+  height: 24px;
+  padding: 0 8px;
+  border-radius: 8px;
+  font-size: 11px;
+  font-weight: 800;
+}
+
+.mini-tag.blue {
+  color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.mini-tag.green {
+  color: #16a34a;
+  background: #ecfdf3;
+}
+
+.mini-tag.amber {
+  color: #d97706;
+  background: #fef3c7;
+}
+
+.mini-tag.purple {
+  color: #7c5cfc;
+  background: #efebff;
+}
+
+.mini-tag.gray {
+  color: #64748b;
+  background: #f1f5f9;
+}
+
 .empty-mobile {
   padding: 28px;
   color: var(--muted);
   text-align: center;
+}
+
+.tracking-head {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 20px;
+}
+
+.tracking-head .title {
+  overflow-wrap: anywhere;
+  font-size: 22px;
+}
+
+.track-card {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-top: 14px;
+  padding: 18px;
+}
+
+.track-node {
+  position: relative;
+  display: grid;
+  grid-template-columns: 18px 1fr;
+  gap: 10px;
+}
+
+.track-node::before {
+  position: absolute;
+  top: 16px;
+  bottom: -18px;
+  left: 8px;
+  width: 2px;
+  background: var(--border);
+  content: '';
+}
+
+.track-node:last-child::before {
+  display: none;
+}
+
+.track-dot {
+  width: 12px;
+  height: 12px;
+  margin-top: 3px;
+  border: 2px solid var(--border);
+  border-radius: 50%;
+  background: var(--surface);
+}
+
+.track-node.current .track-dot {
+  border-color: var(--primary);
+  background: var(--primary);
+  box-shadow: 0 0 0 4px var(--primary-soft);
+}
+
+.track-body {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding-bottom: 18px;
+}
+
+.track-desc {
+  color: var(--text);
+  font-size: 14px;
+  font-weight: 800;
+  line-height: 1.45;
+}
+
+.track-meta {
+  color: var(--muted);
+  font-size: 12px;
+  line-height: 1.45;
 }
 
 .pickup-code-card {

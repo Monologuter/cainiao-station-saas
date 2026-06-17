@@ -23,6 +23,24 @@
       "style": {
         "navigationBarTitleText": "取件码"
       }
+    },
+    {
+      "path": "pages/ship/index",
+      "style": {
+        "navigationBarTitleText": "在线寄件"
+      }
+    },
+    {
+      "path": "pages/ship-orders/index",
+      "style": {
+        "navigationBarTitleText": "我的寄件"
+      }
+    },
+    {
+      "path": "pages/tracking/index",
+      "style": {
+        "navigationBarTitleText": "物流追踪"
+      }
     }
   ],
   "globalStyle": {
