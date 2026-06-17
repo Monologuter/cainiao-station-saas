@@ -22,7 +22,9 @@ describe('overdue policy', () => {
     [14, { kind: 'LEVEL', level: 3 }],
     [15, { kind: 'RETURN', level: 3 }],
   ])('classifies %i stored days', (days, expected) => {
-    expect(classifyOverdue(daysAgo(days), NOW, OVERDUE_DEFAULT_CONFIG)).toEqual(expected);
+    expect(classifyOverdue(daysAgo(days), NOW, OVERDUE_DEFAULT_CONFIG)).toEqual(
+      expected,
+    );
   });
 
   it('uses custom thresholds', () => {
@@ -33,10 +35,22 @@ describe('overdue policy', () => {
       returnDays: 8,
     });
 
-    expect(classifyOverdue(daysAgo(1), NOW, config)).toEqual({ kind: 'LEVEL', level: 1 });
-    expect(classifyOverdue(daysAgo(3), NOW, config)).toEqual({ kind: 'LEVEL', level: 2 });
-    expect(classifyOverdue(daysAgo(5), NOW, config)).toEqual({ kind: 'LEVEL', level: 3 });
-    expect(classifyOverdue(daysAgo(8), NOW, config)).toEqual({ kind: 'RETURN', level: 3 });
+    expect(classifyOverdue(daysAgo(1), NOW, config)).toEqual({
+      kind: 'LEVEL',
+      level: 1,
+    });
+    expect(classifyOverdue(daysAgo(3), NOW, config)).toEqual({
+      kind: 'LEVEL',
+      level: 2,
+    });
+    expect(classifyOverdue(daysAgo(5), NOW, config)).toEqual({
+      kind: 'LEVEL',
+      level: 3,
+    });
+    expect(classifyOverdue(daysAgo(8), NOW, config)).toEqual({
+      kind: 'RETURN',
+      level: 3,
+    });
   });
 
   it('rejects non-increasing thresholds', () => {

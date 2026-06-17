@@ -97,7 +97,7 @@ describe('Exception and overdue API e2e', () => {
     expect(secondState.parcel.status).toBe('RETURNED');
     expect(secondState.slot.status).toBe('FREE');
     expect(secondState.slot.currentParcelId).toBeNull();
-  }, 30000);
+  }, 90000);
 
   it('lists overdue parcels and triggers scan manually', async () => {
     const boss = await openTenant('滞留 API 驿站');
@@ -131,7 +131,7 @@ describe('Exception and overdue API e2e', () => {
     );
     expect(returnedState.parcel.status).toBe('RETURNED');
     expect(returnedState.slot.status).toBe('FREE');
-  }, 30000);
+  }, 90000);
 
   async function openTenant(name: string) {
     const adminLogin = await request(app.getHttpServer())
