@@ -13,6 +13,7 @@ import { PermissionGuard } from './modules/identity/permission.guard';
 import { InboundModule } from './modules/inbound/inbound.module';
 import { NotifyModule } from './modules/notify/notify.module';
 import { ParcelModule } from './modules/parcel/parcel.module';
+import { PickupModule } from './modules/pickup/pickup.module';
 import { StationModule } from './modules/station/station.module';
 import { TenantModule } from './modules/tenant/tenant.module';
 
@@ -24,6 +25,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     InboundModule,
     NotifyModule,
     ParcelModule,
+    PickupModule,
     StationModule,
     TenantModule,
   ],
