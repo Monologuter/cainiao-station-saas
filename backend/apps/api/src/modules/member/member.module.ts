@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { RedisService } from '../../core/redis/redis.service';
 import { MemberController } from './member.controller';
 import { MemberService } from './member.service';
+import { PointService } from './point.service';
 
 @Module({
   imports: [
@@ -12,7 +14,7 @@ import { MemberService } from './member.service';
     }),
   ],
   controllers: [MemberController],
-  providers: [MemberService, PrismaService],
-  exports: [MemberService],
+  providers: [MemberService, PointService, PrismaService, RedisService],
+  exports: [MemberService, PointService],
 })
 export class MemberModule {}
