@@ -54,6 +54,13 @@ const billingPerms = [
   { code: 'invoice:admin', name: '平台账单管理', module: 'billing' },
 ];
 
+const adminConsolePerms = [
+  { code: 'monitor:view', name: '查看平台监控', module: 'monitor' },
+  { code: 'audit:view', name: '查看操作审计', module: 'audit' },
+  { code: 'config:view', name: '查看系统配置', module: 'config' },
+  { code: 'config:manage', name: '管理系统配置', module: 'config' },
+];
+
 const defaultBillingPlans = [
   {
     code: 'BASIC',
@@ -98,6 +105,133 @@ const zones = [
   ['REMOTE', 1.6],
 ] as const;
 
+const defaultDictionaries = [
+  {
+    type: 'courier_company',
+    name: '快递公司',
+    description: '快递和物流公司枚举',
+    sort: 10,
+    items: [
+      ['SF', '顺丰速运', { shortName: '顺丰' }, 10],
+      ['YTO', '圆通速递', { shortName: '圆通' }, 20],
+      ['ZTO', '中通快递', { shortName: '中通' }, 30],
+      ['STO', '申通快递', { shortName: '申通' }, 40],
+    ],
+  },
+  {
+    type: 'parcel_size',
+    name: '包裹规格',
+    description: '包裹体积规格枚举',
+    sort: 20,
+    items: [
+      ['SMALL', '小件', { maxWeightGram: 1000 }, 10],
+      ['MEDIUM', '中件', { maxWeightGram: 5000 }, 20],
+      ['LARGE', '大件', { maxWeightGram: 20000 }, 30],
+    ],
+  },
+  {
+    type: 'exception_type',
+    name: '异常类型',
+    description: '异常件处理类型枚举',
+    sort: 30,
+    items: [
+      ['DAMAGED', '破损', {}, 10],
+      ['MISDELIVERED', '错投', {}, 20],
+      ['UNCLAIMED', '滞留未取', {}, 30],
+      ['REJECTED', '拒收', {}, 40],
+      ['OVERSIZED', '超规格', {}, 50],
+    ],
+  },
+  {
+    type: 'notify_scene',
+    name: '通知场景',
+    description: '通知模板业务场景枚举',
+    sort: 40,
+    items: [
+      ['PARCEL_STORED', '包裹入库', {}, 10],
+      ['OVERDUE_REMIND', '滞留提醒', {}, 20],
+      ['OVERDUE_URGE', '滞留催领', {}, 30],
+      ['OVERDUE_FINAL', '退回预警', {}, 40],
+      ['TENANT_APPROVED', '入驻通过', {}, 50],
+      ['APPLICATION_REJECTED', '入驻驳回', {}, 60],
+    ],
+  },
+] as const;
+
+const defaultSystemConfigs = [
+  {
+    configKey: 'notify.sms.daily_limit',
+    group: 'notify',
+    name: '短信日发送上限',
+    value: 5000,
+    defaultValue: 5000,
+    valueType: 'NUMBER' as const,
+    editable: true,
+    secret: false,
+    description: '单租户每日短信发送上限',
+  },
+  {
+    configKey: 'monitor.exception.warn_threshold',
+    group: 'monitor',
+    name: '异常预警阈值',
+    value: 10,
+    defaultValue: 10,
+    valueType: 'NUMBER' as const,
+    editable: true,
+    secret: false,
+    description: '门店异常件数达到该值后标记预警',
+  },
+  {
+    configKey: 'security.jwt.expires_in',
+    group: 'security',
+    name: 'JWT 过期时间',
+    value: '7d',
+    defaultValue: '7d',
+    valueType: 'STRING' as const,
+    editable: false,
+    secret: false,
+    description: '访问令牌过期时间，由环境变量优先覆盖',
+  },
+];
+
+const defaultChannelConfigs = [
+  {
+    channel: 'sms',
+    provider: 'mock',
+    fallbackProvider: 'mock',
+    config: { registeredProviders: ['mock', 'tencent'] },
+    description: '短信发送渠道',
+  },
+  {
+    channel: 'pay',
+    provider: 'mock',
+    fallbackProvider: 'mock',
+    config: { registeredProviders: ['mock', 'wechat'] },
+    description: '支付渠道',
+  },
+  {
+    channel: 'logistics',
+    provider: 'mock',
+    fallbackProvider: 'mock',
+    config: { registeredProviders: ['mock', 'kuaidi100'] },
+    description: '物流轨迹渠道',
+  },
+  {
+    channel: 'ocr',
+    provider: 'mock',
+    fallbackProvider: 'mock',
+    config: { registeredProviders: ['mock', 'provider'] },
+    description: 'OCR 识别渠道',
+  },
+  {
+    channel: 'storage',
+    provider: 'mock',
+    fallbackProvider: 'mock',
+    config: { registeredProviders: ['mock', 'minio'] },
+    description: '文件存储渠道',
+  },
+];
+
 async function main() {
   await prisma.$transaction(
     async (tx) => {
@@ -119,6 +253,7 @@ async function main() {
         ...memberReviewPerms,
         ...analyticsPerms,
         ...billingPerms,
+        ...adminConsolePerms,
       ];
       for (const perm of perms) {
         await tx.permission.upsert({
@@ -143,6 +278,78 @@ async function main() {
           create: {
             ...plan,
             status: 'ACTIVE',
+          },
+        });
+      }
+
+      for (const dictionary of defaultDictionaries) {
+        const saved = await tx.dictionary.upsert({
+          where: { type: dictionary.type },
+          update: {
+            name: dictionary.name,
+            description: dictionary.description,
+            enabled: true,
+            sort: dictionary.sort,
+          },
+          create: {
+            type: dictionary.type,
+            name: dictionary.name,
+            description: dictionary.description,
+            enabled: true,
+            sort: dictionary.sort,
+          },
+        });
+
+        for (const [code, label, value, sort] of dictionary.items) {
+          await tx.dictItem.upsert({
+            where: {
+              dictionaryId_code: {
+                dictionaryId: saved.id,
+                code,
+              },
+            },
+            update: { label, value, enabled: true, sort },
+            create: {
+              dictionaryId: saved.id,
+              code,
+              label,
+              value,
+              enabled: true,
+              sort,
+            },
+          });
+        }
+      }
+
+      for (const config of defaultSystemConfigs) {
+        await tx.systemConfig.upsert({
+          where: { configKey: config.configKey },
+          update: {
+            group: config.group,
+            name: config.name,
+            defaultValue: config.defaultValue,
+            valueType: config.valueType,
+            editable: config.editable,
+            secret: config.secret,
+            description: config.description,
+          },
+          create: config,
+        });
+      }
+
+      for (const channel of defaultChannelConfigs) {
+        await tx.channelConfig.upsert({
+          where: { channel: channel.channel },
+          update: {
+            provider: channel.provider,
+            enabled: true,
+            fallbackProvider: channel.fallbackProvider,
+            config: channel.config,
+            description: channel.description,
+          },
+          create: {
+            ...channel,
+            enabled: true,
           },
         });
       }

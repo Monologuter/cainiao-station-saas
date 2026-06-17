@@ -263,6 +263,24 @@ enum EntityType {
   COMPANY
 }
 
+enum AuditActorType {
+  PLATFORM
+  STAFF
+  SYSTEM
+}
+
+enum AuditResult {
+  SUCCESS
+  FAILURE
+}
+
+enum ConfigValueType {
+  STRING
+  NUMBER
+  BOOLEAN
+  JSON
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -629,6 +647,105 @@ model TenantApplication {
   @@map("tenant_applications")
 }
 
+model AuditLog {
+  id           String         @id @default(uuid()) @db.Uuid
+  tenantId     String?        @map("tenant_id") @db.Uuid
+  actorId      String?        @map("actor_id") @db.Uuid
+  actorType    AuditActorType @map("actor_type")
+  actorName    String?        @map("actor_name") @db.VarChar(80)
+  action       String         @db.VarChar(80)
+  resourceType String         @map("resource_type") @db.VarChar(80)
+  resourceId   String?        @map("resource_id") @db.VarChar(80)
+  result       AuditResult
+  summary      String?        @db.VarChar(500)
+  before       Json?
+  after        Json?
+  diff         Json?
+  ip           String?        @db.VarChar(64)
+  userAgent    String?        @map("user_agent") @db.VarChar(300)
+  requestId    String?        @map("request_id") @db.VarChar(80)
+  errorCode    String?        @map("error_code") @db.VarChar(60)
+  errorMessage String?        @map("error_message") @db.VarChar(300)
+  createdAt    DateTime       @default(now()) @map("created_at")
+  tenant       Tenant?        @relation(fields: [tenantId], references: [id])
+  actor        User?          @relation(fields: [actorId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([action, createdAt])
+  @@index([actorId, createdAt])
+  @@index([resourceType, resourceId])
+  @@index([result, createdAt])
+  @@map("audit_logs")
+}
+
+model Dictionary {
+  id          String     @id @default(uuid()) @db.Uuid
+  type        String     @unique @db.VarChar(60)
+  name        String     @db.VarChar(80)
+  description String?    @db.VarChar(255)
+  enabled     Boolean    @default(true)
+  sort        Int        @default(0)
+  createdAt   DateTime   @default(now()) @map("created_at")
+  updatedAt   DateTime   @updatedAt @map("updated_at")
+  items       DictItem[]
+
+  @@index([enabled, sort])
+  @@map("dictionaries")
+}
+
+model DictItem {
+  id           String     @id @default(uuid()) @db.Uuid
+  dictionaryId String     @map("dictionary_id") @db.Uuid
+  code         String     @db.VarChar(80)
+  label        String     @db.VarChar(120)
+  value        Json?
+  enabled      Boolean    @default(true)
+  sort         Int        @default(0)
+  remark       String?    @db.VarChar(255)
+  createdAt    DateTime   @default(now()) @map("created_at")
+  updatedAt    DateTime   @updatedAt @map("updated_at")
+  dictionary   Dictionary @relation(fields: [dictionaryId], references: [id])
+
+  @@unique([dictionaryId, code])
+  @@index([dictionaryId, enabled, sort])
+  @@map("dict_items")
+}
+
+model SystemConfig {
+  id           String          @id @default(uuid()) @db.Uuid
+  configKey    String          @unique @map("config_key") @db.VarChar(100)
+  group        String          @db.VarChar(60)
+  name         String          @db.VarChar(100)
+  value        Json?
+  defaultValue Json?           @map("default_value")
+  valueType    ConfigValueType @default(STRING) @map("value_type")
+  editable     Boolean         @default(true)
+  secret       Boolean         @default(false)
+  description  String?         @db.VarChar(255)
+  updatedBy    String?         @map("updated_by") @db.Uuid
+  createdAt    DateTime        @default(now()) @map("created_at")
+  updatedAt    DateTime        @updatedAt @map("updated_at")
+
+  @@index([group])
+  @@map("system_configs")
+}
+
+model ChannelConfig {
+  id               String   @id @default(uuid()) @db.Uuid
+  channel          String   @unique @db.VarChar(40)
+  provider         String   @db.VarChar(40)
+  enabled          Boolean  @default(true)
+  fallbackProvider String?  @map("fallback_provider") @db.VarChar(40)
+  config           Json     @default("{}")
+  description      String?  @db.VarChar(255)
+  updatedBy        String?  @map("updated_by") @db.Uuid
+  createdAt        DateTime @default(now()) @map("created_at")
+  updatedAt        DateTime @updatedAt @map("updated_at")
+
+  @@index([enabled])
+  @@map("channel_configs")
+}
+
 model Tenant {
   id                   String                @id @default(uuid()) @db.Uuid
   name                 String
@@ -660,6 +777,7 @@ model Tenant {
   usageRecords         UsageRecord[]
   usageDedups          UsageDedup[]
   invoices             Invoice[]
+  auditLogs            AuditLog[]
 }
 
 model Station {
@@ -988,6 +1106,7 @@ model User {
   createdAt    DateTime   @default(now())
   tenant       Tenant?    @relation(fields: [tenantId], references: [id])
   roles        UserRole[]
+  auditLogs    AuditLog[]
 
   @@unique([tenantId, username])
 }
