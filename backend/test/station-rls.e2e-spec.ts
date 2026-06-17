@@ -58,4 +58,49 @@ describe('Station RLS 隔离', () => {
     expect(rows).toHaveLength(1);
     expect(rows.every((row) => row.tenantId === tenantAId)).toBe(true);
   });
+
+  it('设置 app.tenant_id 后只能看到本租户的 pickup_authorizations', async () => {
+    const { tenantAId } = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+
+      const tenantA = await tx.tenant.create({
+        data: { name: 'Auth A', ownerName: 'a', contactPhone: '1' },
+      });
+      const tenantB = await tx.tenant.create({
+        data: { name: 'Auth B', ownerName: 'b', contactPhone: '2' },
+      });
+      await tx.pickupAuthorization.create({
+        data: {
+          tenantId: tenantA.id,
+          ownerPhone: '13800000000',
+          authorizedPhone: '13900000000',
+        },
+      });
+      await tx.pickupAuthorization.create({
+        data: {
+          tenantId: tenantB.id,
+          ownerPhone: '13700000000',
+          authorizedPhone: '13600000000',
+        },
+      });
+
+      return { tenantAId: tenantA.id };
+    });
+
+    const rows = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'off', true)`,
+      );
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.tenant_id', $1, true)`,
+        tenantAId,
+      );
+      return tx.pickupAuthorization.findMany();
+    });
+
+    expect(rows).toHaveLength(1);
+    expect(rows[0].tenantId).toBe(tenantAId);
+  });
 });

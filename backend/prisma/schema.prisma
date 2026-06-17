@@ -61,6 +61,11 @@ enum NotificationStatus {
   FAILED
 }
 
+enum PickupAuthorizationStatus {
+  ACTIVE
+  REVOKED
+}
+
 model Tenant {
   id           String       @id @default(uuid()) @db.Uuid
   name         String
@@ -76,6 +81,7 @@ model Tenant {
   parcelEvents ParcelEvent[]
   notifications Notification[]
   notifyTemplates NotifyTemplate[]
+  pickupAuthorizations PickupAuthorization[]
 }
 
 model Station {
@@ -224,6 +230,24 @@ model NotifyTemplate {
 
   @@unique([tenantId, code, channel])
   @@map("notify_templates")
+}
+
+model PickupAuthorization {
+  id              String                    @id @default(uuid()) @db.Uuid
+  tenantId        String                    @map("tenant_id") @db.Uuid
+  ownerPhone      String                    @map("owner_phone")
+  authorizedPhone String                    @map("authorized_phone")
+  status          PickupAuthorizationStatus @default(ACTIVE)
+  expiresAt       DateTime?                 @map("expires_at")
+  createdAt       DateTime                  @default(now()) @map("created_at")
+  updatedAt       DateTime                  @updatedAt @map("updated_at")
+  deletedAt       DateTime?                 @map("deleted_at")
+  createdBy       String?                   @map("created_by") @db.Uuid
+  tenant          Tenant                    @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, ownerPhone, status])
+  @@index([tenantId, authorizedPhone, status])
+  @@map("pickup_authorizations")
 }
 
 model User {
