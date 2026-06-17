@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { ApiCode, BizError } from '../../../core/http/api-code';
+import { FileStorageService } from '../../file/file-storage.service';
 import type { SubmitApplicationInput } from './application.dto';
 
 const REQUIRED_QUALIFICATIONS = {
@@ -10,7 +11,10 @@ const REQUIRED_QUALIFICATIONS = {
 
 @Injectable()
 export class ApplicationService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly files: FileStorageService = new FileStorageService(),
+  ) {}
 
   async submit(input: SubmitApplicationInput) {
     this.assertRequiredFields(input);
@@ -96,6 +100,28 @@ export class ApplicationService {
     };
   }
 
+  async detail(id: string) {
+    const application = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.tenantApplication.findUnique({ where: { id } });
+    });
+    if (!application) {
+      throw new BizError(ApiCode.NOT_FOUND, '申请不存在');
+    }
+    const qualifications = this.normalizeQualifications(
+      application.qualifications,
+    ).map((item) => ({
+      ...item,
+      downloadUrl: this.files.createDownloadUrl(item.fileKey).downloadUrl,
+    }));
+    return {
+      ...application,
+      qualifications,
+    };
+  }
+
   private assertRequiredFields(input: SubmitApplicationInput) {
     if (input.entityType === 'COMPANY' && !input.unifiedCreditCode) {
       throw new BizError(ApiCode.BAD_REQUEST, '企业申请需填写统一社会信用代码');
@@ -121,5 +147,19 @@ export class ApplicationService {
       .toString()
       .padStart(2, '0')}`;
     return `APP${date}-${suffix}`;
+  }
+
+  private normalizeQualifications(value: unknown) {
+    if (!Array.isArray(value)) {
+      return [];
+    }
+    return value
+      .filter((item) => item && typeof item === 'object')
+      .map((item: any) => ({
+        type: String(item.type ?? ''),
+        fileKey: String(item.fileKey ?? ''),
+        fileName: String(item.fileName ?? ''),
+      }))
+      .filter((item) => item.fileKey);
   }
 }
