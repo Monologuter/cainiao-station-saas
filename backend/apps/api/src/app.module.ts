@@ -7,6 +7,8 @@ import { MetricsInterceptor } from './core/observability/metrics.interceptor';
 import { ObservabilityModule } from './core/observability/observability.module';
 import { TraceInterceptor } from './core/observability/trace.interceptor';
 import { PrismaService } from './core/prisma/prisma.service';
+import { RateLimitGuard } from './core/rate-limit/rate-limit.guard';
+import { RateLimitService } from './core/rate-limit/rate-limit.service';
 import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
 import { RedisLockService } from './core/redis/redis-lock.service';
 import { RedisService } from './core/redis/redis.service';
@@ -58,7 +60,9 @@ import { TenantModule } from './modules/tenant/tenant.module';
     TenantPrismaService,
     RedisService,
     RedisLockService,
+    RateLimitService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_GUARD, useClass: RateLimitGuard },
     { provide: APP_INTERCEPTOR, useClass: TraceInterceptor },
     { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },

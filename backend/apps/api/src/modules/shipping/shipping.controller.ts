@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
 import { ApiCode, BizError } from '../../core/http/api-code';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator';
 import { LogisticsService } from '../logistics/logistics.service';
 import { MemberService } from '../member/member.service';
 import { PayService } from '../pay/pay.service';
@@ -99,6 +100,13 @@ export class ShippingController {
   }
 
   @Public()
+  @RateLimit({
+    keyPrefix: 'shipping-pay',
+    strategy: 'token-bucket',
+    limit: 20,
+    windowMs: 60_000,
+    keyBy: 'ip',
+  })
   @Post('consumer/orders/:id/pay')
   async payConsumerOrder(
     @Headers('authorization') authorization: string | undefined,
@@ -144,6 +152,13 @@ export class ShippingController {
   }
 
   @RequirePermission('shipping:pay')
+  @RateLimit({
+    keyPrefix: 'shipping-pay',
+    strategy: 'token-bucket',
+    limit: 20,
+    windowMs: 60_000,
+    keyBy: 'user',
+  })
   @Post('orders/:id/pay')
   payOrder(
     @Param('id') id: string,
