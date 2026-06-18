@@ -8,6 +8,7 @@ from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
 
 from .providers.mock_ocr import MockOcrProvider
 from .providers.ocr_provider import OcrProvider, WaybillResult
+from .providers.real_ocr import RealOcrProvider
 
 
 def create_app(
@@ -57,6 +58,8 @@ def create_app(
 def create_provider(name: str) -> OcrProvider:
     if name == "mock":
         return MockOcrProvider()
+    if name == "tencent":
+        return RealOcrProvider(code="tencent")
     raise RuntimeError(f"Unsupported OCR_PROVIDER: {name}")
 
 
