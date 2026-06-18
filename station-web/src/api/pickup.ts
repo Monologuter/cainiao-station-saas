@@ -14,7 +14,13 @@ export interface PickupResult {
 }
 
 export function canSubmitPickup(payload: PickupPayload) {
-  return Boolean(payload.stationId && (payload.pickupCode || payload.phoneTail || payload.parcelId));
+  // 双因子核销：取件码 + 手机尾号(4位)均必填，防止仅凭取件码冒领
+  return Boolean(
+    payload.stationId &&
+      payload.pickupCode &&
+      payload.phoneTail &&
+      payload.phoneTail.length === 4,
+  );
 }
 
 export function pickupResultText(result: PickupResult) {

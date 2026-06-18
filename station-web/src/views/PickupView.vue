@@ -40,12 +40,12 @@ async function submit(parcel?: ParcelItem) {
   const payload = {
     stationId: form.stationId,
     pickupCode: parcel?.pickupCode ?? form.pickupCode,
-    phoneTail: parcel ? undefined : form.phoneTail,
+    phoneTail: form.phoneTail,
     parcelId: parcel?.id,
   };
 
   if (!canSubmitPickup(payload)) {
-    ElMessage.error('请输入门店 ID，并填写取件码或手机尾号');
+    ElMessage.error('请填写门店 ID、取件码与收件人手机尾号（4 位）');
     return;
   }
 
@@ -78,7 +78,7 @@ async function submit(parcel?: ParcelItem) {
           <ScanLine />
           <div>
             <b>扫描取件码</b>
-            <p>扫码枪回车后自动填入取件码，也可按手机尾号核销。</p>
+            <p>取件码 + 收件人手机尾号双因子核销，防止冒领。</p>
           </div>
         </div>
 
@@ -88,12 +88,12 @@ async function submit(parcel?: ParcelItem) {
             <input v-model.trim="form.stationId" class="input" placeholder="开店后返回的 stationId" />
           </label>
           <label class="field">
-            <span>取件码</span>
+            <span>取件码 <i class="req">*</i></span>
             <input v-model.trim="form.pickupCode" class="input" placeholder="扫描或输入取件码" autofocus />
           </label>
           <label class="field">
-            <span>手机尾号</span>
-            <input v-model.trim="form.phoneTail" class="input" maxlength="4" placeholder="可选，4 位尾号" />
+            <span>手机尾号 <i class="req">*</i></span>
+            <input v-model.trim="form.phoneTail" class="input" maxlength="4" placeholder="收件人手机后 4 位" />
           </label>
           <div class="form-actions">
             <button v-perm="'parcel:pickup'" class="btn btn-accent" type="submit" :disabled="loading">
