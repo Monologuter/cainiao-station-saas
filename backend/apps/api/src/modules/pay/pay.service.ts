@@ -58,7 +58,7 @@ export class PayService {
         },
       });
       if (existing) {
-        if (existing.status === 'SUCCESS') {
+        if (existing.status === 'SUCCESS' || existing.status === 'PENDING') {
           const order = await tx.shipOrder.findFirst({
             where: { id: orderId, tenantId: ctx.tenantId, deletedAt: null },
           });
@@ -108,6 +108,9 @@ export class PayService {
       });
 
       if (result.status !== 'SUCCESS') {
+        if (result.status === 'PENDING') {
+          return { order: before, event: null };
+        }
         throw new BizError(ApiCode.BAD_REQUEST, '支付失败，请重试');
       }
 
@@ -137,6 +140,98 @@ export class PayService {
       await this.eventBus.publish(paid.event);
     }
     return paid.order;
+  }
+
+  async confirmShipOrderPaymentCallback(
+    tenantId: string,
+    outTradeNo: string,
+    payload: Record<string, unknown>,
+  ) {
+    const confirmed = await TenantContext.run(
+      {
+        userId: 'pay-callback',
+        tenantId,
+        roles: [],
+        isPlatform: false,
+      },
+      () =>
+        this.tenantPrisma.withTenant(async (tx) => {
+          const payment = await tx.payment.findFirst({
+            where: {
+              tenantId,
+              outTradeNo,
+              bizType: 'SHIP_ORDER',
+              deletedAt: null,
+            },
+          });
+          if (!payment) {
+            throw new BizError(ApiCode.NOT_FOUND, '支付单不存在');
+          }
+
+          const order = await tx.shipOrder.findFirst({
+            where: { id: payment.bizId, tenantId, deletedAt: null },
+          });
+          if (!order) {
+            throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
+          }
+          if (payment.status === 'SUCCESS') {
+            return { order, event: null };
+          }
+
+          const result = this.channel.verifyCallback?.({
+            ...payload,
+            expectedAmount: payment.amount,
+          });
+          if (!result || result.status !== 'SUCCESS') {
+            throw new BizError(ApiCode.BAD_REQUEST, '支付回调校验失败');
+          }
+          if (result.outTradeNo !== outTradeNo) {
+            throw new BizError(ApiCode.BAD_REQUEST, '支付回调订单号不匹配');
+          }
+
+          const paidAt = result.paidAt ?? new Date();
+          await tx.payment.update({
+            where: { id: payment.id },
+            data: {
+              status: 'SUCCESS',
+              paidAt,
+              rawJson: result.raw,
+            },
+          });
+
+          if (order.status !== 'PAID') {
+            ShipOrderAggregate.assertTransit(
+              order.status as ShipOrderStatus,
+              'PAID',
+            );
+          }
+          const updated = await tx.shipOrder.update({
+            where: { id: order.id },
+            data: {
+              status: 'PAID',
+              paidAt,
+              version: { increment: 1 },
+            },
+          });
+
+          return {
+            order: updated,
+            event: EventBus.createEvent('ShipOrderPaid', {
+              tenantId: updated.tenantId,
+              shipOrderId: updated.id,
+              orderNo: updated.orderNo,
+              amount: payment.amount,
+              paymentId: payment.id,
+              paidAt,
+            }),
+          };
+        }),
+    );
+
+    if (confirmed.event) {
+      await this.eventBus.publish(confirmed.event);
+    }
+    return confirmed.order;
   }
 
   private requireContext(user?: RequestUser) {

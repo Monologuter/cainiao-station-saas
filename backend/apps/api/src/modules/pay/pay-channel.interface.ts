@@ -9,7 +9,7 @@ export interface PayRequest {
 }
 
 export interface PayResult {
-  status: 'SUCCESS' | 'FAILED';
+  status: 'SUCCESS' | 'FAILED' | 'PENDING';
   outTradeNo: string;
   paidAt?: Date;
   raw: unknown;
