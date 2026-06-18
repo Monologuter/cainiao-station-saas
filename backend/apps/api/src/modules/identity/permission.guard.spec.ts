@@ -40,6 +40,26 @@ describe('PermissionGuard', () => {
     ).toThrow('租户已欠费停用');
   });
 
+  it('does not let tenant:read satisfy tenant:manage (status change nit)', () => {
+    const reflector = { getAllAndOverride: () => ['tenant:manage'] } as any;
+
+    expect(() =>
+      new PermissionGuard(reflector).canActivate(
+        ctxWithUser({ perms: ['tenant:read'] }),
+      ),
+    ).toThrow('无权限执行该操作');
+  });
+
+  it('allows platform operators to manage tenant status', () => {
+    const reflector = { getAllAndOverride: () => ['tenant:manage'] } as any;
+
+    expect(
+      new PermissionGuard(reflector).canActivate(
+        ctxWithUser({ isPlatform: true, perms: [] }),
+      ),
+    ).toBe(true);
+  });
+
   it('allows suspended tenants to read and pay invoices for recovery', () => {
     const reflector = { getAllAndOverride: () => ['invoice:pay'] } as any;
 

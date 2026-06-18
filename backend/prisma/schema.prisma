@@ -42,6 +42,12 @@ enum ParcelStatus {
   RETURNED
 }
 
+enum ParcelSize {
+  S
+  M
+  L
+}
+
 enum ParcelEventType {
   INBOUND
   STORED
@@ -920,7 +926,10 @@ model Shelf {
   station   Station     @relation(fields: [stationId], references: [id])
   slots     Slot[]
 
-  @@unique([stationId, code])
+  // DM-3: (stationId, code) 仅对未软删行唯一。真实约束由迁移里的部分唯一索引
+  // `ux_shelves_active_code` (WHERE deleted_at IS NULL) 强制，软删后可同 code 重建。
+  // 此处用普通 @@index 保留查询性能，不再声明 @@unique（否则 Prisma 会重建全表唯一索引）。
+  @@index([stationId, code])
   @@index([tenantId, stationId])
   @@map("shelves")
 }
@@ -947,7 +956,10 @@ model Slot {
   parcels         Parcel[]
   heatDailies     SlotHeatDaily[]
 
-  @@unique([stationId, code])
+  // DM-3: (stationId, code) 仅对未软删行唯一，约束由迁移里的部分唯一索引
+  // `ux_slots_active_code` (WHERE deleted_at IS NULL) 强制；软删后可同 code 重建。
+  // batchCreate 的 createMany(skipDuplicates) 依赖该部分唯一索引去重，仍然有效。
+  @@index([stationId, code])
   @@index([tenantId, stationId, status])
   @@map("slots")
 }
@@ -984,6 +996,7 @@ model Parcel {
   pickupCode        String?           @map("pickup_code")
   slotId            String?           @map("slot_id") @db.Uuid
   status            ParcelStatus      @default(PENDING)
+  size              ParcelSize        @default(M)
   storedAt          DateTime?         @map("stored_at")
   pickedUpAt        DateTime?         @map("picked_up_at")
   lastOverdueLevel  Int               @default(0) @map("last_overdue_level")
@@ -1125,7 +1138,9 @@ model ExceptionTicket {
   station            Station              @relation(fields: [stationId], references: [id])
   parcel             Parcel?              @relation(fields: [parcelId], references: [id])
 
-  @@unique([tenantId, code])
+  // DM-3: (tenantId, code) 仅对未软删行唯一，约束由迁移里的部分唯一索引
+  // `ux_exceptions_active_code` (WHERE deleted_at IS NULL) 强制；软删后可同 code 重建。
+  @@index([tenantId, code])
   @@index([tenantId, status])
   @@index([tenantId, stationId, status])
   @@index([tenantId, parcelId])
@@ -1239,7 +1254,7 @@ model ShipOrder {
   courierName       String           @map("courier_name") @db.VarChar(32)
   quoteAmount       Int              @map("quote_amount")
   quoteSnapshotJson Json             @map("quote_snapshot_json")
-  consumerId        String?          @map("consumer_id")
+  consumerId        String?          @map("consumer_id") @db.Uuid
   waybillNo         String?          @map("waybill_no") @db.VarChar(40)
   paidAt            DateTime?        @map("paid_at")
   collectedAt       DateTime?        @map("collected_at")
@@ -1254,7 +1269,9 @@ model ShipOrder {
   station           Station?         @relation(fields: [stationId], references: [id])
   logisticsTracks   LogisticsTrack[]
 
-  @@unique([tenantId, orderNo])
+  // DM-3: (tenantId, orderNo) 仅对未软删行唯一，约束由迁移里的部分唯一索引
+  // `ux_ship_orders_active_order_no` (WHERE deleted_at IS NULL) 强制；软删后可同 orderNo 重建。
+  @@index([tenantId, orderNo])
   @@index([tenantId, status])
   @@index([tenantId, stationId])
   @@index([tenantId, consumerId])

@@ -140,6 +140,47 @@ describe('InvoiceService', () => {
     expect(result).toMatchObject({ id: 'invoice-existing', totalAmount: 1000 });
   });
 
+  it('bills the next period at full base amount without re-prorating after a plan change', async () => {
+    const { service, tx } = createInvoiceService();
+    // 模拟换套餐后：planSnapshot 已是新套餐全额 base，周期边界为新一期。
+    // 调整账单以 changeAt 为 periodStart 存在，但常规出账以 currentPeriodStart 去重，
+    // 二者 key 不同 -> 互不命中，常规账单按新套餐全额出账且不含 proration 行。
+    tx.subscription.findFirst.mockResolvedValue({
+      id: 'sub-1',
+      tenantId: 'tenant-1',
+      stationId: 'station-1',
+      currentPeriodStart: new Date('2026-07-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2026-08-01T00:00:00.000Z'),
+      planSnapshot: { monthlyPrice: 19900, quotas: { sms: 1 }, overagePrices: { sms: 5 } },
+    });
+    tx.usageRecord.findMany.mockResolvedValue([]);
+
+    await service.generateInvoice({
+      tenantId: 'tenant-1',
+      subscriptionId: 'sub-1',
+      now: new Date('2026-08-01T00:00:00.000Z'),
+    });
+
+    // 去重查询按 currentPeriodStart（新一期），不会命中 changeAt 调整账单
+    expect(tx.invoice.findUnique).toHaveBeenCalledWith({
+      where: {
+        subscriptionId_periodStart: {
+          subscriptionId: 'sub-1',
+          periodStart: new Date('2026-07-01T00:00:00.000Z'),
+        },
+      },
+    });
+    const createArg = tx.invoice.create.mock.calls[0][0].data;
+    expect(createArg.baseAmount).toBe(BigInt(19900));
+    expect(createArg.totalAmount).toBe(BigInt(19900));
+    // 常规账单不含任何 proration 行
+    expect(
+      (createArg.lineItems as any[]).some((li) =>
+        String(li.type).startsWith('PRORATION'),
+      ),
+    ).toBe(false);
+  });
+
   it('voids only open or overdue invoices', async () => {
     const { service, tx } = createInvoiceService();
     await service.voidInvoice('invoice-1');

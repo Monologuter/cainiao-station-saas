@@ -1,6 +1,7 @@
 import { Test } from '@nestjs/testing';
 import { Queue } from 'bullmq';
 import {
+  ANALYTICS_RECONCILE_JOB,
   BILLING_EXPIRY_CHECK_JOB,
   BILLING_INVOICE_RUN_JOB,
   OVERDUE_SCAN_JOB,
@@ -33,7 +34,8 @@ describe('RepeatableRegistrar', () => {
     await registrar.register();
     await registrar.register();
 
-    expect(queue.add).toHaveBeenCalledTimes(6);
+    // 4 个 repeatable 作业 × 注册 2 次 = 8。
+    expect(queue.add).toHaveBeenCalledTimes(8);
     expect(queue.add).toHaveBeenCalledWith(
       OVERDUE_SCAN_JOB,
       {},
@@ -55,6 +57,14 @@ describe('RepeatableRegistrar', () => {
       {},
       expect.objectContaining({
         jobId: BILLING_EXPIRY_CHECK_JOB,
+        repeat: expect.objectContaining({ pattern: expect.any(String) }),
+      }),
+    );
+    expect(queue.add).toHaveBeenCalledWith(
+      ANALYTICS_RECONCILE_JOB,
+      {},
+      expect.objectContaining({
+        jobId: ANALYTICS_RECONCILE_JOB,
         repeat: expect.objectContaining({ pattern: expect.any(String) }),
       }),
     );

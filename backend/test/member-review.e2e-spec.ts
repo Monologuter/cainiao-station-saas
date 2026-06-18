@@ -36,6 +36,7 @@ describe('Member review closed loop e2e', () => {
       .send({
         stationId: boss.stationId,
         pickupCode: inbound.body.data.pickupCode,
+        phoneTail: consumerPhone.slice(-4),
       })
       .expect(201);
 

@@ -27,6 +27,41 @@ describe('PlatformUserService', () => {
     });
   });
 
+  it('always provisions PLATFORM type with null tenant (SEC-12)', async () => {
+    let createArgs: any;
+    const tx = {
+      $executeRawUnsafe: jest.fn(),
+      user: {
+        create: jest.fn().mockImplementation((args: any) => {
+          createArgs = args;
+          return Promise.resolve({ id: 'u9' });
+        }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'u9',
+          username: 'newops',
+          status: 'active',
+          roles: [],
+          createdAt: new Date('2026-06-18T00:00:00.000Z'),
+        }),
+      },
+      userRole: { deleteMany: jest.fn(), createMany: jest.fn() },
+      role: { findMany: jest.fn().mockResolvedValue([]) },
+    };
+    const service = new PlatformUserService({
+      $transaction: (fn: any) => fn(tx),
+    } as any);
+
+    // 即便调用方夹带 type/tenantId，也不可绕过平台侧约束
+    await service.create({
+      username: 'newops',
+      password: 'pw123456a',
+      ...({ type: 'STAFF', tenantId: 'tenant-evil' } as any),
+    });
+
+    expect(createArgs.data.type).toBe('PLATFORM');
+    expect(createArgs.data.tenantId).toBeNull();
+  });
+
   it('replaces platform roles when updating a user', async () => {
     const tx = {
       $executeRawUnsafe: jest.fn(),

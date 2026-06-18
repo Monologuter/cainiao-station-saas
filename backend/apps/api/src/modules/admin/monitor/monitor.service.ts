@@ -5,6 +5,12 @@ import { calculateStoreHealth } from './store-health.calculator';
 
 const EXCEPTION_WARN_THRESHOLD = 10;
 
+// 在线判定窗口：门店在最近 N 分钟内有过包裹活动（入库/在库/取件等都会刷新 parcel.updatedAt）
+// 即视为在线。窗口可经环境变量覆盖，默认 15 分钟。不新增 schema 字段，复用既有时间戳。
+const ONLINE_ACTIVITY_WINDOW_MINUTES = Number(
+  process.env.MONITOR_ONLINE_WINDOW_MINUTES ?? 15,
+);
+
 @Injectable()
 export class MonitorService {
   constructor(private readonly prisma: PrismaService) {}
@@ -72,7 +78,10 @@ export class MonitorService {
   }
 
   private async stationSummary(tx: any, station: any) {
-    const [inStockParcels, exceptionCount, gmv, subscription] =
+    const activitySince = new Date(
+      Date.now() - ONLINE_ACTIVITY_WINDOW_MINUTES * 60_000,
+    );
+    const [inStockParcels, exceptionCount, gmv, subscription, recentActivity] =
       await Promise.all([
         tx.parcel.count({
           where: {
@@ -107,6 +116,17 @@ export class MonitorService {
           },
           orderBy: { createdAt: 'desc' },
         }),
+        // 该门店最近一次包裹活动时间（任何入库/在库/取件/异常流转都会刷新 parcel.updatedAt）。
+        tx.parcel.findFirst({
+          where: {
+            tenantId: station.tenantId,
+            stationId: station.id,
+            deletedAt: null,
+            updatedAt: { gte: activitySince },
+          },
+          select: { updatedAt: true },
+          orderBy: { updatedAt: 'desc' },
+        }),
       ]);
 
     const metrics = {
@@ -114,7 +134,8 @@ export class MonitorService {
       exceptionCount,
       gmv: Number(gmv._sum.quoteAmount ?? 0),
     };
-    const online = true;
+    // 在线 = 活动窗口内存在包裹活动记录；无近期活动则离线。
+    const online = recentActivity != null;
 
     return {
       tenantId: station.tenantId,

@@ -1,5 +1,6 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { checkinPoints } from './point-rule.config';
 import { PointService } from './point.service';
 
 @Injectable()
@@ -34,7 +35,7 @@ export class CheckinService {
     const continuousDays = this.isYesterday(member.lastCheckinDate, today)
       ? member.continuousCheckinDays + 1
       : 1;
-    const rewardPoints = 1 + Math.min(continuousDays - 1, 6);
+    const rewardPoints = checkinPoints(continuousDays);
     const pointRecord = await this.points.earn(
       memberId,
       rewardPoints,

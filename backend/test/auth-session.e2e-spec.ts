@@ -77,7 +77,7 @@ describe('Auth session hardening e2e', () => {
     await request(app.getHttpServer())
       .post('/api/auth/change-password')
       .set('Authorization', `Bearer ${boss.accessToken}`)
-      .send({ oldPassword: 'pw123456', newPassword: 'pw654321' })
+      .send({ oldPassword: 'pw123456', newPassword: 'pw654321a' })
       .expect(201);
 
     const oldAccess = await request(app.getHttpServer())
@@ -100,7 +100,7 @@ describe('Auth session hardening e2e', () => {
 
     const newPassword = await request(app.getHttpServer())
       .post('/api/auth/login')
-      .send({ username: phone, password: 'pw654321' })
+      .send({ username: phone, password: 'pw654321a' })
       .expect(201);
     expect(newPassword.body.data.accessToken).toBeDefined();
   });

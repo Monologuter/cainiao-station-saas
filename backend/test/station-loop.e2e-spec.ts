@@ -100,7 +100,11 @@ describe('Station core loop e2e', () => {
     const pickup = await request(app.getHttpServer())
       .post('/api/pickup')
       .set('Authorization', `Bearer ${bossToken}`)
-      .send({ stationId, pickupCode: inbound.body.data.pickupCode })
+      .send({
+        stationId,
+        pickupCode: inbound.body.data.pickupCode,
+        phoneTail: '0000',
+      })
       .expect(201);
 
     expect(pickup.body.data).toMatchObject({
@@ -129,7 +133,11 @@ describe('Station core loop e2e', () => {
     const duplicate = await request(app.getHttpServer())
       .post('/api/pickup')
       .set('Authorization', `Bearer ${bossToken}`)
-      .send({ stationId, pickupCode: inbound.body.data.pickupCode });
+      .send({
+        stationId,
+        pickupCode: inbound.body.data.pickupCode,
+        phoneTail: '0000',
+      });
     expect(duplicate.body.code).toBe(2005);
   });
 

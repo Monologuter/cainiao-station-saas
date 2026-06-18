@@ -1,5 +1,5 @@
 import { Body, Controller, Headers, Post } from '@nestjs/common';
-import { IsOptional, IsString, Matches } from 'class-validator';
+import { IsIn, IsOptional, IsString, Matches } from 'class-validator';
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator';
 import { RequirePermission } from '../identity/decorators';
 import { InboundService } from './inbound.service';
@@ -18,6 +18,11 @@ class InboundDto {
   @IsString()
   @Matches(/^1\d{10}$/)
   receiverPhone: string;
+
+  // FUNC-1: 可选包裹尺寸；缺省由服务端落到默认 M。
+  @IsOptional()
+  @IsIn(['S', 'M', 'L'])
+  size?: 'S' | 'M' | 'L';
 }
 
 @Controller('inbound')

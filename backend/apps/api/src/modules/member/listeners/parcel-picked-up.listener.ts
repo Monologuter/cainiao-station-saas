@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, EventBus } from '../../../core/event-bus/event-bus';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { MemberService } from '../member.service';
+import { pickupPoints } from '../point-rule.config';
 import { PointService } from '../point.service';
 
 interface ParcelPickedUpPayload extends Record<string, unknown> {
@@ -37,7 +38,7 @@ export class ParcelPickedUpListener implements OnModuleInit {
     const consumer: any = await this.consumerByPhone(phone);
     const member = await this.members.ensureMember(consumer.id, phone);
 
-    await this.points.earn(member.id, 2, 'PICKUP', {
+    await this.points.earn(member.id, pickupPoints(), 'PICKUP', {
       sourceTenantId: event.payload.tenantId,
       refType: 'parcel',
       refId: event.payload.parcelId,

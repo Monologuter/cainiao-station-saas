@@ -163,7 +163,8 @@ export class SlotAllocatorService {
         stationId,
         parcel: {
           phoneTail: parcel?.receiverPhoneTail ?? '0000',
-          sizeClass: 'M',
+          // FUNC-1: 用包裹真实尺寸喂给推荐评分，取代写死的 'M'；缺失时回退默认 M。
+          sizeClass: this.parcelSize(parcel),
           inboundHour: (parcel?.createdAt ?? new Date()).getHours(),
         },
         candidates: candidates.map((slot, index) => ({
@@ -227,5 +228,11 @@ export class SlotAllocatorService {
     if (code.includes('L')) return 'L';
     if (code.includes('S')) return 'S';
     return 'M';
+  }
+
+  // FUNC-1: 读取包裹真实尺寸；老数据/缺失时回退默认 M。
+  private parcelSize(parcel: any): 'S' | 'M' | 'L' {
+    const size = parcel?.size;
+    return size === 'S' || size === 'L' ? size : 'M';
   }
 }

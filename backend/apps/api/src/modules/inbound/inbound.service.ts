@@ -9,6 +9,8 @@ interface InboundInput {
   waybillNo: string;
   carrier?: string;
   receiverPhone: string;
+  // FUNC-1: 入库尺寸，透传给 parcel.create；缺省由 create 落到默认 M。
+  size?: 'S' | 'M' | 'L';
 }
 
 @Injectable()

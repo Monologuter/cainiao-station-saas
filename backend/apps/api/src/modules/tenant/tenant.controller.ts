@@ -7,8 +7,10 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { IsIn, IsOptional, IsString, MinLength } from 'class-validator';
+import { IsIn, IsOptional, IsString } from 'class-validator';
+import { Audit } from '../audit/audit.decorator';
 import { RequirePermission } from '../identity/decorators';
+import { StrongPassword } from '../identity/password.validator';
 import { TenantService } from './tenant.service';
 
 class CreateTenantDto {
@@ -22,7 +24,7 @@ class CreateTenantDto {
   ownerPhone: string;
 
   @IsString()
-  @MinLength(6)
+  @StrongPassword()
   ownerPassword: string;
 }
 
@@ -41,6 +43,11 @@ class UpdateTenantStatusDto {
 export class TenantController {
   constructor(private readonly tenant: TenantService) {}
 
+  @Audit({
+    action: 'platform.tenant.create',
+    resourceType: 'tenant',
+    summary: '开通租户',
+  })
   @RequirePermission('tenant:create')
   @Post()
   create(@Body() dto: CreateTenantDto) {
@@ -53,7 +60,12 @@ export class TenantController {
     return this.tenant.listTenants(query);
   }
 
-  @RequirePermission('tenant:read')
+  @Audit({
+    action: 'platform.tenant.status.update',
+    resourceType: 'tenant',
+    summary: '变更租户启停状态',
+  })
+  @RequirePermission('tenant:manage')
   @Patch(':id/status')
   updateStatus(@Param('id') id: string, @Body() dto: UpdateTenantStatusDto) {
     return this.tenant.updateStatus(id, dto.status);

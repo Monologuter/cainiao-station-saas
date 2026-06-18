@@ -41,6 +41,8 @@ describe('ParcelService', () => {
       waybillNo: 'YT001',
       receiverPhoneTail: '0000',
       status: 'PENDING',
+      // FUNC-1: no size supplied -> defaults to M.
+      size: 'M',
       createdBy: 'u1',
     });
     expect(created.event).toMatchObject({
@@ -52,6 +54,32 @@ describe('ParcelService', () => {
       operatorId: 'u1',
     });
     expect(bus.publish).not.toHaveBeenCalled();
+  });
+
+  it('writes the explicit parcel size when supplied on create', async () => {
+    const created: any = {};
+    const tx = {
+      parcel: {
+        create: async ({ data }: any) =>
+          (created.parcel = { id: 'p1', status: 'PENDING', ...data }),
+      },
+      parcelEvent: { create: async () => undefined },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const service = new ParcelService(tenantPrisma, {
+      publish: jest.fn(),
+    } as any);
+
+    await runAsTenant(() =>
+      service.create({
+        stationId: 's1',
+        waybillNo: 'YT002',
+        receiverPhone: '13800000000',
+        size: 'L',
+      }),
+    );
+
+    expect(created.parcel).toMatchObject({ size: 'L' });
   });
 
   it('marks parcel STORED with optimistic version, writes event and publishes ParcelStored', async () => {

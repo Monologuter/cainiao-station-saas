@@ -1,4 +1,8 @@
 import { Inject, Injectable, Optional } from '@nestjs/common';
+import {
+  CircuitBreakerOpenError,
+  CircuitBreakerService,
+} from '../../core/circuit-breaker/circuit-breaker.service';
 import { NotifyChannel, RenderedMessage } from './notify-channel';
 
 export interface TencentSmsClient {
@@ -39,6 +43,15 @@ const RETRYABLE_ERROR_CODES = new Set([
   'FailedOperation.ServiceTimeout',
 ]);
 
+// SEC-14 熔断：真实出站短信调用连续失败达到阈值后快速失败，
+// 冷却期内不再打外部网络，保护下游 / 降低雪崩风险。
+const SMS_BREAKER_OPTIONS = {
+  failureThreshold: 3,
+  coolDownMs: 30_000,
+  timeoutMs: 5000,
+};
+const SMS_BREAKER_NAME = 'notify.tencent-sms.send';
+
 @Injectable()
 export class TencentSmsChannel implements NotifyChannel {
   readonly channel = 'SMS' as const;
@@ -50,6 +63,8 @@ export class TencentSmsChannel implements NotifyChannel {
     @Optional()
     @Inject(TENCENT_SMS_OPTIONS)
     options?: TencentSmsOptions,
+    @Optional()
+    breaker?: CircuitBreakerService,
   ) {
     this.client = client ?? new MissingTencentSmsClient();
     this.options = options ?? {
@@ -57,10 +72,12 @@ export class TencentSmsChannel implements NotifyChannel {
       signName: process.env.TENCENT_SMS_SIGN_NAME,
       templateMap: parseTemplateMap(process.env.TENCENT_SMS_TEMPLATE_MAP),
     };
+    this.breaker = breaker;
   }
 
   private readonly client: TencentSmsClient;
   private readonly options: TencentSmsOptions;
+  private readonly breaker?: CircuitBreakerService;
 
   async send(message: RenderedMessage) {
     const templateId = this.templateId(message.templateCode);
@@ -73,13 +90,15 @@ export class TencentSmsChannel implements NotifyChannel {
     }
 
     try {
-      const response = await this.client.SendSms({
-        SmsSdkAppId: this.options.sdkAppId ?? '',
-        SignName: this.options.signName ?? '',
-        TemplateId: templateId,
-        TemplateParamSet: message.variables ?? [],
-        PhoneNumberSet: [this.formatPhone(message.receiverPhone)],
-      });
+      const response = await this.withBreaker(() =>
+        this.client.SendSms({
+          SmsSdkAppId: this.options.sdkAppId ?? '',
+          SignName: this.options.signName ?? '',
+          TemplateId: templateId,
+          TemplateParamSet: message.variables ?? [],
+          PhoneNumberSet: [this.formatPhone(message.receiverPhone)],
+        }),
+      );
       const status = response.SendStatusSet?.[0];
       if (status?.Code && status.Code !== 'Ok') {
         return {
@@ -95,6 +114,14 @@ export class TencentSmsChannel implements NotifyChannel {
         providerRequestId: status?.SerialNo,
       };
     } catch (error: any) {
+      // 熔断打开属于临时不可用：直接判定为可重试快速失败，交由队列稍后重投。
+      if (error instanceof CircuitBreakerOpenError) {
+        return {
+          ok: false,
+          error: 'sms circuit open',
+          retryable: true,
+        };
+      }
       const code = String(error?.code ?? error?.Code ?? error?.name ?? '');
       return {
         ok: false,
@@ -102,6 +129,15 @@ export class TencentSmsChannel implements NotifyChannel {
         retryable: this.isRetryable(code),
       };
     }
+  }
+
+  private withBreaker(
+    action: () => Promise<TencentSmsSendResponse>,
+  ): Promise<TencentSmsSendResponse> {
+    if (!this.breaker) {
+      return action();
+    }
+    return this.breaker.execute(SMS_BREAKER_NAME, SMS_BREAKER_OPTIONS, action);
   }
 
   private templateId(templateCode?: string) {

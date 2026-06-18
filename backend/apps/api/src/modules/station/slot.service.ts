@@ -57,6 +57,8 @@ export class SlotService {
   }
 
   async listFree(stationId: string, limit = 20) {
+    // SEC-14 分页封顶：将 limit 夹紧到 [1, 100]，防止超大 limit 拖垮查询。
+    const take = Math.min(Math.max(limit, 1), 100);
     return this.tenantPrisma.withTenant((tx) =>
       tx.slot.findMany({
         where: {
@@ -65,7 +67,7 @@ export class SlotService {
           deletedAt: null,
           shelf: { status: 'ACTIVE', deletedAt: null },
         },
-        take: limit,
+        take,
         orderBy: [
           { rowNo: 'asc' },
           { levelNo: 'asc' },

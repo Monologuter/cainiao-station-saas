@@ -1,6 +1,7 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
 import {
+  ANALYTICS_RECONCILE_JOB,
   BILLING_EXPIRY_CHECK_JOB,
   BILLING_INVOICE_RUN_JOB,
   OVERDUE_SCAN_JOB,
@@ -27,6 +28,10 @@ export class RepeatableRegistrar implements OnModuleInit {
     await this.registerJob(
       BILLING_EXPIRY_CHECK_JOB,
       process.env.BILLING_EXPIRY_CHECK_CRON ?? '0 3 * * *',
+    );
+    await this.registerJob(
+      ANALYTICS_RECONCILE_JOB,
+      process.env.ANALYTICS_RECONCILE_CRON ?? '0 4 * * *',
     );
   }
 

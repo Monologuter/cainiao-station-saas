@@ -90,6 +90,58 @@ describe('MultiLevelCacheService', () => {
     );
   });
 
+  it('reloads after the L1 TTL expires (no L2 backing)', async () => {
+    // 无 Redis：只有 L1。TTL 过期后必须重新走 loader，而非返回过期值。
+    const cache = new MultiLevelCacheService(undefined);
+    const loader = jest
+      .fn()
+      .mockResolvedValueOnce('v1')
+      .mockResolvedValueOnce('v2');
+    const ttlMs = 1000;
+
+    const nowSpy = jest.spyOn(Date, 'now');
+    try {
+      nowSpy.mockReturnValue(10_000);
+      await expect(cache.getOrLoad('k', ttlMs, loader)).resolves.toBe('v1');
+
+      // 仍在 TTL 内（+999ms）：命中 L1，不调用 loader。
+      nowSpy.mockReturnValue(10_999);
+      await expect(cache.getOrLoad('k', ttlMs, loader)).resolves.toBe('v1');
+      expect(loader).toHaveBeenCalledTimes(1);
+
+      // 越过 TTL（+1001ms）：L1 过期，重新加载得到新值。
+      nowSpy.mockReturnValue(11_001);
+      await expect(cache.getOrLoad('k', ttlMs, loader)).resolves.toBe('v2');
+      expect(loader).toHaveBeenCalledTimes(2);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
+  it('expired L1 falls back to a still-valid L2 entry instead of the loader', async () => {
+    // L1 过期但 L2 仍有值：应从 L2 水合，不触发 loader。
+    const redis = new FakeRedis();
+    const { cache } = createCache(redis);
+    const loader = jest.fn().mockResolvedValue('fresh');
+    const ttlMs = 1000;
+
+    const nowSpy = jest.spyOn(Date, 'now');
+    try {
+      nowSpy.mockReturnValue(20_000);
+      await expect(cache.getOrLoad('k2', ttlMs, loader)).resolves.toBe('fresh');
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(redis.store.has('k2')).toBe(true);
+
+      // L1 过期后再读：L2 命中（FakeRedis 不淘汰），loader 不再被调用。
+      nowSpy.mockReturnValue(21_001);
+      await expect(cache.getOrLoad('k2', ttlMs, loader)).resolves.toBe('fresh');
+      expect(loader).toHaveBeenCalledTimes(1);
+      expect(redis.get).toHaveBeenCalledTimes(2);
+    } finally {
+      nowSpy.mockRestore();
+    }
+  });
+
   it('invalidates L1 and L2 and broadcasts invalidation', async () => {
     const { cache, redis } = createCache();
     await cache.getOrLoad('dict:carrier', 1000, async () => ['YTO']);

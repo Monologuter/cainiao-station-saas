@@ -156,4 +156,40 @@ describe('SlotService', () => {
 
     await expect(svc.listFree('s1', 5)).resolves.toHaveLength(1);
   });
+
+  it('caps an oversized listFree limit at 100', async () => {
+    let observedTake: number | undefined;
+    const tx = {
+      slot: {
+        findMany: async ({ take }: any) => {
+          observedTake = take;
+          return [];
+        },
+      },
+    };
+    const svc = new SlotService({
+      withTenant: async (fn: any) => fn(tx),
+    } as any);
+
+    await svc.listFree('s1', 100000);
+    expect(observedTake).toBe(100);
+  });
+
+  it('floors a non-positive listFree limit at 1', async () => {
+    let observedTake: number | undefined;
+    const tx = {
+      slot: {
+        findMany: async ({ take }: any) => {
+          observedTake = take;
+          return [];
+        },
+      },
+    };
+    const svc = new SlotService({
+      withTenant: async (fn: any) => fn(tx),
+    } as any);
+
+    await svc.listFree('s1', 0);
+    expect(observedTake).toBe(1);
+  });
 });

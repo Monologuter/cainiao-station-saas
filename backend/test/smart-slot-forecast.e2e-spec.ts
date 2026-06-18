@@ -71,6 +71,7 @@ describe('Smart slot and forecast e2e', () => {
       .send({
         stationId: boss.stationId,
         pickupCode: inbound.body.data.pickupCode,
+        phoneTail: '0000',
       })
       .expect(201);
 

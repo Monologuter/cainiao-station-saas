@@ -1,4 +1,4 @@
-import { calcInvoice } from './billing-calculator';
+import { calcInvoice, calcProration } from './billing-calculator';
 
 describe('calcInvoice', () => {
   const snapshot = {
@@ -103,5 +103,99 @@ describe('calcInvoice', () => {
         },
       ],
     });
+  });
+});
+
+describe('calcProration', () => {
+  // 30 天账期：2026-06-01 ~ 2026-07-01，月中 06-16 换套餐 -> 剩余 15 天。
+  const periodStart = new Date('2026-06-01T00:00:00.000Z');
+  const periodEnd = new Date('2026-07-01T00:00:00.000Z');
+  const changeAt = new Date('2026-06-16T00:00:00.000Z');
+
+  it('charges the daily upgrade difference (升档补差) in integer cents', () => {
+    const result = calcProration({
+      oldMonthlyPrice: 9900,
+      newMonthlyPrice: 19900,
+      periodStart,
+      periodEnd,
+      changeAt,
+    });
+
+    // periodDays=30, remainingDays=15
+    // credit = floor(9900 * 15 / 30) = 4950
+    // debit  = floor(19900 * 15 / 30) = 9950
+    // net    = 9950 - 4950 = 5000 (正 = 补差)
+    expect(result).toMatchObject({
+      periodDays: 30,
+      remainingDays: 15,
+      creditAmount: 4950,
+      debitAmount: 9950,
+      netAmount: 5000,
+    });
+    expect(result.lineItems).toEqual([
+      expect.objectContaining({ type: 'PRORATION_CREDIT', amount: -4950 }),
+      expect.objectContaining({ type: 'PRORATION_DEBIT', amount: 9950 }),
+    ]);
+    expect(Number.isInteger(result.netAmount)).toBe(true);
+  });
+
+  it('produces a negative net (降档抵扣) when moving to a cheaper plan', () => {
+    const result = calcProration({
+      oldMonthlyPrice: 19900,
+      newMonthlyPrice: 9900,
+      periodStart,
+      periodEnd,
+      changeAt,
+    });
+
+    // credit = floor(19900*15/30)=9950, debit = floor(9900*15/30)=4950
+    // net = 4950 - 9950 = -5000 (负 = 抵扣)
+    expect(result.netAmount).toBe(-5000);
+    expect(result.lineItems).toEqual([
+      expect.objectContaining({ type: 'PRORATION_CREDIT', amount: -9950 }),
+      expect.objectContaining({ type: 'PRORATION_DEBIT', amount: 4950 }),
+    ]);
+  });
+
+  it('rounds remaining days up — 不足一天按一天', () => {
+    const result = calcProration({
+      oldMonthlyPrice: 0,
+      newMonthlyPrice: 3000,
+      periodStart,
+      periodEnd,
+      // 距期末仅 12 小时 -> ceil = 1 天
+      changeAt: new Date('2026-06-30T12:00:00.000Z'),
+    });
+    expect(result.remainingDays).toBe(1);
+    expect(result.debitAmount).toBe(Number((BigInt(3000) * BigInt(1)) / BigInt(30)));
+  });
+
+  it('uses floor (integer cents, no float drift) on indivisible prices', () => {
+    // 31 天账期，剩余 10 天，价格 10000 -> floor(10000*10/31)=3225 (非 3225.8...)
+    const result = calcProration({
+      oldMonthlyPrice: 0,
+      newMonthlyPrice: 10000,
+      periodStart: new Date('2026-07-01T00:00:00.000Z'),
+      periodEnd: new Date('2026-08-01T00:00:00.000Z'),
+      changeAt: new Date('2026-07-22T00:00:00.000Z'),
+    });
+    expect(result.periodDays).toBe(31);
+    expect(result.remainingDays).toBe(10);
+    expect(result.debitAmount).toBe(3225);
+    expect(Number.isInteger(result.debitAmount)).toBe(true);
+  });
+
+  it('returns zero remaining days when changed at/after period end', () => {
+    const result = calcProration({
+      oldMonthlyPrice: 9900,
+      newMonthlyPrice: 19900,
+      periodStart,
+      periodEnd,
+      changeAt: periodEnd,
+    });
+    expect(result.remainingDays).toBe(0);
+    expect(result.creditAmount).toBe(0);
+    expect(result.debitAmount).toBe(0);
+    expect(result.netAmount).toBe(0);
   });
 });

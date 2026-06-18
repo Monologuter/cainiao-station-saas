@@ -6,12 +6,14 @@ import {
 } from '@nestjs/common';
 import { Job, Queue, Worker } from 'bullmq';
 import {
+  ANALYTICS_RECONCILE_JOB,
   BILLING_EXPIRY_CHECK_JOB,
   BILLING_INVOICE_RUN_JOB,
   OVERDUE_SCAN_JOB,
   OVERDUE_SCAN_QUEUE,
 } from '../../core/queue/queue.constants';
 import { queueRedisConnectionOptions } from '../../core/queue/queue.module';
+import { ReconcileRunProcessor } from '../analytics/reconcile-run.processor';
 import { ExpiryCheckProcessor } from '../billing/jobs/expiry-check.processor';
 import { InvoiceRunProcessor } from '../billing/jobs/invoice-run.processor';
 import { OverdueScanProcessor } from '../parcel/overdue/overdue-scan.processor';
@@ -25,6 +27,7 @@ export class ScheduledJobWorker implements OnModuleInit, OnModuleDestroy {
     private readonly overdueScan: OverdueScanProcessor,
     private readonly invoiceRun: InvoiceRunProcessor,
     private readonly expiryCheck: ExpiryCheckProcessor,
+    private readonly reconcileRun: ReconcileRunProcessor,
   ) {}
 
   onModuleInit() {
@@ -45,6 +48,8 @@ export class ScheduledJobWorker implements OnModuleInit, OnModuleDestroy {
         return this.invoiceRun.runInvoiceRun();
       case BILLING_EXPIRY_CHECK_JOB:
         return this.expiryCheck.runExpiryCheck();
+      case ANALYTICS_RECONCILE_JOB:
+        return this.reconcileRun.runDailyReconcile();
       default:
         throw new Error(`Unknown scheduled job: ${job.name}`);
     }

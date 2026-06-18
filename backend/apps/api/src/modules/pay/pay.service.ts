@@ -272,7 +272,9 @@ export class PayService {
       );
     }
     const ctx = this.requireContext(user);
-    return this.tenantPrisma.withTenant(async (tx) => {
+
+    // 阶段一（短读事务）：校验订单/支付单状态，确定是否需要发起外部退款。
+    const loaded = await this.tenantPrisma.withTenant(async (tx) => {
       const order = await tx.shipOrder.findFirst({
         where: { id: orderId, tenantId: ctx.tenantId, deletedAt: null },
       });
@@ -280,7 +282,8 @@ export class PayService {
         throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
       }
       if (order.status === 'CANCELLED') {
-        return order;
+        // 已退款取消：幂等返回，无需再次调用外部退款。
+        return { order, payment: null };
       }
       if (order.status !== 'PAID' || order.collectedAt) {
         throw new BizError(
@@ -300,39 +303,56 @@ export class PayService {
       if (!payment) {
         throw new BizError(ApiCode.NOT_FOUND, '支付单不存在');
       }
+      return { order, payment };
+    });
 
-      const refundNo = `refund:${idempotencyKey}`;
-      const result = this.channel.refund
-        ? await this.channel.refund({
-            outTradeNo: payment.outTradeNo,
-            refundNo,
-            amount: payment.amount,
-            refundAmount: payment.amount,
-            reason: '寄件订单取消退款',
-          })
-        : { status: 'SUCCESS' as const, refundNo, raw: { provider: 'mock' } };
-      if (result.status !== 'SUCCESS') {
-        throw new BizError(ApiCode.BAD_REQUEST, '退款失败，请重试');
-      }
+    if (!loaded.payment) {
+      return loaded.order;
+    }
+    const payment = loaded.payment;
 
-      await tx.payment.update({
-        where: { id: payment.id },
+    // 阶段二（事务外）：调用外部退款渠道。退款是慢/外部 IO，放在 DB 事务外执行，
+    // 避免长事务持锁；refundNo=refund:${idempotencyKey} 保证渠道侧幂等，
+    // 重复发起同一退款不会二次扣款。
+    const refundNo = `refund:${idempotencyKey}`;
+    const result = this.channel.refund
+      ? await this.channel.refund({
+          outTradeNo: payment.outTradeNo,
+          refundNo,
+          amount: payment.amount,
+          refundAmount: payment.amount,
+          reason: '寄件订单取消退款',
+        })
+      : { status: 'SUCCESS' as const, refundNo, raw: { provider: 'mock' } };
+    if (result.status !== 'SUCCESS') {
+      throw new BizError(ApiCode.BAD_REQUEST, '退款失败，请重试');
+    }
+
+    // 阶段三（短写事务）：落库退款结果与订单取消态。用 status 守护做并发幂等：
+    // 仅当支付单仍为 SUCCESS、订单仍为 PAID 时推进，避免并发退款重复落库。
+    return this.tenantPrisma.withTenant(async (tx) => {
+      // status 守护使重复落库成为 no-op（count=0），并发退款下幂等。
+      await tx.payment.updateMany({
+        where: { id: payment.id, status: 'SUCCESS' },
         data: {
           status: 'REFUNDED',
           rawJson: {
-            ...(payment.rawJson ?? {}),
+            ...((payment.rawJson as Record<string, unknown>) ?? {}),
             refund: result.raw,
             refundNo: result.refundNo,
           },
         },
       });
-      return tx.shipOrder.update({
-        where: { id: order.id },
+      await tx.shipOrder.updateMany({
+        where: { id: payment.bizId, status: 'PAID', deletedAt: null },
         data: {
           status: 'CANCELLED',
           cancelledAt: new Date(),
           version: { increment: 1 },
         },
+      });
+      return tx.shipOrder.findFirst({
+        where: { id: payment.bizId, tenantId: ctx.tenantId, deletedAt: null },
       });
     });
   }

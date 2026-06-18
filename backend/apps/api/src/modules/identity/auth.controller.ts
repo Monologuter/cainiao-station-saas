@@ -1,15 +1,16 @@
 import { Body, Controller, Get, Post } from '@nestjs/common';
-import { IsString, MinLength } from 'class-validator';
+import { IsString } from 'class-validator';
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator';
 import { AuthService } from './auth.service';
 import { CurrentUser, Public } from './decorators';
+import { StrongPassword } from './password.validator';
 
 class LoginDto {
   @IsString()
   username: string;
 
   @IsString()
-  @MinLength(6)
+  @StrongPassword()
   password: string;
 }
 
@@ -23,9 +24,12 @@ class ChangePasswordDto {
   oldPassword: string;
 
   @IsString()
-  @MinLength(6)
+  @StrongPassword()
   newPassword: string;
 }
+
+// TODO(SEC-13): 临时密码首登强制改密。需在 user schema 增加 mustChangePassword 字段，
+// 由平台/店长重置密码时置位，登录后拦截非改密请求。本次仅落地口令强度策略。
 
 @Controller('auth')
 export class AuthController {

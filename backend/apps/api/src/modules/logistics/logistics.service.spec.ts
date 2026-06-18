@@ -1,3 +1,7 @@
+import {
+  CircuitBreakerOpenError,
+  CircuitBreakerService,
+} from '../../core/circuit-breaker/circuit-breaker.service';
 import { ApiCode } from '../../core/http/api-code';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { LogisticsService } from './logistics.service';
@@ -325,6 +329,55 @@ describe('LogisticsService', () => {
     expect(state.order.status).toBe('IN_TRANSIT');
     // 仅第一次轮询触发一次状态推进。
     expect(tx.shipOrder.updateMany).toHaveBeenCalledTimes(1);
+  });
+
+  it('opens the circuit after repeated provider failures and then fast-fails', async () => {
+    // SEC-14：真实出站揽收连续失败到阈值后熔断打开，冷却期内快速失败，
+    // 不再触达 provider，避免对故障下游持续打网络。
+    const provider = {
+      code: 'kuaidi100',
+      createWaybill: jest
+        .fn()
+        .mockRejectedValue(new Error('provider 503 unavailable')),
+    };
+    const breaker = new CircuitBreakerService();
+    const newPaidState = () => ({
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'PAID',
+        courierCode: 'YTO',
+        senderJson: { name: '张三' },
+        receiverJson: { name: '李四' },
+        weightGram: 1200,
+        version: 1,
+      },
+      tracks: [] as any[],
+    });
+    const collect = () =>
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () =>
+          new LogisticsService(
+            {
+              withTenant: jest.fn(async (fn) => fn(makeTx(newPaidState()))),
+            } as any,
+            provider as any,
+            breaker,
+          ).collectShipOrder('so1'),
+      );
+
+    const breakerName = 'logistics.kuaidi100.create-waybill';
+    // 前 3 次实际调用 provider 并失败，累计到 failureThreshold=3。
+    for (let i = 0; i < 3; i += 1) {
+      await expect(collect()).rejects.toThrow('provider 503 unavailable');
+    }
+    expect(breaker.snapshot(breakerName)?.state).toBe('OPEN');
+    expect(provider.createWaybill).toHaveBeenCalledTimes(3);
+
+    // 第 4 次熔断已打开 → 抛 CircuitBreakerOpenError，不再触达 provider。
+    await expect(collect()).rejects.toBeInstanceOf(CircuitBreakerOpenError);
+    expect(provider.createWaybill).toHaveBeenCalledTimes(3);
   });
 
   it('rejects forged provider callbacks', async () => {

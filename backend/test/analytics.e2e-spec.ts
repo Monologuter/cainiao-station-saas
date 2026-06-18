@@ -39,7 +39,11 @@ describe('Analytics overview e2e', () => {
     await request(app.getHttpServer())
       .post('/api/pickup')
       .set('Authorization', `Bearer ${boss.token}`)
-      .send({ stationId: boss.stationId, pickupCode: first.pickupCode })
+      .send({
+        stationId: boss.stationId,
+        pickupCode: first.pickupCode,
+        phoneTail: '0001',
+      })
       .expect(201);
 
     const overview = await request(app.getHttpServer())

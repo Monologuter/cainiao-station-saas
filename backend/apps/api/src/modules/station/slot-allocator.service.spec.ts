@@ -194,6 +194,89 @@ describe('SlotAllocatorService', () => {
     expect(slot1.heat.hourHistogram[10]).toBe(5);
   });
 
+  it('forwards the parcel real size to the recommender instead of hardcoded M', async () => {
+    const candidates = [
+      { id: 'slot1', code: 'A-01', version: 0, rowNo: 1, levelNo: 1, colNo: 1 },
+    ];
+    const tx = {
+      parcel: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'parcel1',
+          receiverPhoneTail: '1234',
+          // FUNC-1: real size carried on the parcel row.
+          size: 'L',
+          createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        }),
+      },
+      slot: {
+        findMany: jest.fn().mockResolvedValue(candidates),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ ...candidates[0], status: 'OCCUPIED' }),
+      },
+    };
+    const recommender = {
+      recommend: jest
+        .fn()
+        .mockResolvedValue([{ slotId: 'slot1', score: 0.9, reasons: [] }]),
+    };
+    const service = new SlotAllocatorService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any,
+      recommender as any,
+    );
+
+    await service.allocate('station1', 'parcel1');
+
+    expect(recommender.recommend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parcel: expect.objectContaining({ sizeClass: 'L' }),
+      }),
+    );
+  });
+
+  it('falls back to size M when the parcel has no size value', async () => {
+    const candidates = [
+      { id: 'slot1', code: 'A-01', version: 0, rowNo: 1, levelNo: 1, colNo: 1 },
+    ];
+    const tx = {
+      parcel: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'parcel1',
+          receiverPhoneTail: '1234',
+          // No size field -> fallback path.
+          createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        }),
+      },
+      slot: {
+        findMany: jest.fn().mockResolvedValue(candidates),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest
+          .fn()
+          .mockResolvedValue({ ...candidates[0], status: 'OCCUPIED' }),
+      },
+    };
+    const recommender = {
+      recommend: jest
+        .fn()
+        .mockResolvedValue([{ slotId: 'slot1', score: 0.9, reasons: [] }]),
+    };
+    const service = new SlotAllocatorService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any,
+      recommender as any,
+    );
+
+    await service.allocate('station1', 'parcel1');
+
+    expect(recommender.recommend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        parcel: expect.objectContaining({ sizeClass: 'M' }),
+      }),
+    );
+  });
+
   it('tries the next recommended slot when the first recommendation loses the race', async () => {
     const candidates = [
       { id: 'slot1', code: 'A-01', version: 0 },

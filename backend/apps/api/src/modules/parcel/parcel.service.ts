@@ -6,11 +6,15 @@ import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { resolveStationFilter } from '../../core/tenant-context/station-scope';
 import { ParcelAggregate, ParcelStatus } from './parcel.aggregate';
 
+export type ParcelSizeInput = 'S' | 'M' | 'L';
+
 interface CreateParcelInput {
   stationId: string;
   waybillNo: string;
   carrier?: string;
   receiverPhone: string;
+  // FUNC-1: 包裹尺寸，入库可显式指定；缺省落到默认 M。
+  size?: ParcelSizeInput;
 }
 
 interface StoreParcelInput {
@@ -96,6 +100,8 @@ export class ParcelService {
           receiverPhone: input.receiverPhone,
           receiverPhoneTail: this.phoneTail(input.receiverPhone),
           status: 'PENDING',
+          // FUNC-1: 写入真实尺寸；未指定时退回默认 M。
+          size: input.size ?? 'M',
           createdBy: ctx.userId,
         },
       });

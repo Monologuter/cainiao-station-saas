@@ -2,6 +2,7 @@ import { Injectable, OnModuleInit } from '@nestjs/common';
 import { DomainEvent, EventBus } from '../../../core/event-bus/event-bus';
 import { PrismaService } from '../../../core/prisma/prisma.service';
 import { MemberService } from '../member.service';
+import { shipPoints } from '../point-rule.config';
 import { PointService } from '../point.service';
 
 interface ShipOrderPaidPayload extends Record<string, unknown> {
@@ -40,10 +41,7 @@ export class ShipOrderPaidListener implements OnModuleInit {
       tx.consumer.findUniqueOrThrow({ where: { id: order.consumerId } }),
     );
     const member = await this.members.ensureMember(consumer.id, consumer.phone);
-    const points = Math.max(
-      1,
-      Math.floor((event.payload.amount ?? order.quoteAmount) / 100),
-    );
+    const points = shipPoints(event.payload.amount ?? order.quoteAmount);
 
     await this.points.earn(member.id, points, 'SHIP', {
       sourceTenantId: event.payload.tenantId,

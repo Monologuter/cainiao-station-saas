@@ -25,6 +25,7 @@ import { MetricsService } from './metrics.service';
 import { QueryService } from './query.service';
 import { RankingService } from './ranking.service';
 import { RealtimePublisher } from './realtime.publisher';
+import { ReconcileRunProcessor } from './reconcile-run.processor';
 import { ReconcileService } from './reconcile.service';
 import { ReportProcessor } from './report.processor';
 import { ReportService } from './report.service';
@@ -48,6 +49,7 @@ import { ReportService } from './report.service';
     QueryService,
     RankingService,
     ReconcileService,
+    ReconcileRunProcessor,
     ReportService,
     ReportProcessor,
     RealtimePublisher,
@@ -60,5 +62,6 @@ import { ReportService } from './report.service';
     RedisLockService,
     ScheduledLockService,
   ],
+  exports: [ReconcileRunProcessor],
 })
 export class AnalyticsModule {}

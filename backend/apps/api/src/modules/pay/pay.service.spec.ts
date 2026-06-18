@@ -258,7 +258,7 @@ describe('PayService', () => {
     });
   });
 
-  it('refunds a paid uncollected shipping order and cancels it', async () => {
+  it('refunds a paid uncollected shipping order outside the DB transaction and cancels it', async () => {
     const state: any = {
       order: {
         id: 'so1',
@@ -281,14 +281,90 @@ describe('PayService', () => {
         },
       ],
     };
+    // 记录调用顺序，证明外部退款发生在 DB 事务「之间」（先读事务关闭、后写事务开启）。
+    const calls: string[] = [];
+    let txOpen = false;
+    const withTenant = jest.fn(async (fn: any) => {
+      txOpen = true;
+      calls.push('tx:open');
+      try {
+        return await fn(makeTx(state));
+      } finally {
+        txOpen = false;
+        calls.push('tx:close');
+      }
+    });
     const channel = {
       code: 'mock',
-      refund: jest.fn().mockResolvedValue({
-        status: 'SUCCESS',
-        refundNo: 'refund:refund-key-1',
-        raw: { refundId: 'r1' },
+      refund: jest.fn(async () => {
+        // 关键断言：调用外部退款时不应有 DB 事务处于打开状态。
+        expect(txOpen).toBe(false);
+        calls.push('channel.refund');
+        return {
+          status: 'SUCCESS',
+          refundNo: 'refund:refund-key-1',
+          raw: { refundId: 'r1' },
+        };
       }),
     };
+    const service = new PayService(
+      { withTenant } as any,
+      channel as any,
+      {} as any,
+    );
+
+    await expect(
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () => service.refundShipOrder('so1', 'refund-key-1'),
+      ),
+    ).resolves.toMatchObject({ status: 'CANCELLED' });
+
+    // refundNo 仍由 idempotencyKey 派生，渠道侧幂等键不变。
+    expect(channel.refund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outTradeNo: 'out-1',
+        amount: 800,
+        refundAmount: 800,
+        refundNo: 'refund:refund-key-1',
+      }),
+    );
+    expect(state.payments[0].status).toBe('REFUNDED');
+    // 顺序：读事务开/关 → 事务外退款 → 写事务开/关。
+    expect(calls).toEqual([
+      'tx:open',
+      'tx:close',
+      'channel.refund',
+      'tx:open',
+      'tx:close',
+    ]);
+  });
+
+  it('is idempotent: a second refund on an already cancelled order does not call the channel again', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        orderNo: 'SO1',
+        status: 'CANCELLED',
+        quoteAmount: 800,
+        collectedAt: null,
+        cancelledAt: new Date(),
+      },
+      payments: [
+        {
+          id: 'pay1',
+          tenantId: 't1',
+          bizType: 'SHIP_ORDER',
+          bizId: 'so1',
+          amount: 800,
+          status: 'REFUNDED',
+          outTradeNo: 'out-1',
+          rawJson: {},
+        },
+      ],
+    };
+    const channel = { code: 'mock', refund: jest.fn() };
     const service = new PayService(
       { withTenant: jest.fn(async (fn) => fn(makeTx(state))) } as any,
       channel as any,
@@ -301,14 +377,8 @@ describe('PayService', () => {
         () => service.refundShipOrder('so1', 'refund-key-1'),
       ),
     ).resolves.toMatchObject({ status: 'CANCELLED' });
-    expect(channel.refund).toHaveBeenCalledWith(
-      expect.objectContaining({
-        outTradeNo: 'out-1',
-        amount: 800,
-        refundAmount: 800,
-      }),
-    );
-    expect(state.payments[0].status).toBe('REFUNDED');
+    // 已取消订单：短路返回，绝不重复发起外部退款。
+    expect(channel.refund).not.toHaveBeenCalled();
   });
 });
 
@@ -346,6 +416,21 @@ function makeTx(state: any) {
         );
         state.payments[index] = { ...state.payments[index], ...data };
         return state.payments[index];
+      }),
+      updateMany: jest.fn(async ({ where, data }) => {
+        // 模拟 status 守护：仅当 WHERE.status 匹配当前态时落库一次。
+        const index = state.payments.findIndex(
+          (payment: any) => payment.id === where.id,
+        );
+        if (index < 0) return { count: 0 };
+        if (
+          where.status !== undefined &&
+          state.payments[index].status !== where.status
+        ) {
+          return { count: 0 };
+        }
+        state.payments[index] = { ...state.payments[index], ...data };
+        return { count: 1 };
       }),
     },
     shipOrder: {
