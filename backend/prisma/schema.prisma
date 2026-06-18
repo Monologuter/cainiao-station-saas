@@ -297,6 +297,32 @@ enum FaqCategory {
   GENERAL
 }
 
+enum AiActorType {
+  CONSUMER
+  STAFF
+}
+
+enum AiChannel {
+  USER_APP
+  STATION_WEB
+}
+
+enum AiAssistantMode {
+  MOCK
+  REAL
+}
+
+enum AiConversationStatus {
+  ACTIVE
+  CLOSED
+}
+
+enum AiMessageRole {
+  USER
+  ASSISTANT
+  TOOL
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -809,6 +835,8 @@ model Tenant {
   auditLogs            AuditLog[]
   ocrRecognitions      OcrRecognition[]
   faqEntries           FaqEntry[]
+  aiConversations      AiConversation[]
+  aiMessages           AiMessage[]
 }
 
 model Station {
@@ -962,6 +990,49 @@ model FaqEntry {
   @@index([tenantId, category, enabled])
   @@index([enabled, priority])
   @@map("faq_entries")
+}
+
+model AiConversation {
+  id           String               @id @default(uuid()) @db.Uuid
+  tenantId     String               @map("tenant_id") @db.Uuid
+  consumerId   String?              @map("consumer_id") @db.Uuid
+  staffUserId  String?              @map("staff_user_id") @db.Uuid
+  actorType    AiActorType          @map("actor_type")
+  channel      AiChannel
+  mode         AiAssistantMode
+  title        String               @db.VarChar(120)
+  status       AiConversationStatus @default(ACTIVE)
+  lastActiveAt DateTime             @default(now()) @map("last_active_at")
+  createdAt    DateTime             @default(now()) @map("created_at")
+  updatedAt    DateTime             @updatedAt @map("updated_at")
+  deletedAt    DateTime?            @map("deleted_at")
+  tenant       Tenant               @relation(fields: [tenantId], references: [id])
+  messages     AiMessage[]
+
+  @@index([tenantId, consumerId, lastActiveAt])
+  @@index([tenantId, staffUserId, lastActiveAt])
+  @@map("ai_conversations")
+}
+
+model AiMessage {
+  id             String         @id @default(uuid()) @db.Uuid
+  tenantId       String         @map("tenant_id") @db.Uuid
+  conversationId String         @map("conversation_id") @db.Uuid
+  role           AiMessageRole
+  content        String         @db.Text
+  toolName       String?        @map("tool_name") @db.VarChar(80)
+  toolPayload    Json?          @map("tool_payload")
+  citations      Json?
+  degraded       Boolean        @default(false)
+  latencyMs      Int?           @map("latency_ms")
+  seq            Int
+  createdAt      DateTime       @default(now()) @map("created_at")
+  tenant         Tenant         @relation(fields: [tenantId], references: [id])
+  conversation   AiConversation @relation(fields: [conversationId], references: [id])
+
+  @@unique([conversationId, seq])
+  @@index([tenantId, conversationId, seq])
+  @@map("ai_messages")
 }
 
 model ExceptionTicket {
