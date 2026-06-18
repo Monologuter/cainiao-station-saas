@@ -4,6 +4,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { ChannelConfigService } from './channel-config.service';
 import { ChannelResolver } from './channel-resolver';
+import { CallbackSecurityService } from './callback-security.service';
 import {
   AdminChannelConfigController,
   AdminDictionaryController,
@@ -14,6 +15,7 @@ import {
 import { DictionaryService } from './dictionary.service';
 import { NotifyTemplateService } from './notify-template.service';
 import { ProviderRegistry } from './provider-registry';
+import { IntegrationConfigService } from './integration-config.service';
 import { RuntimeConfigService } from './runtime-config.service';
 import { SystemConfigService } from './system-config.service';
 
@@ -28,7 +30,9 @@ import { SystemConfigService } from './system-config.service';
   providers: [
     ChannelConfigService,
     ChannelResolver,
+    CallbackSecurityService,
     DictionaryService,
+    IntegrationConfigService,
     NotifyTemplateService,
     ProviderRegistry,
     RuntimeConfigService,
@@ -40,7 +44,9 @@ import { SystemConfigService } from './system-config.service';
   exports: [
     ChannelConfigService,
     ChannelResolver,
+    CallbackSecurityService,
     DictionaryService,
+    IntegrationConfigService,
     NotifyTemplateService,
     RuntimeConfigService,
     SystemConfigService,
