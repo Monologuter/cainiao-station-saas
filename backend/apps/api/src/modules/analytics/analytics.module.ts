@@ -1,8 +1,10 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { RedisLockService } from '../../core/redis/redis-lock.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
+import { ScheduledLockService } from '../../core/scheduler-lock/scheduler-lock.service';
 import { AnalyticsGateway } from './analytics.gateway';
 import {
   AdminAnalyticsController,
@@ -10,6 +12,7 @@ import {
 } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
 import { ForecastClient } from './forecast.client';
+import { ForecastProcessor } from './forecast.processor';
 import { ForecastService } from './forecast.service';
 import {
   ParcelLifecycleAnalyticsListener,
@@ -36,6 +39,7 @@ import { ReportService } from './report.service';
     AnalyticsService,
     AnalyticsGateway,
     ForecastClient,
+    ForecastProcessor,
     ForecastService,
     MetricsService,
     QueryService,
@@ -50,6 +54,8 @@ import { ReportService } from './report.service';
     PrismaService,
     TenantPrismaService,
     RedisService,
+    RedisLockService,
+    ScheduledLockService,
   ],
 })
 export class AnalyticsModule {}
