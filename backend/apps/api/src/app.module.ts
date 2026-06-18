@@ -3,6 +3,9 @@ import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
 import { EventBusModule } from './core/event-bus/event-bus.module';
 import { ContextInterceptor } from './core/http/context.interceptor';
+import { MetricsInterceptor } from './core/observability/metrics.interceptor';
+import { ObservabilityModule } from './core/observability/observability.module';
+import { TraceInterceptor } from './core/observability/trace.interceptor';
 import { PrismaService } from './core/prisma/prisma.service';
 import { TenantPrismaService } from './core/prisma/tenant-prisma.service';
 import { RedisLockService } from './core/redis/redis-lock.service';
@@ -30,6 +33,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
 @Module({
   imports: [
     ConfigModule.forRoot({ isGlobal: true }),
+    ObservabilityModule,
     EventBusModule,
     AnalyticsModule,
     MonitorModule,
@@ -55,6 +59,8 @@ import { TenantModule } from './modules/tenant/tenant.module';
     RedisService,
     RedisLockService,
     { provide: APP_GUARD, useClass: JwtAuthGuard },
+    { provide: APP_INTERCEPTOR, useClass: TraceInterceptor },
+    { provide: APP_INTERCEPTOR, useClass: MetricsInterceptor },
     { provide: APP_INTERCEPTOR, useClass: ContextInterceptor },
     { provide: APP_INTERCEPTOR, useClass: AuditInterceptor },
     { provide: APP_GUARD, useClass: PermissionGuard },

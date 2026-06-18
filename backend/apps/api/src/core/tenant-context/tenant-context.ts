@@ -5,6 +5,7 @@ export interface RequestContext {
   tenantId: string | null;
   roles: string[];
   isPlatform: boolean;
+  traceId?: string;
 }
 
 const als = new AsyncLocalStorage<RequestContext>();
