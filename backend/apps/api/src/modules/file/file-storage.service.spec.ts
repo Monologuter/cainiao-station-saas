@@ -44,6 +44,21 @@ describe('FileStorageService', () => {
     expectBadRequest(() => service.createDownloadUrl('reports/report.csv'));
   });
 
+  it('creates private waybill image object keys', () => {
+    const service = new FileStorageService();
+
+    const result = service.createWaybillImageObject({
+      tenantId: 'tenant-1',
+      contentType: 'image/jpeg',
+      now: new Date('2026-06-18T00:00:00.000Z'),
+    });
+
+    expect(result.fileKey).toMatch(
+      /^waybills\/tenant-1\/20260618\/[a-f0-9-]+\.jpg$/,
+    );
+    expect(result.uploadUrl).toBe(`mock://upload/${result.fileKey}`);
+  });
+
   function expectBadRequest(fn: () => unknown) {
     try {
       fn();

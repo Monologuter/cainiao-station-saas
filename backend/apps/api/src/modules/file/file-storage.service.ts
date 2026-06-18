@@ -52,4 +52,26 @@ export class FileStorageService {
       expiresIn: 600,
     };
   }
+
+  createWaybillImageObject(input: {
+    tenantId: string;
+    contentType: string;
+    now?: Date;
+  }) {
+    const ext = CONTENT_EXT[input.contentType];
+    if (!ext || ext === 'pdf') {
+      throw new BizError(ApiCode.BAD_REQUEST, '不支持的面单图片类型');
+    }
+
+    const now = input.now ?? new Date();
+    const day = `${now.getUTCFullYear()}${String(
+      now.getUTCMonth() + 1,
+    ).padStart(2, '0')}${String(now.getUTCDate()).padStart(2, '0')}`;
+    const fileKey = `waybills/${input.tenantId}/${day}/${randomUUID()}.${ext}`;
+    return {
+      uploadUrl: `mock://upload/${fileKey}`,
+      fileKey,
+      expiresIn: 600,
+    };
+  }
 }
