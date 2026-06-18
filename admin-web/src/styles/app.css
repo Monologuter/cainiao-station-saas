@@ -877,6 +877,81 @@ textarea.input {
   word-break: break-all;
 }
 
+.config-section {
+  display: grid;
+  gap: 18px;
+  padding: 18px;
+}
+
+.config-group {
+  display: grid;
+  gap: 10px;
+}
+
+.config-group h3 {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 14px;
+}
+
+.config-key {
+  display: block;
+  margin-top: 3px;
+}
+
+.config-value {
+  min-width: 170px;
+}
+
+.mini-input {
+  width: 82px;
+}
+
+.config-dict {
+  display: grid;
+  grid-template-columns: 260px 1fr;
+  gap: 18px;
+  padding: 18px;
+}
+
+.dict-list {
+  display: grid;
+  align-content: start;
+  gap: 8px;
+}
+
+.dict-list button {
+  display: grid;
+  gap: 4px;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface);
+  color: var(--text);
+  text-align: left;
+  cursor: pointer;
+}
+
+.dict-list button.on {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+  color: var(--primary);
+}
+
+.dict-list span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.dict-table {
+  box-shadow: none;
+}
+
+.template-input {
+  min-width: 420px;
+}
+
 .review-layout {
   display: grid;
   grid-template-columns: 1fr 300px;

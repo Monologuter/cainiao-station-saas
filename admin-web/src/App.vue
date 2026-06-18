@@ -17,8 +17,15 @@ import ApplicationsView from "@/views/ApplicationsView.vue";
 import AuditView from "@/views/AuditView.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import PlansView from "@/views/PlansView.vue";
+import SystemConfigView from "@/views/SystemConfigView.vue";
 
-type ViewKey = "overview" | "applications" | "billing" | "plans" | "audit";
+type ViewKey =
+  | "overview"
+  | "applications"
+  | "billing"
+  | "plans"
+  | "audit"
+  | "settings";
 
 const currentView = ref<ViewKey>("overview");
 
@@ -77,6 +84,11 @@ const viewMeta = computed(() => {
       sub: "2026年6月18日 周四 · 追踪平台与租户关键写操作",
       component: AuditView,
     },
+    settings: {
+      title: "系统配置",
+      sub: "2026年6月18日 周四 · 管理参数、字典、渠道与通知模板",
+      component: SystemConfigView,
+    },
   };
   return meta[currentView.value];
 });
@@ -87,7 +99,8 @@ function selectView(key: string) {
     key === "applications" ||
     key === "billing" ||
     key === "plans" ||
-    key === "audit"
+    key === "audit" ||
+    key === "settings"
   ) {
     currentView.value = key;
   }
