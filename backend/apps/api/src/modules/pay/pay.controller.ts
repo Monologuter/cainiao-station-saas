@@ -1,5 +1,6 @@
 import { Body, Controller, Param, Post } from '@nestjs/common';
 import { Public } from '../identity/decorators';
+import { WechatPayCallbackDto } from './pay.dto';
 import { PayService } from './pay.service';
 
 @Public()
@@ -11,9 +12,13 @@ export class PayController {
   async confirmWechatPayCallback(
     @Param('tenantId') tenantId: string,
     @Param('outTradeNo') outTradeNo: string,
-    @Body() body: Record<string, unknown>,
+    @Body() body: WechatPayCallbackDto,
   ) {
-    await this.pay.confirmShipOrderPaymentCallback(tenantId, outTradeNo, body);
+    await this.pay.confirmShipOrderPaymentCallback(
+      tenantId,
+      outTradeNo,
+      body as unknown as Record<string, unknown>,
+    );
     return { code: 'SUCCESS', message: 'OK' };
   }
 }

@@ -1,4 +1,9 @@
-import { createHmac } from 'node:crypto';
+import {
+  createDecipheriv,
+  createPublicKey,
+  timingSafeEqual,
+  verify,
+} from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
 import {
   PayChannel,
@@ -33,6 +38,8 @@ interface WechatPayOptions {
   mchId?: string;
   apiV3Key?: string;
   notifyUrl?: string;
+  platformPublicKey?: string;
+  platformCertificateSerialNo?: string;
 }
 
 interface CallbackPayload {
@@ -66,6 +73,8 @@ export class WechatPayChannel implements PayChannel {
       mchId: process.env.WXPAY_MCH_ID,
       apiV3Key: process.env.WXPAY_API_V3_KEY,
       notifyUrl: process.env.WXPAY_NOTIFY_URL,
+      platformPublicKey: process.env.WXPAY_PLATFORM_PUBLIC_KEY,
+      platformCertificateSerialNo: process.env.WXPAY_PLATFORM_CERT_SERIAL_NO,
     };
   }
 
@@ -91,10 +100,11 @@ export class WechatPayChannel implements PayChannel {
 
   verifyCallback(payload: unknown): PayResult {
     const input = payload as {
-      payload: string;
+      body: string;
       timestamp: string;
       nonce: string;
       signature: string;
+      serial?: string;
       expectedAmount: number;
       now?: () => number;
     };
@@ -106,7 +116,16 @@ export class WechatPayChannel implements PayChannel {
       };
     }
 
-    const body = JSON.parse(input.payload) as CallbackPayload;
+    let body: CallbackPayload;
+    try {
+      body = this.decryptCallbackBody(input.body) as CallbackPayload;
+    } catch {
+      return {
+        status: 'FAILED',
+        outTradeNo: '',
+        raw: { provider: this.code, callback: 'BAD_RESOURCE' },
+      };
+    }
     if (
       body.trade_state !== 'SUCCESS' ||
       Number(body.amount?.payer_total ?? -1) !== input.expectedAmount
@@ -206,17 +225,12 @@ export class WechatPayChannel implements PayChannel {
     return differences;
   }
 
-  signCallback(payload: string, timestamp: string, nonce: string) {
-    return createHmac('sha256', this.options.apiV3Key ?? '')
-      .update(`${timestamp}\n${nonce}\n${payload}`)
-      .digest('hex');
-  }
-
   private verifySignature(input: {
-    payload: string;
+    body: string;
     timestamp: string;
     nonce: string;
     signature: string;
+    serial?: string;
     now?: () => number;
   }) {
     const timestampMs = Number(input.timestamp) * 1000;
@@ -227,9 +241,65 @@ export class WechatPayChannel implements PayChannel {
     ) {
       return false;
     }
+    if (
+      this.options.platformCertificateSerialNo &&
+      input.serial &&
+      !this.safeEqual(this.options.platformCertificateSerialNo, input.serial)
+    ) {
+      return false;
+    }
+    if (!this.options.platformPublicKey) {
+      return false;
+    }
+    return verify(
+      'RSA-SHA256',
+      Buffer.from(`${input.timestamp}\n${input.nonce}\n${input.body}\n`),
+      createPublicKey(this.options.platformPublicKey),
+      Buffer.from(input.signature, 'base64'),
+    );
+  }
+
+  private decryptCallbackBody(body: string) {
+    const parsed = JSON.parse(body) as {
+      resource?: {
+        algorithm?: string;
+        ciphertext?: string;
+        nonce?: string;
+        associated_data?: string;
+      };
+    };
+    const resource = parsed.resource;
+    if (resource?.algorithm !== 'AEAD_AES_256_GCM') {
+      throw new Error('unsupported wechat pay resource algorithm');
+    }
+    if (!resource.ciphertext || !resource.nonce || !this.options.apiV3Key) {
+      throw new Error('invalid wechat pay encrypted resource');
+    }
+    const ciphertext = Buffer.from(resource.ciphertext, 'base64');
+    const authTag = ciphertext.subarray(ciphertext.length - 16);
+    const encrypted = ciphertext.subarray(0, ciphertext.length - 16);
+    const decipher = createDecipheriv(
+      'aes-256-gcm',
+      Buffer.from(this.options.apiV3Key),
+      Buffer.from(resource.nonce),
+    );
+    if (resource.associated_data) {
+      decipher.setAAD(Buffer.from(resource.associated_data));
+    }
+    decipher.setAuthTag(authTag);
+    const plaintext = Buffer.concat([
+      decipher.update(encrypted),
+      decipher.final(),
+    ]).toString('utf8');
+    return JSON.parse(plaintext);
+  }
+
+  private safeEqual(left: string, right: string) {
+    const leftBuffer = Buffer.from(left);
+    const rightBuffer = Buffer.from(right);
     return (
-      this.signCallback(input.payload, input.timestamp, input.nonce) ===
-      input.signature
+      leftBuffer.length === rightBuffer.length &&
+      timingSafeEqual(leftBuffer, rightBuffer)
     );
   }
 }

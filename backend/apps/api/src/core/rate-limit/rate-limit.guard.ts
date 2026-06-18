@@ -15,7 +15,7 @@ export class RateLimitGuard implements CanActivate {
     private readonly limits: RateLimitService,
   ) {}
 
-  canActivate(context: ExecutionContext): boolean {
+  async canActivate(context: ExecutionContext): Promise<boolean> {
     const options = this.reflector.getAllAndOverride<RateLimitOptions>(
       RATE_LIMIT_META,
       [context.getHandler(), context.getClass()],
@@ -26,7 +26,7 @@ export class RateLimitGuard implements CanActivate {
     const req = http.getRequest();
     const res = http.getResponse();
     const key = `${options.keyPrefix}:${this.subject(req, options.keyBy ?? 'user')}`;
-    const result = this.limits.check({ ...options, key });
+    const result = await this.limits.check({ ...options, key });
     if (result.allowed) return true;
 
     res.setHeader('Retry-After', String(result.retryAfter ?? 1));
@@ -38,6 +38,9 @@ export class RateLimitGuard implements CanActivate {
     if (keyBy === 'ip') return ip;
     if (keyBy === 'login') {
       return `${ip}:${String(req.body?.username ?? 'anonymous')}`;
+    }
+    if (keyBy === 'ip-phone') {
+      return `${ip}:${String(req.body?.phone ?? 'anonymous')}`;
     }
     return req.user?.userId ?? ip;
   }

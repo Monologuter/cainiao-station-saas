@@ -174,4 +174,41 @@ export class PointService {
       },
     };
   }
+
+  async getRankForMember(memberId: string) {
+    const latest = await this.prisma.$transaction((tx) =>
+      tx.pointRecord.findFirst({
+        where: {
+          memberId,
+          sourceTenantId: { not: null },
+        },
+        orderBy: { createdAt: 'desc' },
+        select: { sourceTenantId: true },
+      }),
+    );
+    if (!latest?.sourceTenantId) {
+      return {
+        top: [],
+        self: { memberId: this.maskMemberId(memberId), score: 0, rank: null },
+      };
+    }
+    const rank = await this.getRank(latest.sourceTenantId, memberId);
+    return {
+      top: rank.top.map((item) => ({
+        ...item,
+        memberId: this.maskMemberId(item.memberId),
+      })),
+      self: {
+        ...rank.self,
+        memberId: this.maskMemberId(rank.self.memberId),
+      },
+    };
+  }
+
+  private maskMemberId(memberId: string) {
+    if (memberId.length <= 4) {
+      return `${memberId.slice(0, 1)}***${memberId.slice(-1)}`;
+    }
+    return `${memberId.slice(0, 3)}***${memberId.slice(-3)}`;
+  }
 }

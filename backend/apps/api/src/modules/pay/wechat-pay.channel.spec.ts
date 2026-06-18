@@ -1,3 +1,9 @@
+import {
+  createCipheriv,
+  generateKeyPairSync,
+  randomBytes,
+  sign,
+} from 'node:crypto';
 import { IntegrationConfigService } from '../config/integration-config.service';
 import { MockPayChannel } from './mock-pay.channel';
 import { PayChannelFactory } from './pay-channel.factory';
@@ -44,30 +50,46 @@ describe('WechatPayChannel', () => {
     });
   });
 
-  it('verifies signed callback and rejects forged signatures', () => {
+  it('verifies and decrypts a WeChat Pay v3 callback and rejects forged signatures', () => {
+    const { privateKey, publicKey } = generateKeyPairSync('rsa', {
+      modulusLength: 2048,
+    });
+    const apiV3Key = '0123456789abcdef0123456789abcdef';
     const channel = new WechatPayChannel(
       { createTransaction: jest.fn() } as any,
       {
         appId: 'wx-app',
         mchId: 'mch-1',
-        apiV3Key: 'secret',
+        apiV3Key,
         notifyUrl: 'https://example.com/pay/callback',
+        platformPublicKey: publicKey.export({ type: 'spki', format: 'pem' }) as string,
+        platformCertificateSerialNo: 'serial-1',
       },
     );
-    const payload = JSON.stringify({
+    const decrypted = JSON.stringify({
       out_trade_no: 'pay-key-1',
       transaction_id: 'wx-tx-1',
       amount: { payer_total: 1300 },
       trade_state: 'SUCCESS',
       success_time: '2026-06-18T10:00:00.000Z',
     });
+    const resource = encryptResource(apiV3Key, decrypted);
+    const body = JSON.stringify({ resource });
+    const timestamp = '100';
+    const nonce = 'nonce-1';
+    const signature = sign(
+      'RSA-SHA256',
+      Buffer.from(`${timestamp}\n${nonce}\n${body}\n`),
+      privateKey,
+    ).toString('base64');
 
     expect(
       channel.verifyCallback({
-        payload,
-        timestamp: '100',
-        nonce: 'nonce-1',
-        signature: channel.signCallback(payload, '100', 'nonce-1'),
+        body,
+        timestamp,
+        nonce,
+        signature,
+        serial: 'serial-1',
         expectedAmount: 1300,
         now: () => 100_000,
       }),
@@ -78,10 +100,11 @@ describe('WechatPayChannel', () => {
     });
     expect(
       channel.verifyCallback({
-        payload,
-        timestamp: '100',
+        body,
+        timestamp,
         nonce: 'nonce-2',
         signature: 'bad',
+        serial: 'serial-1',
         expectedAmount: 1300,
         now: () => 100_000,
       }),
@@ -163,6 +186,28 @@ describe('WechatPayChannel', () => {
     ]);
   });
 });
+
+function encryptResource(apiV3Key: string, plaintext: string) {
+  const nonce = randomBytes(12).toString('base64url').slice(0, 12);
+  const associatedData = 'transaction';
+  const cipher = createCipheriv(
+    'aes-256-gcm',
+    Buffer.from(apiV3Key),
+    Buffer.from(nonce),
+  );
+  cipher.setAAD(Buffer.from(associatedData));
+  const encrypted = Buffer.concat([
+    cipher.update(plaintext, 'utf8'),
+    cipher.final(),
+  ]);
+  const tag = cipher.getAuthTag();
+  return {
+    algorithm: 'AEAD_AES_256_GCM',
+    nonce,
+    associated_data: associatedData,
+    ciphertext: Buffer.concat([encrypted, tag]).toString('base64'),
+  };
+}
 
 describe('PayChannelFactory', () => {
   it('selects WeChat pay only when switchboard resolves it without degradation', async () => {

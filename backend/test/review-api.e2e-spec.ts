@@ -26,17 +26,17 @@ describe('Review API e2e', () => {
 
   it('lets consumers submit reviews and complaints, and staff handle them', async () => {
     const boss = await openTenant('评价 API 驿站');
+    await prepareSlots(boss);
     const consumer = await loginConsumer();
+    const inbound = await inboundParcel(boss, consumer.phone);
 
     const review = await request(app.getHttpServer())
       .post('/api/reviews')
       .set('Authorization', `Bearer ${consumer.token}`)
       .send({
-        tenantId: boss.tenantId,
-        stationId: boss.stationId,
         targetType: 'PICKUP',
         refType: 'parcel',
-        refId: `parcel-${Date.now()}`,
+        refId: inbound.parcelId,
         rating: 5,
         tags: ['服务好'],
         content: '很快',
@@ -65,9 +65,9 @@ describe('Review API e2e', () => {
       .post('/api/complaints')
       .set('Authorization', `Bearer ${consumer.token}`)
       .send({
-        tenantId: boss.tenantId,
-        stationId: boss.stationId,
         type: 'SERVICE',
+        refType: 'parcel',
+        refId: inbound.parcelId,
         content: '服务需改进',
       })
       .expect(201);
@@ -123,15 +123,15 @@ describe('Review API e2e', () => {
     const phone = `135${Math.floor(Math.random() * 100000000)
       .toString()
       .padStart(8, '0')}`;
-    await request(app.getHttpServer())
+    const sent = await request(app.getHttpServer())
       .post('/api/consumer/auth/send-code')
       .send({ phone })
       .expect(201);
     const verify = await request(app.getHttpServer())
       .post('/api/consumer/auth/verify')
-      .send({ phone, code: '123456' })
+      .send({ phone, code: sent.body.data.debugCode })
       .expect(201);
-    return { token: verify.body.data.pickToken as string };
+    return { token: verify.body.data.pickToken as string, phone };
   }
 
   async function openTenant(name: string) {
@@ -161,5 +161,35 @@ describe('Review API e2e', () => {
       stationId: open.body.data.stationId as string,
       token: login.body.data.accessToken as string,
     };
+  }
+
+  async function prepareSlots(boss: { stationId: string; token: string }) {
+    const shelf = await request(app.getHttpServer())
+      .post(`/api/stations/${boss.stationId}/shelves`)
+      .set('Authorization', `Bearer ${boss.token}`)
+      .send({ code: `RV${Date.now()}`, name: '评价货架', zone: 'R' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/shelves/${shelf.body.data.id}/slots/batch`)
+      .set('Authorization', `Bearer ${boss.token}`)
+      .send({ rows: 1, levels: 1, cols: 2 })
+      .expect(201);
+  }
+
+  async function inboundParcel(
+    boss: { stationId: string; token: string },
+    phone: string,
+  ) {
+    const res = await request(app.getHttpServer())
+      .post('/api/inbound')
+      .set('Authorization', `Bearer ${boss.token}`)
+      .send({
+        stationId: boss.stationId,
+        waybillNo: `RV${Date.now()}`,
+        carrier: 'YTO',
+        receiverPhone: phone,
+      })
+      .expect(201);
+    return res.body.data;
   }
 });

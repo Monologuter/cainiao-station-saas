@@ -93,6 +93,12 @@ describe('Auth session hardening e2e', () => {
       .send({ oldPassword: 'pw123456', newPassword: 'pw654321' })
       .expect(201);
 
+    const oldAccess = await request(app.getHttpServer())
+      .get('/api/auth/me')
+      .set('Authorization', `Bearer ${boss.accessToken}`)
+      .expect(200);
+    expect(oldAccess.body.code).toBe(ApiCode.UNAUTHORIZED);
+
     const oldRefresh = await request(app.getHttpServer())
       .post('/api/auth/refresh')
       .send({ refreshToken: boss.refreshToken })

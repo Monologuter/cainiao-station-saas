@@ -233,13 +233,13 @@ describe('Assistant API e2e', () => {
       .send({ username: ownerPhone, password: 'pw123456' })
       .expect(201);
 
-    await request(app.getHttpServer())
+    const sent = await request(app.getHttpServer())
       .post('/api/consumer/auth/send-code')
       .send({ phone })
       .expect(201);
     const verify = await request(app.getHttpServer())
       .post('/api/consumer/auth/verify')
-      .send({ phone, code: '123456' })
+      .send({ phone, code: sent.body.data.debugCode })
       .expect(201);
 
     return {

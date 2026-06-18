@@ -11,23 +11,17 @@ import { ApiCode, BizError } from '../../core/http/api-code';
 import { Audit } from '../audit/audit.decorator';
 import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
 import {
-  ChannelConfigService,
-  UpdateChannelConfigInput,
-} from './channel-config.service';
-import {
-  CreateDictItemInput,
-  DictionaryService,
-  UpdateDictItemInput,
-} from './dictionary.service';
-import {
-  SystemConfigService,
-  UpdateSystemConfigInput,
-} from './system-config.service';
-import {
-  CreateNotifyTemplateInput,
-  NotifyTemplateService,
-  UpdateNotifyTemplateInput,
-} from './notify-template.service';
+  CreateDictItemDto,
+  CreateNotifyTemplateDto,
+  UpdateChannelConfigDto,
+  UpdateDictItemDto,
+  UpdateNotifyTemplateDto,
+  UpdateSystemConfigDto,
+} from './config.dto';
+import { ChannelConfigService } from './channel-config.service';
+import { DictionaryService } from './dictionary.service';
+import { SystemConfigService } from './system-config.service';
+import { NotifyTemplateService } from './notify-template.service';
 
 @Controller('admin/config')
 export class AdminDictionaryController {
@@ -57,7 +51,7 @@ export class AdminDictionaryController {
   createItem(
     @CurrentUser() user: any,
     @Param('type') type: string,
-    @Body() body: CreateDictItemInput,
+    @Body() body: CreateDictItemDto,
   ) {
     this.requirePlatform(user);
     return this.dictionaries.createItem(type, body);
@@ -73,7 +67,7 @@ export class AdminDictionaryController {
   updateItem(
     @CurrentUser() user: any,
     @Param('id') id: string,
-    @Body() body: UpdateDictItemInput,
+    @Body() body: UpdateDictItemDto,
   ) {
     this.requirePlatform(user);
     return this.dictionaries.updateItem(id, body);
@@ -118,7 +112,7 @@ export class AdminSystemConfigController {
   update(
     @CurrentUser() user: any,
     @Param('key') key: string,
-    @Body() body: UpdateSystemConfigInput,
+    @Body() body: UpdateSystemConfigDto,
   ) {
     this.requirePlatform(user);
     return this.systemConfigs.update(key, body, user.userId);
@@ -152,7 +146,7 @@ export class AdminChannelConfigController {
   update(
     @CurrentUser() user: any,
     @Param('channel') channel: string,
-    @Body() body: UpdateChannelConfigInput,
+    @Body() body: UpdateChannelConfigDto,
   ) {
     this.requirePlatform(user);
     return this.channels.update(channel, body, user.userId);
@@ -183,7 +177,7 @@ export class AdminNotifyTemplateController {
   })
   @RequirePermission('config:manage')
   @Post()
-  create(@CurrentUser() user: any, @Body() body: CreateNotifyTemplateInput) {
+  create(@CurrentUser() user: any, @Body() body: CreateNotifyTemplateDto) {
     this.requirePlatform(user);
     return this.templates.create(body);
   }
@@ -198,7 +192,7 @@ export class AdminNotifyTemplateController {
   update(
     @CurrentUser() user: any,
     @Param('id') id: string,
-    @Body() body: UpdateNotifyTemplateInput,
+    @Body() body: UpdateNotifyTemplateDto,
   ) {
     this.requirePlatform(user);
     return this.templates.update(id, body);

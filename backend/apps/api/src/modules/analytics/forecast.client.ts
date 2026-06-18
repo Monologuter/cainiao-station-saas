@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { requireAiServiceToken } from '../../core/config/security-env';
 
 export interface ForecastPoint {
   targetDate: string;
@@ -28,10 +29,7 @@ interface ForecastInput {
 export class ForecastClient {
   private readonly baseUrl =
     process.env.AI_SERVICE_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:8000';
-  private readonly serviceToken =
-    process.env.AI_SERVICE_TOKEN ??
-    process.env.SERVICE_TOKEN ??
-    'dev-service-token';
+  private readonly serviceToken = requireAiServiceToken();
 
   async forecast(input: ForecastInput): Promise<ForecastResponse | null> {
     if ((process.env.FORECAST_PROVIDER ?? 'mock') !== 'ai') {

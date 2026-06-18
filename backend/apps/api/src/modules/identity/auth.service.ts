@@ -144,7 +144,11 @@ export class AuthService {
       });
     });
 
-    if (!user || !(await argon2.verify(user.passwordHash, password))) {
+    if (
+      !user ||
+      user.status !== 'active' ||
+      !(await argon2.verify(user.passwordHash, password))
+    ) {
       throw new BizError(ApiCode.UNAUTHORIZED, '账号或密码错误');
     }
 
@@ -162,6 +166,7 @@ export class AuthService {
       roles,
       isPlatform,
       scope,
+      tokenVersion: user.tokenVersion,
     });
     const refreshToken = await this.issueRefreshToken(user.id);
 
@@ -209,6 +214,7 @@ export class AuthService {
         roles,
         isPlatform,
         scope,
+        tokenVersion: user.tokenVersion,
       }),
       refreshToken: await this.issueRefreshToken(user.id),
       user: {
@@ -246,7 +252,10 @@ export class AuthService {
       await tx.$executeRawUnsafe(
         `SELECT set_config('app.bypass_rls', 'on', true)`,
       );
-      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+      await tx.user.update({
+        where: { id: userId },
+        data: { passwordHash, tokenVersion: { increment: 1 } },
+      });
     });
     await this.revokeUserSessions(userId);
     return { changed: true };
@@ -270,7 +279,7 @@ export class AuthService {
         include: { roles: { include: { role: true } } },
       });
     });
-    if (!user) {
+    if (!user || user.status !== 'active') {
       throw new BizError(ApiCode.UNAUTHORIZED, '用户不存在');
     }
     return user;
@@ -294,6 +303,7 @@ export class AuthService {
     roles: string[];
     isPlatform: boolean;
     scope: { allStations: boolean; stations: string[] };
+    tokenVersion: number;
   }) {
     return this.jwt.signAsync({
       sub: input.userId,
@@ -303,6 +313,7 @@ export class AuthService {
       isPlatform: input.isPlatform,
       allStations: input.scope.allStations,
       stations: input.scope.stations,
+      tokenVersion: input.tokenVersion,
     });
   }
 

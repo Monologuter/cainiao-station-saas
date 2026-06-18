@@ -11,7 +11,7 @@ describe('AssistantClient', () => {
     global.fetch = originalFetch;
     jest.restoreAllMocks();
     delete process.env.AI_SERVICE_URL;
-    delete process.env.SERVICE_TOKEN;
+    delete process.env.AI_SERVICE_TOKEN;
     delete process.env.AI_ASSISTANT_TIMEOUT_MS;
   });
 
@@ -25,7 +25,7 @@ describe('AssistantClient', () => {
 
   it('parses ai-service tool calls and continuation events', async () => {
     process.env.AI_SERVICE_URL = 'http://ai.local';
-    process.env.SERVICE_TOKEN = 'test-token';
+    process.env.AI_SERVICE_TOKEN = 'test-token';
     const fetchMock = jest.fn(async (url: string) => {
       if (url.endsWith('/assistant/chat')) {
         return response(
@@ -79,6 +79,7 @@ describe('AssistantClient', () => {
 
   it('aborts the request with AbortController when ai-service hangs past the timeout', async () => {
     process.env.AI_ASSISTANT_TIMEOUT_MS = '20';
+    process.env.AI_SERVICE_TOKEN = 'test-token';
     let capturedSignal: AbortSignal | undefined;
     global.fetch = jest.fn((_url: string, init: any) => {
       capturedSignal = init?.signal;
@@ -104,6 +105,7 @@ describe('AssistantClient', () => {
     global.fetch = jest.fn(async () => {
       throw new Error('ECONNREFUSED 127.0.0.1:8000');
     }) as any;
+    process.env.AI_SERVICE_TOKEN = 'test-token';
     const client = new AssistantClient(new CircuitBreakerService());
 
     const error = await client.ask('在吗？', consumerCtx).catch((e) => e);
@@ -118,6 +120,7 @@ describe('AssistantClient', () => {
     global.fetch = jest.fn(async () => {
       throw new Error('ECONNREFUSED');
     }) as any;
+    process.env.AI_SERVICE_TOKEN = 'test-token';
     const client = new AssistantClient(new CircuitBreakerService());
 
     const error = await client
@@ -133,6 +136,7 @@ describe('AssistantClient', () => {
       throw new Error('ECONNREFUSED');
     }) as any;
     global.fetch = fetchMock;
+    process.env.AI_SERVICE_TOKEN = 'test-token';
     const client = new AssistantClient(breaker);
 
     // failureThreshold is 3 -> after 3 failures the breaker opens.

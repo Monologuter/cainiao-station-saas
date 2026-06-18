@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Put } from '@nestjs/common';
 import { CurrentUser, RequirePermission } from '../../identity/decorators';
+import { CreatePlanDto, UpdatePlanDto } from './plan.dto';
 import { PlanService } from './plan.service';
 
 @Controller('billing/plans')
@@ -14,7 +15,7 @@ export class PlanController {
 
   @RequirePermission('plan:write')
   @Post()
-  async createPlan(@CurrentUser() user: any, @Body() body: any) {
+  async createPlan(@CurrentUser() user: any, @Body() body: CreatePlanDto) {
     await this.plans.assertPlatform(user);
     return this.plans.createPlan(body);
   }
@@ -24,7 +25,7 @@ export class PlanController {
   async updatePlan(
     @CurrentUser() user: any,
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: UpdatePlanDto,
   ) {
     await this.plans.assertPlatform(user);
     return this.plans.updatePlan(id, body);

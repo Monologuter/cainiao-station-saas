@@ -1337,6 +1337,7 @@ model User {
   passwordHash String
   phone        String?
   status       String     @default("active")
+  tokenVersion Int        @default(0) @map("token_version")
   createdAt    DateTime   @default(now())
   tenant       Tenant?    @relation(fields: [tenantId], references: [id])
   roles        UserRole[]

@@ -1,12 +1,14 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
 import { ParcelStatus } from '@prisma/client';
+import { randomInt } from 'node:crypto';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { RedisService } from '../../core/redis/redis.service';
 import { nextLevelProgress, levelForTotalPoints } from './point-rule.config';
 
-const MOCK_CODE = '123456';
 const CONSUMER_SCOPE = 'consumer:parcel-read';
+const OTP_TTL_SECONDS = 300;
 
 export interface ConsumerTokenPayload {
   sub: string;
@@ -19,21 +21,31 @@ export class MemberService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly redis: RedisService,
   ) {}
 
-  sendCode(phone: string) {
+  async sendCode(phone: string) {
+    const code = randomInt(0, 1_000_000).toString().padStart(6, '0');
+    await this.redis
+      .getClient()
+      .set(this.otpKey(phone), code, 'EX', OTP_TTL_SECONDS);
     return {
       sent: true,
       channel: 'mock-sms',
-      expiresInSeconds: 300,
+      expiresInSeconds: OTP_TTL_SECONDS,
       phoneTail: phone.slice(-4),
+      ...(process.env.NODE_ENV === 'production' ? {} : { debugCode: code }),
     };
   }
 
   async verifyCode(phone: string, code: string) {
-    if (code !== MOCK_CODE) {
+    const client = this.redis.getClient();
+    const key = this.otpKey(phone);
+    const stored = await client.get(key);
+    if (!stored || stored !== code) {
       throw new BizError(ApiCode.UNAUTHORIZED, '验证码错误');
     }
+    await client.del(key);
 
     const consumer = await this.prisma.consumer.upsert({
       where: { phone },
@@ -193,6 +205,10 @@ export class MemberService {
   private extractBearer(authHeader?: string) {
     const match = authHeader?.match(/^Bearer\s+(.+)$/i);
     return match?.[1];
+  }
+
+  private otpKey(phone: string) {
+    return `consumer:otp:${phone}`;
   }
 
   private parseStatus(status: string): ParcelStatus {

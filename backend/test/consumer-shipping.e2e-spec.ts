@@ -26,13 +26,13 @@ describe('Consumer shipping e2e', () => {
 
   it('lets a consumer quote, create, pay, list and track only their own shipping orders', async () => {
     const { stationId } = await openTenant();
-    const alice = await verifyConsumer('13000000001');
-    const bob = await verifyConsumer('13000000002');
+    const alice = await verifyConsumer(randomPhone('130'));
+    const bob = await verifyConsumer(randomPhone('131'));
 
     const quote = await request(app.getHttpServer())
       .post('/api/shipping/consumer/quote')
       .set('Authorization', `Bearer ${alice.token}`)
-      .send({ ...makeQuoteBody(), stationId })
+      .send({ ...makeQuoteBody(alice.phone), stationId })
       .expect(201);
     expect(quote.body.data[0]).toMatchObject({
       courierCode: expect.any(String),
@@ -42,7 +42,7 @@ describe('Consumer shipping e2e', () => {
     const created = await request(app.getHttpServer())
       .post('/api/shipping/consumer/orders')
       .set('Authorization', `Bearer ${alice.token}`)
-      .send(makeOrderBody(stationId))
+      .send(makeOrderBody(stationId, alice.phone))
       .expect(201);
     expect(created.body.data).toMatchObject({
       status: 'CREATED',
@@ -89,6 +89,21 @@ describe('Consumer shipping e2e', () => {
     expect(tracks.body.data).toEqual([]);
   });
 
+  it('rejects invalid consumer shipping payloads', async () => {
+    const { stationId } = await openTenant();
+    const alice = await verifyConsumer(randomPhone('132'));
+    const invalid = await request(app.getHttpServer())
+      .post('/api/shipping/consumer/orders')
+      .set('Authorization', `Bearer ${alice.token}`)
+      .send({
+        ...makeOrderBody(stationId),
+        sender: { ...makeOrderBody(stationId, alice.phone).sender },
+        item: { type: '文件', weightGram: -1 },
+      })
+      .expect(400);
+    expect(invalid.body.message).toContain('weightGram');
+  });
+
   async function openTenant() {
     const adminLogin = await request(app.getHttpServer())
       .post('/api/auth/login')
@@ -112,25 +127,32 @@ describe('Consumer shipping e2e', () => {
   }
 
   async function verifyConsumer(phone: string) {
-    await request(app.getHttpServer())
+    const sent = await request(app.getHttpServer())
       .post('/api/consumer/auth/send-code')
       .send({ phone })
       .expect(201);
     const verified = await request(app.getHttpServer())
       .post('/api/consumer/auth/verify')
-      .send({ phone, code: '123456' })
+      .send({ phone, code: sent.body.data.debugCode })
       .expect(201);
     return {
       token: verified.body.data.pickToken as string,
       consumerId: verified.body.data.consumerId as string,
+      phone,
     };
   }
 
-  function makeQuoteBody() {
+  function randomPhone(prefix: string) {
+    return `${prefix}${Math.floor(Math.random() * 100000000)
+      .toString()
+      .padStart(8, '0')}`;
+  }
+
+  function makeQuoteBody(senderPhone = '13000000001') {
     return {
       sender: {
         name: '张三',
-        phone: '13000000001',
+        phone: senderPhone,
         province: '浙江省',
         city: '杭州市',
         district: '西湖区',
@@ -149,13 +171,13 @@ describe('Consumer shipping e2e', () => {
     };
   }
 
-  function makeOrderBody(stationId: string) {
+  function makeOrderBody(stationId: string, senderPhone = '13000000001') {
     return {
       stationId,
       courierCode: 'YTO',
       sender: {
         name: '张三',
-        phone: '13000000001',
+        phone: senderPhone,
         province: '浙江省',
         city: '杭州市',
         district: '西湖区',

@@ -1,5 +1,6 @@
 import { Body, Controller, Get, Param, Post, Query } from '@nestjs/common';
 import { CurrentUser, RequirePermission } from '../identity/decorators';
+import { CreateExceptionDto, ResolveExceptionDto } from './exception.dto';
 import { ExceptionService } from './exception.service';
 
 @Controller()
@@ -8,7 +9,7 @@ export class ExceptionController {
 
   @RequirePermission('exception:create')
   @Post('parcels/:id/exception')
-  createForParcel(@Param('id') parcelId: string, @Body() body: any) {
+  createForParcel(@Param('id') parcelId: string, @Body() body: CreateExceptionDto) {
     return this.exceptions.createException({
       parcelId,
       stationId: body.stationId,
@@ -39,7 +40,7 @@ export class ExceptionController {
 
   @RequirePermission('exception:handle')
   @Post('exceptions/:id/resolve')
-  resolve(@Param('id') id: string, @Body() body: any) {
+  resolve(@Param('id') id: string, @Body() body: ResolveExceptionDto) {
     return this.exceptions.resolve(id, {
       resolution: body.resolution,
       note: body.note,

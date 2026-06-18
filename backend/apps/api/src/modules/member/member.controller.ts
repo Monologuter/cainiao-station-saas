@@ -8,6 +8,7 @@ import {
   Query,
 } from '@nestjs/common';
 import { IsOptional, IsString } from 'class-validator';
+import { RateLimit } from '../../core/rate-limit/rate-limit.decorator';
 import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
 import { CheckinService } from './checkin.service';
 import {
@@ -15,6 +16,12 @@ import {
   VerifyConsumerCodeDto,
 } from './consumer-auth.dto';
 import { CouponService } from './coupon.service';
+import {
+  CreateCouponTemplateDto,
+  IssueCouponsDto,
+  RedeemCouponDto,
+  VerifyCouponDto,
+} from './coupon.dto';
 import { MemberService } from './member.service';
 import { PointService } from './point.service';
 
@@ -29,11 +36,25 @@ class ConsumerParcelQuery {
 export class MemberController {
   constructor(private readonly member: MemberService) {}
 
+  @RateLimit({
+    keyPrefix: 'consumer-otp-send',
+    strategy: 'sliding-window',
+    limit: 1,
+    windowMs: 60_000,
+    keyBy: 'ip-phone',
+  })
   @Post('auth/send-code')
   sendCode(@Body() dto: SendConsumerCodeDto) {
     return this.member.sendCode(dto.phone);
   }
 
+  @RateLimit({
+    keyPrefix: 'consumer-otp-verify',
+    strategy: 'sliding-window',
+    limit: 5,
+    windowMs: 300_000,
+    keyBy: 'ip-phone',
+  })
   @Post('auth/verify')
   verify(@Body() dto: VerifyConsumerCodeDto) {
     return this.member.verifyCode(dto.phone, dto.code);
@@ -84,10 +105,9 @@ export class MemberCenterController {
   @Get('points/rank')
   async pointRank(
     @Headers('authorization') authorization: string | undefined,
-    @Query('tenantId') tenantId: string,
   ) {
     const { member } = await this.member.requireMember(authorization);
-    return this.points.getRank(tenantId, member.id);
+    return this.points.getRankForMember(member.id);
   }
 
   @Post('checkin')
@@ -129,7 +149,7 @@ export class MemberCenterController {
   @Post('coupons/redeem')
   async redeemCoupon(
     @Headers('authorization') authorization: string | undefined,
-    @Body() body: any,
+    @Body() body: RedeemCouponDto,
   ) {
     const { member } = await this.member.requireMember(authorization);
     return this.coupons.redeemByPoints(member.id, body.templateId);
@@ -139,7 +159,7 @@ export class MemberCenterController {
   async verifyCoupon(
     @Headers('authorization') authorization: string | undefined,
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: VerifyCouponDto,
   ) {
     const { member } = await this.member.requireMember(authorization);
     return this.coupons.verifyForMember(member.id, id, body);
@@ -152,7 +172,10 @@ export class MemberAdminController {
 
   @RequirePermission('coupon:manage')
   @Post('coupon-templates')
-  createCouponTemplate(@CurrentUser() user: any, @Body() body: any) {
+  createCouponTemplate(
+    @CurrentUser() user: any,
+    @Body() body: CreateCouponTemplateDto,
+  ) {
     return this.coupons.createTemplate(user.tenantId, body);
   }
 
@@ -171,7 +194,7 @@ export class MemberAdminController {
   issueCoupons(
     @CurrentUser() user: any,
     @Param('id') id: string,
-    @Body() body: any,
+    @Body() body: IssueCouponsDto,
   ) {
     return this.coupons.issue(user.tenantId, id, body.memberIds ?? []);
   }

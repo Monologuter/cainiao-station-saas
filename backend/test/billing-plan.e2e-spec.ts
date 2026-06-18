@@ -75,6 +75,22 @@ describe('Billing plans e2e', () => {
     expect(denied.body.code).toBe(1003);
   });
 
+  it('rejects invalid plan price payloads before persistence', async () => {
+    const adminToken = await login('admin', 'admin123456');
+    const invalid = await request(app.getHttpServer())
+      .post('/api/billing/plans')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        code: `NEG${Date.now()}`,
+        name: '非法套餐',
+        monthlyPrice: -1,
+        quotas: {},
+        overagePrices: {},
+      })
+      .expect(400);
+    expect(invalid.body.message).toContain('monthlyPrice');
+  });
+
   async function login(username: string, password: string) {
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')

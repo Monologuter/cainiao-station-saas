@@ -1,6 +1,48 @@
 import { MemberService } from './member.service';
 
 describe('MemberService profile', () => {
+  const previousNodeEnv = process.env.NODE_ENV;
+
+  afterEach(() => {
+    process.env.NODE_ENV = previousNodeEnv;
+  });
+
+  it('issues a random Redis-backed OTP and consumes it once', async () => {
+    const redis = makeRedis();
+    const prisma = {
+      consumer: {
+        upsert: jest.fn().mockResolvedValue({ id: 'c1', phone: '13800000000' }),
+      },
+    };
+    const jwt = { signAsync: jest.fn().mockResolvedValue('pick-token') };
+    const service = new MemberService(prisma as any, jwt as any, redis as any);
+
+    const sent = await service.sendCode('13800000000');
+    const otp = redis.valueFor('consumer:otp:13800000000');
+
+    expect(sent).toMatchObject({ sent: true, expiresInSeconds: 300 });
+    expect(otp).toMatch(/^\d{6}$/);
+    expect(otp).not.toBe('123456');
+
+    await expect(service.verifyCode('13800000000', otp)).resolves.toEqual({
+      pickToken: 'pick-token',
+      consumerId: 'c1',
+    });
+    await expect(service.verifyCode('13800000000', otp)).rejects.toMatchObject({
+      code: 1002,
+    });
+  });
+
+  it('rejects the fixed mock code in production', async () => {
+    process.env.NODE_ENV = 'production';
+    const redis = makeRedis();
+    const service = new MemberService({} as any, {} as any, redis as any);
+
+    await expect(
+      service.verifyCode('13800000000', '123456'),
+    ).rejects.toMatchObject({ code: 1002 });
+  });
+
   it('creates member profile once for consumer', async () => {
     const tx = {
       consumer: {
@@ -20,7 +62,7 @@ describe('MemberService profile', () => {
       },
     };
     const prisma = { $transaction: (fn: any) => fn(tx) } as any;
-    const service = new MemberService(prisma, {} as any);
+    const service = new MemberService(prisma, {} as any, makeRedis() as any);
 
     const member = await service.ensureMember('c1', '13800000000');
 
@@ -48,7 +90,7 @@ describe('MemberService profile', () => {
       },
     };
     const prisma = { $transaction: (fn: any) => fn(tx) } as any;
-    const service = new MemberService(prisma, {} as any);
+    const service = new MemberService(prisma, {} as any, makeRedis() as any);
 
     await expect(service.ensureMember('c1', '13800000000')).resolves.toBe(
       existing,
@@ -71,7 +113,7 @@ describe('MemberService profile', () => {
       },
     };
     const prisma = { $transaction: (fn: any) => fn(tx) } as any;
-    const service = new MemberService(prisma, {} as any);
+    const service = new MemberService(prisma, {} as any, makeRedis() as any);
 
     await expect(service.getProfile('m1')).resolves.toMatchObject({
       id: 'm1',
@@ -97,7 +139,7 @@ describe('MemberService profile', () => {
       },
     };
     const prisma = { $transaction: (fn: any) => fn(tx) } as any;
-    const service = new MemberService(prisma, {} as any);
+    const service = new MemberService(prisma, {} as any, makeRedis() as any);
 
     await expect(service.recalcLevel('m1')).resolves.toBe(2);
     expect(tx.member.update).toHaveBeenCalledWith({
@@ -106,3 +148,21 @@ describe('MemberService profile', () => {
     });
   });
 });
+
+function makeRedis() {
+  const store = new Map<string, string>();
+  return {
+    getClient: () => ({
+      set: jest.fn(async (key: string, value: string) => {
+        store.set(key, value);
+        return 'OK';
+      }),
+      get: jest.fn(async (key: string) => store.get(key) ?? null),
+      del: jest.fn(async (key: string) => {
+        const existed = store.delete(key);
+        return existed ? 1 : 0;
+      }),
+    }),
+    valueFor: (key: string) => store.get(key),
+  };
+}

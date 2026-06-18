@@ -3,7 +3,7 @@ import { SetMetadata } from '@nestjs/common';
 export const RATE_LIMIT_META = 'rateLimit';
 
 export type RateLimitStrategy = 'token-bucket' | 'sliding-window';
-export type RateLimitKeyBy = 'ip' | 'user' | 'login';
+export type RateLimitKeyBy = 'ip' | 'user' | 'login' | 'ip-phone';
 
 export interface RateLimitOptions {
   keyPrefix: string;

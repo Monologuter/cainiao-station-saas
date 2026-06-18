@@ -3,6 +3,7 @@ import { Test } from '@nestjs/testing';
 import * as request from 'supertest';
 import { AppModule } from '../apps/api/src/app.module';
 import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
+import { applyHttpSecurity } from '../apps/api/src/core/http/security';
 import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
 
 describe('Health and metrics e2e', () => {
@@ -13,6 +14,7 @@ describe('Health and metrics e2e', () => {
       imports: [AppModule],
     }).compile();
     app = mod.createNestApplication();
+    applyHttpSecurity(app);
     app.setGlobalPrefix('api');
     app.useGlobalPipes(
       new ValidationPipe({ whitelist: true, transform: true }),
@@ -31,6 +33,9 @@ describe('Health and metrics e2e', () => {
       .expect(200);
 
     expect(live.headers['x-request-id']).toBe('trace-health-1');
+    expect(live.headers['x-frame-options']).toBe('SAMEORIGIN');
+    expect(live.headers['strict-transport-security']).toContain('max-age=');
+    expect(live.headers['content-security-policy']).toBeDefined();
     expect(live.body.data).toEqual({ status: 'ok' });
 
     const ready = await request(app.getHttpServer())

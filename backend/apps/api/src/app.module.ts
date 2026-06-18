@@ -1,6 +1,7 @@
 import { Module } from '@nestjs/common';
 import { ConfigModule } from '@nestjs/config';
 import { APP_GUARD, APP_INTERCEPTOR } from '@nestjs/core';
+import { validateSecurityEnv } from './core/config/security-env';
 import { EventBusModule } from './core/event-bus/event-bus.module';
 import { ContextInterceptor } from './core/http/context.interceptor';
 import { MetricsInterceptor } from './core/observability/metrics.interceptor';
@@ -35,7 +36,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
 
 @Module({
   imports: [
-    ConfigModule.forRoot({ isGlobal: true }),
+    ConfigModule.forRoot({ isGlobal: true, validate: validateSecurityEnv }),
     ObservabilityModule,
     EventBusModule,
     AnalyticsModule,

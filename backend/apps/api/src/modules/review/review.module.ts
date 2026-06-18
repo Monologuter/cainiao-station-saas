@@ -1,5 +1,6 @@
 import { Module } from '@nestjs/common';
 import { JwtModule } from '@nestjs/jwt';
+import { requireJwtSecret } from '../../core/config/security-env';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
@@ -15,7 +16,7 @@ import { SatisfactionService } from './satisfaction.service';
   imports: [
     MemberModule,
     JwtModule.register({
-      secret: process.env.JWT_SECRET ?? 'dev-secret-change-me',
+      secret: requireJwtSecret(),
       signOptions: { expiresIn: '7d' },
     }),
   ],

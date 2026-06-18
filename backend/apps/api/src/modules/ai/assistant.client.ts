@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
+import { requireAiServiceToken } from '../../core/config/security-env';
 import { AssistantAnswer, AssistantContext } from './assistant.types';
 
 const DEFAULT_TIMEOUT_MS = 5000;
@@ -31,10 +32,7 @@ export class AssistantServiceUnavailableError extends Error {
 export class AssistantClient {
   private readonly baseUrl =
     process.env.AI_SERVICE_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:8000';
-  private readonly serviceToken =
-    process.env.AI_SERVICE_TOKEN ??
-    process.env.SERVICE_TOKEN ??
-    'dev-service-token';
+  private readonly serviceToken = requireAiServiceToken();
 
   private readonly breaker: CircuitBreakerService;
 

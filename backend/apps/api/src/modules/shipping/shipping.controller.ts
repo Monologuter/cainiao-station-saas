@@ -14,6 +14,7 @@ import { LogisticsService } from '../logistics/logistics.service';
 import { MemberService } from '../member/member.service';
 import { PayService } from '../pay/pay.service';
 import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
+import { CreateConsumerShipOrderDto } from './dto/create-consumer-ship-order.dto';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
 import { ShippingService } from './shipping.service';
@@ -59,7 +60,7 @@ export class ShippingController {
   @Post('consumer/orders')
   async createConsumerOrder(
     @Headers('authorization') authorization: string | undefined,
-    @Body() dto: any,
+    @Body() dto: CreateConsumerShipOrderDto,
   ) {
     const consumer = await this.member.requireConsumer(authorization);
     return this.shipping.createConsumerOrder(

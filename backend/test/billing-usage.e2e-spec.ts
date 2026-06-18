@@ -95,7 +95,7 @@ describe('Billing usage e2e', () => {
       })
       .expect(201);
 
-    const usage = await usageQuantity(boss.tenantId);
+    const usage = await waitForUsageQuantity(boss.tenantId, BigInt(20));
     expect(usage).toBe(BigInt(20));
   });
 
@@ -160,5 +160,22 @@ describe('Billing usage e2e', () => {
       });
       return row.quantity;
     });
+  }
+
+  async function waitForUsageQuantity(
+    tenantId: string,
+    expected: bigint,
+    timeoutMs = 5000,
+  ) {
+    const deadline = Date.now() + timeoutMs;
+    let latest = BigInt(0);
+    while (Date.now() < deadline) {
+      latest = await usageQuantity(tenantId);
+      if (latest >= expected) {
+        return latest;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return latest;
   }
 });

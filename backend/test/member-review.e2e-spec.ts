@@ -103,8 +103,6 @@ describe('Member review closed loop e2e', () => {
       .post('/api/reviews')
       .set('Authorization', `Bearer ${consumer.token}`)
       .send({
-        tenantId: boss.tenantId,
-        stationId: boss.stationId,
         targetType: 'PICKUP',
         refType: 'parcel',
         refId: inbound.body.data.parcelId,
@@ -123,9 +121,9 @@ describe('Member review closed loop e2e', () => {
       .post('/api/complaints')
       .set('Authorization', `Bearer ${consumer.token}`)
       .send({
-        tenantId: boss.tenantId,
-        stationId: boss.stationId,
         type: 'SERVICE',
+        refType: 'parcel',
+        refId: inbound.body.data.parcelId,
         content: '希望延长营业时间',
       })
       .expect(201);
@@ -191,13 +189,13 @@ describe('Member review closed loop e2e', () => {
   }
 
   async function verifyConsumer(phone: string) {
-    await request(app.getHttpServer())
+    const sent = await request(app.getHttpServer())
       .post('/api/consumer/auth/send-code')
       .send({ phone })
       .expect(201);
     const verified = await request(app.getHttpServer())
       .post('/api/consumer/auth/verify')
-      .send({ phone, code: '123456' })
+      .send({ phone, code: sent.body.data.debugCode })
       .expect(201);
     return {
       token: verified.body.data.pickToken as string,

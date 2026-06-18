@@ -85,28 +85,32 @@ describe('Station core loop e2e', () => {
     expect(inbound.body.data.pickupCode).toBeDefined();
     expect(inbound.body.data.slotCode).toBe('A-01-01-01');
 
-    const afterInbound = await prisma.$transaction(async (tx) => {
-      await tx.$executeRawUnsafe(
-        `SELECT set_config('app.bypass_rls', 'on', true)`,
-      );
-      const parcel = await tx.parcel.findUniqueOrThrow({
-        where: { id: inbound.body.data.parcelId },
+    const afterInbound = await waitFor(async () => {
+      const snapshot = await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `SELECT set_config('app.bypass_rls', 'on', true)`,
+        );
+        const parcel = await tx.parcel.findUniqueOrThrow({
+          where: { id: inbound.body.data.parcelId },
+        });
+        const slot = await tx.slot.findFirstOrThrow({
+          where: { stationId, code: inbound.body.data.slotCode },
+        });
+        const notifications = await tx.notification.findMany({
+          where: { tenantId, parcelId: parcel.id },
+          orderBy: { channel: 'asc' },
+        });
+        return { parcel, slot, notifications };
       });
-      const slot = await tx.slot.findFirstOrThrow({
-        where: { stationId, code: inbound.body.data.slotCode },
-      });
-      const notifications = await tx.notification.findMany({
-        where: { tenantId, parcelId: parcel.id },
-        orderBy: { channel: 'asc' },
-      });
-      return { parcel, slot, notifications };
+      return snapshot.notifications.length >= 2 ? snapshot : null;
     });
 
-    expect(afterInbound.parcel.status).toBe('STORED');
-    expect(afterInbound.slot.status).toBe('OCCUPIED');
-    expect(afterInbound.slot.currentParcelId).toBe(inbound.body.data.parcelId);
+    expect(afterInbound).toBeDefined();
+    expect(afterInbound!.parcel.status).toBe('STORED');
+    expect(afterInbound!.slot.status).toBe('OCCUPIED');
+    expect(afterInbound!.slot.currentParcelId).toBe(inbound.body.data.parcelId);
     expect(
-      afterInbound.notifications.map((item) => item.channel).sort(),
+      afterInbound!.notifications.map((item) => item.channel).sort(),
     ).toEqual(['IN_APP', 'SMS']);
 
     const pickup = await request(app.getHttpServer())
@@ -144,4 +148,19 @@ describe('Station core loop e2e', () => {
       .send({ stationId, pickupCode: inbound.body.data.pickupCode });
     expect(duplicate.body.code).toBe(2005);
   });
+
+  async function waitFor<T>(
+    probe: () => Promise<T | null>,
+    timeoutMs = 5000,
+  ): Promise<T | null> {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const value = await probe();
+      if (value) {
+        return value;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return null;
+  }
 });

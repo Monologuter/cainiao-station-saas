@@ -99,6 +99,23 @@ describe('Exception and overdue API e2e', () => {
     expect(secondState.slot.currentParcelId).toBeNull();
   }, 90000);
 
+  it('rejects invalid exception enums', async () => {
+    const boss = await openTenant('异常校验驿站');
+    await prepareSlots(boss, 1);
+    const first = await inbound(boss, '13800000000');
+
+    const invalid = await request(app.getHttpServer())
+      .post(`/api/parcels/${first.parcelId}/exception`)
+      .set('Authorization', `Bearer ${boss.token}`)
+      .send({
+        type: 'NOT_A_TYPE',
+        description: '非法枚举',
+        severity: 'HIGH',
+      })
+      .expect(400);
+    expect(invalid.body.message).toContain('type');
+  });
+
   it('lists overdue parcels and triggers scan manually', async () => {
     const boss = await openTenant('滞留 API 驿站');
     await prepareSlots(boss, 2);

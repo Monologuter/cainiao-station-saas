@@ -57,10 +57,7 @@ describe('Billing full flow e2e', () => {
       })
       .expect(201);
 
-    const usage = await request(app.getHttpServer())
-      .get('/api/billing/usage')
-      .set('Authorization', `Bearer ${boss.token}`)
-      .expect(200);
+    const usage = await waitForSmsUsage(boss.token);
     expect(usage.body.data).toEqual(
       expect.arrayContaining([
         expect.objectContaining({ metric: 'SMS', quantity: 1 }),
@@ -188,5 +185,25 @@ describe('Billing full flow e2e', () => {
       );
       return fn(tx);
     });
+  }
+
+  async function waitForSmsUsage(token: string, timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    let latest: request.Response | undefined;
+    while (Date.now() < deadline) {
+      latest = await request(app.getHttpServer())
+        .get('/api/billing/usage')
+        .set('Authorization', `Bearer ${token}`)
+        .expect(200);
+      if (
+        latest.body.data.some(
+          (item: any) => item.metric === 'SMS' && item.quantity >= 1,
+        )
+      ) {
+        return latest;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    return latest!;
   }
 });

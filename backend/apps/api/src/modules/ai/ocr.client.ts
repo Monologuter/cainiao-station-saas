@@ -1,5 +1,6 @@
 import { Injectable, Optional } from '@nestjs/common';
 import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
+import { requireAiServiceToken } from '../../core/config/security-env';
 import { OcrServiceResponse } from './ocr-result.mapper';
 
 export interface OcrClientOptions {
@@ -94,9 +95,7 @@ export class OcrClient {
         process.env.AI_SERVICE_URL ??
         'http://localhost:8000',
       serviceToken:
-        this.options?.serviceToken ??
-        process.env.AI_SERVICE_TOKEN ??
-        'dev-service-token',
+        this.options?.serviceToken ?? requireAiServiceToken(),
       timeoutMs:
         this.options?.timeoutMs ?? Number(process.env.OCR_TIMEOUT_MS ?? 5000),
     };

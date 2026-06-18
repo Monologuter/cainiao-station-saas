@@ -6,6 +6,7 @@ function createService() {
     pointRecord: {
       findUnique: jest.fn(),
       create: jest.fn(async ({ data }: any) => ({ id: 'pr1', ...data })),
+      findFirst: jest.fn(),
       findMany: jest.fn(),
       count: jest.fn(),
     },
@@ -124,6 +125,30 @@ describe('PointService', () => {
         { memberId: 'm1', score: 12, rank: 2 },
       ],
       self: { memberId: 'm1', score: 12, rank: 2 },
+    });
+  });
+
+  it('derives leaderboard tenant from member records and masks member ids', async () => {
+    const { service, tx, redisClient } = createService();
+    tx.pointRecord.findFirst.mockResolvedValue({ sourceTenantId: 't1' });
+    redisClient.zrevrange.mockResolvedValue(['member-top-2', '20', 'm1', '12']);
+    redisClient.zrevrank.mockResolvedValue(1);
+    redisClient.zscore.mockResolvedValue('12');
+
+    await expect(service.getRankForMember('m1')).resolves.toEqual({
+      top: [
+        { memberId: 'mem***p-2', score: 20, rank: 1 },
+        { memberId: 'm***1', score: 12, rank: 2 },
+      ],
+      self: { memberId: 'm***1', score: 12, rank: 2 },
+    });
+    expect(tx.pointRecord.findFirst).toHaveBeenCalledWith({
+      where: {
+        memberId: 'm1',
+        sourceTenantId: { not: null },
+      },
+      orderBy: { createdAt: 'desc' },
+      select: { sourceTenantId: true },
     });
   });
 });

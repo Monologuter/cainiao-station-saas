@@ -48,14 +48,14 @@ describe('Consumer parcel lookup e2e', () => {
     const secondParcel = await inbound(secondBoss, consumerPhone);
     const otherParcel = await inbound(firstBoss, otherPhone);
 
-    await request(app.getHttpServer())
+    const sent = await request(app.getHttpServer())
       .post('/api/consumer/auth/send-code')
       .send({ phone: consumerPhone })
       .expect(201);
 
     const verify = await request(app.getHttpServer())
       .post('/api/consumer/auth/verify')
-      .send({ phone: consumerPhone, code: '123456' })
+      .send({ phone: consumerPhone, code: sent.body.data.debugCode })
       .expect(201);
     const pickToken = verify.body.data.pickToken;
     expect(pickToken).toBeDefined();

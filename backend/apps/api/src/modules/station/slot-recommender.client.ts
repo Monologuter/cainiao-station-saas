@@ -1,4 +1,5 @@
 import { Injectable } from '@nestjs/common';
+import { requireAiServiceToken } from '../../core/config/security-env';
 
 export interface SlotRecommendation {
   slotId: string;
@@ -29,10 +30,7 @@ interface RecommendInput {
 export class SlotRecommenderClient {
   private readonly baseUrl =
     process.env.AI_SERVICE_URL?.replace(/\/$/, '') ?? 'http://127.0.0.1:8000';
-  private readonly serviceToken =
-    process.env.AI_SERVICE_TOKEN ??
-    process.env.SERVICE_TOKEN ??
-    'dev-service-token';
+  private readonly serviceToken = requireAiServiceToken();
 
   async recommend(input: RecommendInput): Promise<SlotRecommendation[] | null> {
     if ((process.env.SLOT_RECOMMEND_PROVIDER ?? 'ai') === 'mock') {
