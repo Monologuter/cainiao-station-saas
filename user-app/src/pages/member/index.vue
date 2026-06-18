@@ -47,6 +47,10 @@ function go(url: string) {
         <text class="entry-title">投诉进度</text>
         <text class="entry-desc">查看处理状态</text>
       </button>
+      <button class="mobile-card member-entry" type="button" @click="go('/pages/assistant/index')">
+        <text class="entry-title">在线客服</text>
+        <text class="entry-desc">咨询包裹与寄件</text>
+      </button>
     </view>
   </view>
 </template>

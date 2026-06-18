@@ -13,5 +13,6 @@ describe('user-app pages', () => {
     expect(paths).toContain('pages/member/coupons');
     expect(paths).toContain('pages/member/reviews');
     expect(paths).toContain('pages/member/complaints');
+    expect(paths).toContain('pages/assistant/index');
   });
 });

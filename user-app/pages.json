@@ -43,6 +43,12 @@
       }
     },
     {
+      "path": "pages/assistant/index",
+      "style": {
+        "navigationBarTitleText": "在线客服"
+      }
+    },
+    {
       "path": "pages/member/index",
       "style": {
         "navigationBarTitleText": "会员中心"
