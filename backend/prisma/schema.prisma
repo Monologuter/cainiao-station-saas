@@ -53,6 +53,7 @@ enum ParcelEventType {
 enum NotifyChannelType {
   IN_APP
   SMS
+  WECHAT
 }
 
 enum NotificationStatus {
@@ -335,11 +336,12 @@ enum AiMessageRole {
 }
 
 model Consumer {
-  id        String   @id @default(uuid()) @db.Uuid
-  phone     String   @unique @db.VarChar(20)
-  createdAt DateTime @default(now()) @map("created_at")
-  updatedAt DateTime @updatedAt @map("updated_at")
-  member    Member?
+  id                            String                         @id @default(uuid()) @db.Uuid
+  phone                         String                         @unique @db.VarChar(20)
+  createdAt                     DateTime                       @default(now()) @map("created_at")
+  updatedAt                     DateTime                       @updatedAt @map("updated_at")
+  member                        Member?
+  wechatSubscribeAuthorizations WechatSubscribeAuthorization[]
 
   @@map("consumers")
 }
@@ -873,6 +875,7 @@ model Tenant {
   aiConversations      AiConversation[]
   aiMessages           AiMessage[]
   slotHeatDailies      SlotHeatDaily[]
+  wechatSubscribeAuths WechatSubscribeAuthorization[]
 }
 
 model Station {
@@ -1166,6 +1169,23 @@ model Notification {
   @@index([tenantId, parcelId])
   @@index([tenantId, receiverPhone])
   @@map("notifications")
+}
+
+model WechatSubscribeAuthorization {
+  id             String   @id @default(uuid()) @db.Uuid
+  tenantId       String   @map("tenant_id") @db.Uuid
+  consumerId     String   @map("consumer_id") @db.Uuid
+  openid         String   @db.VarChar(128)
+  templateId     String   @map("template_id") @db.VarChar(128)
+  remainingCount Int      @default(0) @map("remaining_count")
+  createdAt      DateTime @default(now()) @map("created_at")
+  updatedAt      DateTime @updatedAt @map("updated_at")
+  tenant         Tenant   @relation(fields: [tenantId], references: [id])
+  consumer       Consumer @relation(fields: [consumerId], references: [id])
+
+  @@unique([tenantId, consumerId, templateId])
+  @@index([tenantId, openid])
+  @@map("wechat_subscribe_authorizations")
 }
 
 model NotifyTemplate {

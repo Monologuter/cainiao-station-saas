@@ -1,3 +1,5 @@
+import { existsSync, readFileSync } from 'node:fs';
+import { join } from 'node:path';
 import { INestApplication, ValidationPipe } from '@nestjs/common';
 import { Test } from '@nestjs/testing';
 import { AppModule } from '../apps/api/src/app.module';
@@ -7,6 +9,10 @@ import { IntegrationConfigService } from '../apps/api/src/modules/config/integra
 
 describe('Real integrations switchboard e2e', () => {
   let app: INestApplication;
+  const wechatAuthMigration = join(
+    __dirname,
+    '../prisma/migrations/20260618233000_wechat_subscribe_authorizations/migration.sql',
+  );
 
   beforeAll(async () => {
     const mod = await Test.createTestingModule({
@@ -39,5 +45,19 @@ describe('Real integrations switchboard e2e', () => {
     await expect(integrations.resolve('logistics')).resolves.toMatchObject({
       provider: 'mock',
     });
+  });
+
+  it('declares wechat subscribe authorizations with tenant RLS', () => {
+    expect(existsSync(wechatAuthMigration)).toBe(true);
+    const sql = readFileSync(wechatAuthMigration, 'utf8');
+
+    expect(sql).toContain("ADD VALUE IF NOT EXISTS 'WECHAT'");
+    expect(sql).toContain('CREATE TABLE "wechat_subscribe_authorizations"');
+    expect(sql).toContain('"tenant_id" UUID NOT NULL');
+    expect(sql).toContain('ENABLE ROW LEVEL SECURITY');
+    expect(sql).toContain('FORCE ROW LEVEL SECURITY');
+    expect(sql).toContain(
+      'CREATE POLICY "wechat_subscribe_authorizations_tenant_isolation"',
+    );
   });
 });

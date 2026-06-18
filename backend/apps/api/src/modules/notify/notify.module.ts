@@ -12,6 +12,9 @@ import { ParcelStoredSubscriber } from './parcel-stored.subscriber';
 import { SmsChannelFactory } from './sms-channel.factory';
 import { TemplateRenderer } from './template-renderer';
 import { TencentSmsChannel } from './tencent-sms.channel';
+import { WechatSubscribeAuthService } from './wechat-subscribe-auth.service';
+import { WechatSubscribeChannel } from './wechat-subscribe.channel';
+import { WechatSubscribeChannelFactory } from './wechat-subscribe.factory';
 
 @Module({
   imports: [AdminConfigModule],
@@ -22,6 +25,9 @@ import { TencentSmsChannel } from './tencent-sms.channel';
     MockSmsChannel,
     TencentSmsChannel,
     SmsChannelFactory,
+    WechatSubscribeAuthService,
+    WechatSubscribeChannel,
+    WechatSubscribeChannelFactory,
     ParcelStoredSubscriber,
     OverdueSubscriber,
     OnboardingSubscriber,

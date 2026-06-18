@@ -1,8 +1,10 @@
-export type NotifyChannelType = 'IN_APP' | 'SMS';
+export type NotifyChannelType = 'IN_APP' | 'SMS' | 'WECHAT';
 
 export interface RenderedMessage {
   channel: NotifyChannelType;
   content: string;
+  tenantId?: string;
+  consumerId?: string;
   receiverPhone?: string;
   templateCode?: string;
   variables?: string[];
