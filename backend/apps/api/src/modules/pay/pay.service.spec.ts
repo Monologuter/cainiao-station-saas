@@ -144,6 +144,99 @@ describe('PayService', () => {
     expect(eventBus.publish).toHaveBeenCalledTimes(1);
   });
 
+  it('raises a conflict when a concurrent writer moves the order before PAID guard', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        orderNo: 'SO1',
+        status: 'CREATED',
+        quoteAmount: 1300,
+        version: 0,
+      },
+      payments: [] as any[],
+    };
+    const tx = makeTx(state);
+    // 模拟并发推进：本事务 updateMany 前订单已被改成 CANCELLED，
+    // 守护 WHERE(status:CREATED) 不命中 → count 0 → 抛冲突，不会脏置为 PAID。
+    tx.shipOrder.updateMany.mockImplementationOnce(async () => {
+      state.order.status = 'CANCELLED';
+      return { count: 0 };
+    });
+    const eventBus = { publish: jest.fn() };
+    const service = new PayService(
+      { withTenant: jest.fn(async (fn) => fn(tx)) } as any,
+      new MockPayChannel(),
+      eventBus as any,
+    );
+
+    await expect(
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () => service.payShipOrder('so1', 'pay-key-race'),
+      ),
+    ).rejects.toMatchObject({ code: ApiCode.IDEMPOTENCY_CONFLICT });
+    expect(state.order.status).toBe('CANCELLED');
+    expect(eventBus.publish).not.toHaveBeenCalled();
+  });
+
+  it('confirms a payment callback only once under concurrent callbacks (idempotent second)', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        orderNo: 'SO1',
+        status: 'CREATED',
+        quoteAmount: 1300,
+        version: 0,
+      },
+      payments: [
+        {
+          id: 'pay1',
+          tenantId: 't1',
+          bizType: 'SHIP_ORDER',
+          bizId: 'so1',
+          outTradeNo: 'pay-key-1',
+          amount: 1300,
+          status: 'PENDING',
+        },
+      ],
+    };
+    const tx = makeTx(state);
+    const channel = {
+      code: 'wechat',
+      verifyCallback: jest.fn(() => ({
+        status: 'SUCCESS',
+        outTradeNo: 'pay-key-1',
+        paidAt: new Date('2026-06-18T10:00:00.000Z'),
+        raw: { provider: 'wechat', transactionId: 'wx-tx-1' },
+      })),
+    };
+    const eventBus = { publish: jest.fn() };
+    const service = new PayService(
+      { withTenant: jest.fn(async (fn) => fn(tx)) } as any,
+      channel as any,
+      eventBus as any,
+    );
+
+    const first = await service.confirmShipOrderPaymentCallback(
+      't1',
+      'pay-key-1',
+      { payload: '{}' },
+    );
+    const second = await service.confirmShipOrderPaymentCallback(
+      't1',
+      'pay-key-1',
+      { payload: '{}' },
+    );
+
+    expect(first.status).toBe('PAID');
+    expect(second.status).toBe('PAID');
+    // 仅首个回调推进订单状态一次；第二次因 payment 已 SUCCESS 提前返回。
+    expect(tx.shipOrder.updateMany).toHaveBeenCalledTimes(1);
+    expect(eventBus.publish).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects non-CREATED orders', async () => {
     const state: any = {
       order: { id: 'so1', tenantId: 't1', status: 'PAID', quoteAmount: 1300 },
@@ -213,6 +306,22 @@ function makeTx(state: any) {
           version: (state.order.version ?? 0) + 1,
         };
         return state.order;
+      }),
+      updateMany: jest.fn(async ({ where, data }) => {
+        // 模拟乐观锁：仅当 WHERE 的 status 匹配当前态时生效一次。
+        if (where.id && where.id !== state.order.id) return { count: 0 };
+        if (where.status !== undefined && where.status !== state.order.status) {
+          return { count: 0 };
+        }
+        const { version, ...rest } = data;
+        state.order = {
+          ...state.order,
+          ...rest,
+          version:
+            (state.order.version ?? 0) +
+            (version?.increment ? version.increment : 0),
+        };
+        return { count: 1 };
       }),
     },
   };

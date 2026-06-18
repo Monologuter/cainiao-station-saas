@@ -94,4 +94,79 @@ describe('PricingService', () => {
       code: ApiCode.SHIPPING_NO_PRICE_RULE,
     });
   });
+
+  it('rejects a zero addUnitGram rule instead of producing a NaN/Infinity quote', async () => {
+    const { service } = makeService({
+      firstWeightGram: 1000,
+      firstPrice: 1000,
+      addUnitGram: 0,
+      addPrice: 300,
+      zoneFactor: 1,
+      courierCode: 'ZTO',
+      courierName: '中通快递',
+      zone: 'SAME_PROVINCE',
+      estHours: 36,
+    });
+
+    await expect(
+      service.quote('ZTO', 'SAME_PROVINCE', 2000),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+  });
+
+  it('rejects a zero addUnitGram rule even within first weight (0/0 NaN guard)', async () => {
+    const { service } = makeService({
+      firstWeightGram: 1000,
+      firstPrice: 1000,
+      addUnitGram: 0,
+      addPrice: 300,
+      zoneFactor: 1,
+      courierCode: 'ZTO',
+      courierName: '中通快递',
+      zone: 'SAME_PROVINCE',
+      estHours: 36,
+    });
+
+    await expect(
+      service.quote('ZTO', 'SAME_PROVINCE', 500),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+  });
+
+  it('rejects NaN, non-finite, or non-positive weights', async () => {
+    const rule = {
+      firstWeightGram: 1000,
+      firstPrice: 1000,
+      addUnitGram: 500,
+      addPrice: 300,
+      zoneFactor: 1,
+      courierCode: 'ZTO',
+      courierName: '中通快递',
+      zone: 'SAME_PROVINCE',
+      estHours: 36,
+    };
+
+    for (const weight of [NaN, Infinity, -100, 0]) {
+      const { service } = makeService(rule);
+      await expect(
+        service.quote('ZTO', 'SAME_PROVINCE', weight),
+      ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+    }
+  });
+
+  it('rejects a non-positive zoneFactor rule', async () => {
+    const { service } = makeService({
+      firstWeightGram: 1000,
+      firstPrice: 1000,
+      addUnitGram: 500,
+      addPrice: 300,
+      zoneFactor: 0,
+      courierCode: 'ZTO',
+      courierName: '中通快递',
+      zone: 'SAME_PROVINCE',
+      estHours: 36,
+    });
+
+    await expect(
+      service.quote('ZTO', 'SAME_PROVINCE', 2000),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+  });
 });

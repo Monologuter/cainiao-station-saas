@@ -7,7 +7,6 @@ import {
   Post,
   Query,
 } from '@nestjs/common';
-import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { CurrentUser, Public, RequirePermission } from '../identity/decorators';
 import { MemberService } from '../member/member.service';
 import { ReviewService } from './review.service';
@@ -28,15 +27,9 @@ export class ConsumerReviewController {
   ) {
     const { member, consumer } =
       await this.members.requireMember(authorization);
-    return TenantContext.run(
-      {
-        userId: consumer.sub,
-        tenantId: body.tenantId,
-        roles: ['consumer'],
-        isPlatform: false,
-      },
-      () => this.reviews.submit(member.id, body),
-    );
+    // tenantId/stationId 由 service 依据 refId + 已验证手机号反查得出，
+    // 不再信任请求 body 中的 tenantId/stationId。
+    return this.reviews.submit(member.id, consumer.phone, body);
   }
 
   @Get('reviews/mine')
@@ -52,15 +45,9 @@ export class ConsumerReviewController {
   ) {
     const { member, consumer } =
       await this.members.requireMember(authorization);
-    return TenantContext.run(
-      {
-        userId: consumer.sub,
-        tenantId: body.tenantId,
-        roles: ['consumer'],
-        isPlatform: false,
-      },
-      () => this.reviews.submitComplaint(member.id, body),
-    );
+    // tenantId/stationId 由 service 依据 refId + 已验证手机号反查得出，
+    // 不再信任请求 body 中的 tenantId/stationId。
+    return this.reviews.submitComplaint(member.id, consumer.phone, body);
   }
 
   @Get('complaints/mine')

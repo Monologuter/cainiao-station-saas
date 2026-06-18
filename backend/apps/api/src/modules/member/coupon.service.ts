@@ -23,7 +23,7 @@ interface VerifyCouponInput {
 }
 
 interface CouponTemplateQuery {
-  tenantId?: string;
+  tenantId: string;
   scene?: 'PICKUP' | 'SHIP' | 'ALL';
 }
 
@@ -55,12 +55,17 @@ export class CouponService {
     );
   }
 
-  listTemplates(query: CouponTemplateQuery = {}) {
+  async listTemplates(query: CouponTemplateQuery) {
+    // 强制按租户隔离：缺 tenantId 直接拒绝，杜绝"未传则返回全库模板"的跨租户泄露。
+    if (!query?.tenantId) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少租户参数');
+    }
     return this.withBypass(async (tx) => {
-      const where: any = { status: 'ACTIVE', deletedAt: null };
-      if (query.tenantId) {
-        where.tenantId = query.tenantId;
-      }
+      const where: any = {
+        tenantId: query.tenantId,
+        status: 'ACTIVE',
+        deletedAt: null,
+      };
       if (query.scene) {
         where.scene = {
           in: query.scene === 'ALL' ? ['ALL'] : [query.scene, 'ALL'],

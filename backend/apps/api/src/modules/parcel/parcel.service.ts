@@ -13,9 +13,13 @@ interface CreateParcelInput {
 }
 
 interface StoreParcelInput {
-  pickupCode: string;
   slotId: string;
+  // Reserves a fresh pickup code. Invoked once per attempt so markStored can
+  // regenerate the code when it collides with the active-code unique index.
+  reservePickupCode: () => Promise<string>;
 }
+
+const MARK_STORED_MAX_ATTEMPTS = 5;
 
 type ExceptionParcelType =
   | 'DAMAGED'
@@ -114,55 +118,96 @@ export class ParcelService {
 
   async markStored(parcelId: string, input: StoreParcelInput) {
     const ctx = this.requireContext();
-    const event = await this.tenantPrisma.withTenant(async (tx) => {
-      const before = await tx.parcel.findUniqueOrThrow({
-        where: { id: parcelId },
-      });
-      ParcelAggregate.assertTransit(before.status as ParcelStatus, 'STORED');
 
-      const parcel = await tx.parcel.update({
-        where: { id: parcelId },
-        data: {
-          pickupCode: input.pickupCode,
-          slotId: input.slotId,
-          status: 'STORED',
-          storedAt: new Date(),
-          version: { increment: 1 },
-        },
-      });
-      const slot = await tx.slot.findUnique({ where: { id: input.slotId } });
-      await tx.parcelEvent.create({
-        data: {
-          tenantId: parcel.tenantId,
-          parcelId: parcel.id,
-          fromStatus: before.status,
-          toStatus: 'STORED',
-          eventType: 'STORED',
-          operatorId: ctx.userId,
-          payload: {
-            pickupCode: input.pickupCode,
-            slotId: input.slotId,
-            slotCode: slot?.code,
-          },
-        },
-      });
+    for (let attempt = 1; attempt <= MARK_STORED_MAX_ATTEMPTS; attempt += 1) {
+      const pickupCode = await input.reservePickupCode();
+      try {
+        const event = await this.tenantPrisma.withTenant(async (tx) => {
+          const before = await tx.parcel.findUniqueOrThrow({
+            where: { id: parcelId },
+          });
+          ParcelAggregate.assertTransit(
+            before.status as ParcelStatus,
+            'STORED',
+          );
 
-      return {
-        parcel,
-        event: EventBus.createEvent('ParcelStored', {
-          parcelId: parcel.id,
-          tenantId: parcel.tenantId,
-          stationId: parcel.stationId,
-          receiverPhone: parcel.receiverPhone,
-          pickupCode: parcel.pickupCode,
-          slotId: parcel.slotId,
-          slotCode: slot?.code,
-        }),
-      };
-    });
+          const result = await tx.parcel.updateMany({
+            where: {
+              id: parcelId,
+              status: before.status,
+              version: before.version,
+            },
+            data: {
+              pickupCode,
+              slotId: input.slotId,
+              status: 'STORED',
+              storedAt: new Date(),
+              version: { increment: 1 },
+            },
+          });
+          if (result.count !== 1) {
+            throw new BizError(ApiCode.ILLEGAL_TRANSITION, '包裹状态已变化');
+          }
 
-    await this.eventBus.publish(event.event);
-    return event.parcel;
+          const parcel = await tx.parcel.findUniqueOrThrow({
+            where: { id: parcelId },
+          });
+          const slot = await tx.slot.findUnique({ where: { id: input.slotId } });
+          await tx.parcelEvent.create({
+            data: {
+              tenantId: parcel.tenantId,
+              parcelId: parcel.id,
+              fromStatus: before.status,
+              toStatus: 'STORED',
+              eventType: 'STORED',
+              operatorId: ctx.userId,
+              payload: {
+                pickupCode,
+                slotId: input.slotId,
+                slotCode: slot?.code,
+              },
+            },
+          });
+
+          return {
+            parcel,
+            event: EventBus.createEvent('ParcelStored', {
+              parcelId: parcel.id,
+              tenantId: parcel.tenantId,
+              stationId: parcel.stationId,
+              receiverPhone: parcel.receiverPhone,
+              pickupCode: parcel.pickupCode,
+              slotId: parcel.slotId,
+              slotCode: slot?.code,
+            }),
+          };
+        });
+
+        await this.eventBus.publish(event.event);
+        return event.parcel;
+      } catch (error) {
+        // ux_parcel_active_code(station_id, pickup_code) collided: another
+        // active parcel already holds this code. Regenerate and retry instead
+        // of leaking a raw 500.
+        if (this.isPickupCodeConflict(error)) {
+          if (attempt < MARK_STORED_MAX_ATTEMPTS) {
+            continue;
+          }
+          throw new BizError(
+            ApiCode.PICKUP_CODE_CONFLICT,
+            '取件码冲突，请重试',
+          );
+        }
+        throw error;
+      }
+    }
+
+    // Unreachable: the loop either returns, continues, or throws above.
+    throw new BizError(ApiCode.PICKUP_CODE_CONFLICT, '取件码冲突，请重试');
+  }
+
+  private isPickupCodeConflict(error: unknown): boolean {
+    return (error as { code?: string } | null)?.code === 'P2002';
   }
 
   async markPickedUp(parcelId: string, expectedVersion: number) {

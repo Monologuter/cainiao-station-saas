@@ -118,8 +118,12 @@ export class MemberCenterController {
   }
 
   @Get('coupon-templates')
-  listCouponTemplates(@Query() query: any) {
-    return this.coupons.listTemplates(query);
+  listCouponTemplates(
+    @Query('tenantId') tenantId: string,
+    @Query('scene') scene?: 'PICKUP' | 'SHIP' | 'ALL',
+  ) {
+    // 公开接口必须显式传 tenantId，且只返回该租户 ACTIVE 模板（缺 tenantId → 400）。
+    return this.coupons.listTemplates({ tenantId, scene });
   }
 
   @Post('coupons/redeem')
@@ -154,8 +158,12 @@ export class MemberAdminController {
 
   @RequirePermission('coupon:manage')
   @Get('coupon-templates')
-  listCouponTemplates(@Query() query: any) {
-    return this.coupons.listTemplates(query);
+  listCouponTemplates(
+    @CurrentUser() user: any,
+    @Query('scene') scene?: 'PICKUP' | 'SHIP' | 'ALL',
+  ) {
+    // 管理端 tenantId 钉死为当前用户租户，忽略 query.tenantId，防止越权读取他人模板。
+    return this.coupons.listTemplates({ tenantId: user.tenantId, scene });
   }
 
   @RequirePermission('coupon:issue')

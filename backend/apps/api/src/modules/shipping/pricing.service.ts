@@ -57,11 +57,21 @@ export class PricingService {
       );
     }
 
+    if (!Number.isFinite(weightGram) || weightGram <= 0) {
+      throw new BizError(ApiCode.BAD_REQUEST, '寄件重量必须为有限正数');
+    }
+    this.assertPositiveFinite(rule.addUnitGram, '续重计费单位');
+    this.assertNonNegativeFinite(rule.firstWeightGram, '首重克数');
+    this.assertNonNegativeFinite(rule.firstPrice, '首重价格');
+    this.assertNonNegativeFinite(rule.addPrice, '续重价格');
+    const zoneFactorValue = Number(rule.zoneFactor);
+    this.assertPositiveFinite(zoneFactorValue, '区域系数');
+
     const addWeight = Math.max(weightGram - rule.firstWeightGram, 0);
     const addWeightUnits = Math.ceil(addWeight / rule.addUnitGram);
     const addPrice = addWeightUnits * rule.addPrice;
     const subtotal = rule.firstPrice + addPrice;
-    const zoneFactor = Number(rule.zoneFactor);
+    const zoneFactor = zoneFactorValue;
     const total = Math.round(subtotal * zoneFactor);
 
     return {
@@ -80,5 +90,20 @@ export class PricingService {
         total,
       },
     };
+  }
+
+  private assertPositiveFinite(value: number, label: string): void {
+    if (!Number.isFinite(value) || value <= 0) {
+      throw new BizError(ApiCode.BAD_REQUEST, `定价参数非法：${label}必须为正数`);
+    }
+  }
+
+  private assertNonNegativeFinite(value: number, label: string): void {
+    if (!Number.isFinite(value) || value < 0) {
+      throw new BizError(
+        ApiCode.BAD_REQUEST,
+        `定价参数非法：${label}必须为非负数`,
+      );
+    }
   }
 }

@@ -1,3 +1,4 @@
+import { ApiCode } from '../../core/http/api-code';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { ParcelService } from './parcel.service';
 
@@ -53,27 +54,37 @@ describe('ParcelService', () => {
     expect(bus.publish).not.toHaveBeenCalled();
   });
 
-  it('marks parcel STORED, writes event and publishes ParcelStored', async () => {
+  it('marks parcel STORED with optimistic version, writes event and publishes ParcelStored', async () => {
+    let stored = false;
+    const updateMany = jest.fn(async () => {
+      stored = true;
+      return { count: 1 };
+    });
     const tx = {
       parcel: {
-        findUniqueOrThrow: async () => ({
-          id: 'p1',
-          tenantId: 't1',
-          stationId: 's1',
-          status: 'PENDING',
-          receiverPhone: '13800000000',
-          receiverPhoneTail: '0000',
-        }),
-        update: async ({ data }: any) => ({
-          id: 'p1',
-          tenantId: 't1',
-          stationId: 's1',
-          status: 'STORED',
-          receiverPhone: '13800000000',
-          receiverPhoneTail: '0000',
-          pickupCode: data.pickupCode,
-          slotId: data.slotId,
-        }),
+        findUniqueOrThrow: async () =>
+          stored
+            ? {
+                id: 'p1',
+                tenantId: 't1',
+                stationId: 's1',
+                status: 'STORED',
+                version: 1,
+                receiverPhone: '13800000000',
+                receiverPhoneTail: '0000',
+                pickupCode: '1234',
+                slotId: 'slot1',
+              }
+            : {
+                id: 'p1',
+                tenantId: 't1',
+                stationId: 's1',
+                status: 'PENDING',
+                version: 0,
+                receiverPhone: '13800000000',
+                receiverPhoneTail: '0000',
+              },
+        updateMany,
       },
       slot: {
         findUnique: async () => ({ id: 'slot1', code: 'A-01' }),
@@ -83,12 +94,24 @@ describe('ParcelService', () => {
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
     const bus = { publish: jest.fn() } as any;
     const service = new ParcelService(tenantPrisma, bus);
+    const reservePickupCode = jest.fn().mockResolvedValue('1234');
 
     const out = await runAsTenant(() =>
-      service.markStored('p1', { pickupCode: '1234', slotId: 'slot1' }),
+      service.markStored('p1', { slotId: 'slot1', reservePickupCode }),
     );
 
     expect(out.status).toBe('STORED');
+    expect(reservePickupCode).toHaveBeenCalledTimes(1);
+    expect(updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'PENDING', version: 0 },
+      data: expect.objectContaining({
+        pickupCode: '1234',
+        slotId: 'slot1',
+        status: 'STORED',
+        storedAt: expect.any(Date),
+        version: { increment: 1 },
+      }),
+    });
     expect(tx.parcelEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
         tenantId: 't1',
@@ -111,6 +134,129 @@ describe('ParcelService', () => {
         }),
       }),
     );
+  });
+
+  it('rejects markStored when version moved (optimistic lock count !== 1)', async () => {
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'PENDING',
+          version: 0,
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+      },
+      slot: { findUnique: jest.fn() },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+    const reservePickupCode = jest.fn().mockResolvedValue('1234');
+
+    await expect(
+      runAsTenant(() =>
+        service.markStored('p1', { slotId: 'slot1', reservePickupCode }),
+      ),
+    ).rejects.toThrow('包裹状态已变化');
+    expect(bus.publish).not.toHaveBeenCalled();
+  });
+
+  it('retries with a fresh pickup code on P2002 conflict, no raw 500', async () => {
+    let stored = false;
+    const updateMany = jest
+      .fn()
+      // First attempt collides with ux_parcel_active_code.
+      .mockImplementationOnce(async () => {
+        const err: any = new Error('Unique constraint failed');
+        err.code = 'P2002';
+        throw err;
+      })
+      // Second attempt with a fresh code succeeds.
+      .mockImplementationOnce(async () => {
+        stored = true;
+        return { count: 1 };
+      });
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () =>
+          stored
+            ? {
+                id: 'p1',
+                tenantId: 't1',
+                stationId: 's1',
+                status: 'STORED',
+                version: 1,
+                receiverPhone: '13800000000',
+                pickupCode: '5678',
+                slotId: 'slot1',
+              }
+            : {
+                id: 'p1',
+                tenantId: 't1',
+                stationId: 's1',
+                status: 'PENDING',
+                version: 0,
+                receiverPhone: '13800000000',
+              },
+        updateMany,
+      },
+      slot: { findUnique: async () => ({ id: 'slot1', code: 'A-01' }) },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+    const reservePickupCode = jest
+      .fn()
+      .mockResolvedValueOnce('1234')
+      .mockResolvedValueOnce('5678');
+
+    const out = await runAsTenant(() =>
+      service.markStored('p1', { slotId: 'slot1', reservePickupCode }),
+    );
+
+    expect(out.status).toBe('STORED');
+    expect(updateMany).toHaveBeenCalledTimes(2);
+    expect(reservePickupCode).toHaveBeenCalledTimes(2);
+    expect(out.pickupCode).toBe('5678');
+  });
+
+  it('throws clean PICKUP_CODE_CONFLICT after exhausting retries (not a raw 500)', async () => {
+    const updateMany = jest.fn(async () => {
+      const err: any = new Error('Unique constraint failed');
+      err.code = 'P2002';
+      throw err;
+    });
+    const tx = {
+      parcel: {
+        findUniqueOrThrow: async () => ({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'PENDING',
+          version: 0,
+        }),
+        updateMany,
+      },
+      slot: { findUnique: async () => ({ id: 'slot1', code: 'A-01' }) },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const bus = { publish: jest.fn() } as any;
+    const service = new ParcelService(tenantPrisma, bus);
+    const reservePickupCode = jest.fn().mockResolvedValue('1234');
+
+    const result = runAsTenant(() =>
+      service.markStored('p1', { slotId: 'slot1', reservePickupCode }),
+    );
+    await expect(result).rejects.toThrow('取件码冲突，请重试');
+    await expect(result).rejects.toMatchObject({
+      code: ApiCode.PICKUP_CODE_CONFLICT,
+    });
+    expect(bus.publish).not.toHaveBeenCalled();
   });
 
   it('marks parcel PICKED_UP with optimistic version and publishes ParcelPickedUp', async () => {

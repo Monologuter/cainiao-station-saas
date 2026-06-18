@@ -22,6 +22,7 @@ export class PickupService {
   ) {}
 
   async pickup(input: PickupInput) {
+    this.assertHasIdentifier(input);
     const parcel = await this.findStoredParcel(input);
 
     return this.locks.withLock(`lock:parcel:${parcel.id}`, 10000, async () => {
@@ -35,6 +36,18 @@ export class PickupService {
         slotReleased: true,
       };
     });
+  }
+
+  private assertHasIdentifier(input: PickupInput) {
+    const pickupCode = input.pickupCode?.trim();
+    const phoneTail = input.phoneTail?.trim();
+    const parcelId = input.parcelId?.trim();
+    if (!pickupCode && !phoneTail && !parcelId) {
+      throw new BizError(
+        ApiCode.BAD_REQUEST,
+        '请提供取件码/手机尾号/包裹号至少一项',
+      );
+    }
   }
 
   private async findStoredParcel(input: PickupInput) {

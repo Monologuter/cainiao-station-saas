@@ -205,6 +205,128 @@ describe('LogisticsService', () => {
     });
   });
 
+  it('only advances a PAID order to COLLECTED once under repeated collect (idempotent second)', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'PAID',
+        courierCode: 'YTO',
+        senderJson: { name: '张三' },
+        receiverJson: { name: '李四' },
+        weightGram: 1200,
+        version: 1,
+      },
+      tracks: [] as any[],
+    };
+    const tx = makeTx(state);
+    const service = new LogisticsService(
+      { withTenant: jest.fn(async (fn) => fn(tx)) } as any,
+      new MockLogisticsProvider(),
+    );
+
+    const first = await TenantContext.run(
+      { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+      () => service.collectShipOrder('so1'),
+    );
+    // 第二次（模拟并发重复揽收）：订单已为 COLLECTED，乐观锁守护下幂等返回。
+    const second = await TenantContext.run(
+      { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+      () => service.collectShipOrder('so1'),
+    );
+
+    expect(first.status).toBe('COLLECTED');
+    expect(second.status).toBe('COLLECTED');
+    expect(second.waybillNo).toBe(first.waybillNo);
+    // 第一次走 updateMany 推进，第二次走 early-return（before.status===COLLECTED）。
+    expect(tx.shipOrder.updateMany).toHaveBeenCalledTimes(1);
+    expect(state.tracks).toHaveLength(1);
+  });
+
+  it('raises a conflict when the guarded status row was moved by a concurrent writer', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'PAID',
+        courierCode: 'YTO',
+        senderJson: { name: '张三' },
+        receiverJson: { name: '李四' },
+        weightGram: 1200,
+        version: 1,
+      },
+      tracks: [] as any[],
+    };
+    const tx = makeTx(state);
+    // 模拟并发推进：在本事务调用 updateMany 前，订单状态已被改成 CANCELLED，
+    // 守护 WHERE(status:PAID) 不再命中 → count 0 → 抛冲突，绝不脏推进。
+    tx.shipOrder.updateMany.mockImplementationOnce(async () => {
+      state.order.status = 'CANCELLED';
+      return { count: 0 };
+    });
+    const service = new LogisticsService(
+      { withTenant: jest.fn(async (fn) => fn(tx)) } as any,
+      new MockLogisticsProvider(),
+    );
+
+    await expect(
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () => service.collectShipOrder('so1'),
+      ),
+    ).rejects.toMatchObject({ code: ApiCode.IDEMPOTENCY_CONFLICT });
+    expect(state.tracks).toHaveLength(0);
+  });
+
+  it('does not double-advance order status when getTracks runs concurrently', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'COLLECTED',
+        waybillNo: 'MOCK001',
+      },
+      tracks: [
+        {
+          id: 'tr1',
+          shipOrderId: 'so1',
+          waybillNo: 'MOCK001',
+          seq: 1,
+          nodeStatus: 'COLLECTED',
+        },
+      ],
+    };
+    const provider = {
+      pollTracks: jest.fn().mockResolvedValue([
+        {
+          nodeStatus: 'IN_TRANSIT',
+          location: '杭州转运中心',
+          description: '【运输中】快件离开始发城市',
+          happenedAt: new Date('2026-06-18T08:00:00Z'),
+        },
+      ]),
+    };
+    const tx = makeTx(state);
+    const service = new LogisticsService(
+      { withTenant: jest.fn(async (fn) => fn(tx)) } as any,
+      provider as any,
+    );
+
+    await TenantContext.run(
+      { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+      () => service.getTracks('so1'),
+    );
+    // 第二次轮询：已是 IN_TRANSIT，乐观锁守护下 updateMany 不再命中 COLLECTED。
+    await TenantContext.run(
+      { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+      () => service.getTracks('so1'),
+    );
+
+    expect(state.order.status).toBe('IN_TRANSIT');
+    // 仅第一次轮询触发一次状态推进。
+    expect(tx.shipOrder.updateMany).toHaveBeenCalledTimes(1);
+  });
+
   it('rejects forged provider callbacks', async () => {
     const state: any = {
       order: {
@@ -252,6 +374,22 @@ function makeTx(state: any) {
           version: (state.order.version ?? 0) + 1,
         };
         return state.order;
+      }),
+      updateMany: jest.fn(async ({ where, data }) => {
+        // 模拟乐观锁：仅当 WHERE 的 status 匹配当前态时生效一次。
+        if (where.id && where.id !== state.order.id) return { count: 0 };
+        if (where.status !== undefined && where.status !== state.order.status) {
+          return { count: 0 };
+        }
+        const { version, ...rest } = data;
+        state.order = {
+          ...state.order,
+          ...rest,
+          version:
+            (state.order.version ?? 0) +
+            (version?.increment ? version.increment : 0),
+        };
+        return { count: 1 };
       }),
     },
     logisticsTrack: {

@@ -9,7 +9,6 @@ type ComplaintType = 'DAMAGE' | 'LOST' | 'SERVICE' | 'WRONG' | 'OTHER';
 type ComplaintStatus = 'PENDING' | 'PROCESSING' | 'RESOLVED' | 'CLOSED';
 
 interface SubmitReviewInput {
-  stationId: string;
   targetType: ReviewTargetType;
   refType: string;
   refId: string;
@@ -20,12 +19,16 @@ interface SubmitReviewInput {
 }
 
 interface SubmitComplaintInput {
-  stationId: string;
   type: ComplaintType;
   content: string;
-  refType?: string;
-  refId?: string;
+  refType: string;
+  refId: string;
   images?: string[];
+}
+
+interface ResolvedRef {
+  tenantId: string;
+  stationId: string;
 }
 
 interface HandleComplaintInput {
@@ -40,42 +43,48 @@ export class ReviewService {
     private readonly prisma?: PrismaService,
   ) {}
 
-  async submit(memberId: string, input: SubmitReviewInput) {
+  async submit(memberId: string, verifiedPhone: string, input: SubmitReviewInput) {
     this.assertRating(input.rating);
-    const ctx = this.requireContext();
+    const ref = await this.resolveOwnedRef(
+      input.refType,
+      input.refId,
+      verifiedPhone,
+    );
 
-    return this.tenantPrisma.withTenant(async (tx) => {
-      const member = await tx.member.findUniqueOrThrow({
-        where: { id: memberId },
-      });
-      const exists = await tx.review.findFirst({
-        where: {
-          tenantId: ctx.tenantId,
-          refType: input.refType,
-          refId: input.refId,
-          memberId,
-        },
-      });
-      if (exists) {
-        throw new BizError(ApiCode.IDEMPOTENCY_CONFLICT, '该业务单已评价');
-      }
+    return this.runInTenant(ref.tenantId, () =>
+      this.tenantPrisma.withTenant(async (tx) => {
+        const member = await tx.member.findUniqueOrThrow({
+          where: { id: memberId },
+        });
+        const exists = await tx.review.findFirst({
+          where: {
+            tenantId: ref.tenantId,
+            refType: input.refType,
+            refId: input.refId,
+            memberId,
+          },
+        });
+        if (exists) {
+          throw new BizError(ApiCode.IDEMPOTENCY_CONFLICT, '该业务单已评价');
+        }
 
-      return tx.review.create({
-        data: {
-          tenantId: ctx.tenantId,
-          stationId: input.stationId,
-          memberId,
-          consumerPhone: member.phone,
-          targetType: input.targetType,
-          refType: input.refType,
-          refId: input.refId,
-          rating: input.rating,
-          tags: input.tags ?? [],
-          content: input.content,
-          images: input.images ?? [],
-        },
-      });
-    });
+        return tx.review.create({
+          data: {
+            tenantId: ref.tenantId,
+            stationId: ref.stationId,
+            memberId,
+            consumerPhone: member.phone,
+            targetType: input.targetType,
+            refType: input.refType,
+            refId: input.refId,
+            rating: input.rating,
+            tags: input.tags ?? [],
+            content: input.content,
+            images: input.images ?? [],
+          },
+        });
+      }),
+    );
   }
 
   listForStation(
@@ -206,26 +215,37 @@ export class ReviewService {
     });
   }
 
-  async submitComplaint(memberId: string, input: SubmitComplaintInput) {
-    const ctx = this.requireContext();
-    return this.tenantPrisma.withTenant(async (tx) => {
-      const member = await tx.member.findUniqueOrThrow({
-        where: { id: memberId },
-      });
-      return tx.complaint.create({
-        data: {
-          tenantId: ctx.tenantId,
-          stationId: input.stationId,
-          memberId,
-          consumerPhone: member.phone,
-          type: input.type,
-          refType: input.refType,
-          refId: input.refId,
-          content: input.content,
-          images: input.images ?? [],
-        },
-      });
-    });
+  async submitComplaint(
+    memberId: string,
+    verifiedPhone: string,
+    input: SubmitComplaintInput,
+  ) {
+    const ref = await this.resolveOwnedRef(
+      input.refType,
+      input.refId,
+      verifiedPhone,
+    );
+
+    return this.runInTenant(ref.tenantId, () =>
+      this.tenantPrisma.withTenant(async (tx) => {
+        const member = await tx.member.findUniqueOrThrow({
+          where: { id: memberId },
+        });
+        return tx.complaint.create({
+          data: {
+            tenantId: ref.tenantId,
+            stationId: ref.stationId,
+            memberId,
+            consumerPhone: member.phone,
+            type: input.type,
+            refType: input.refType,
+            refId: input.refId,
+            content: input.content,
+            images: input.images ?? [],
+          },
+        });
+      }),
+    );
   }
 
   async handleComplaint(
@@ -271,12 +291,83 @@ export class ReviewService {
     }
   }
 
-  private requireContext() {
-    const ctx = TenantContext.get();
-    if (!ctx?.tenantId) {
-      throw new BizError(ApiCode.BAD_REQUEST, '缺少租户上下文');
+  /**
+   * 由 ref（包裹/寄件单）按当前消费者已验证手机号反查归属，
+   * 校验该 ref 确实属于本消费者后返回其 tenantId/stationId。
+   * tenantId/stationId 一律以 ref 为准，杜绝消费者凭 body 自选租户注入脏数据。
+   */
+  private async resolveOwnedRef(
+    refType: string,
+    refId: string,
+    verifiedPhone: string,
+  ): Promise<ResolvedRef> {
+    if (!refType || !refId) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少业务单引用');
     }
-    return { ...ctx, tenantId: ctx.tenantId };
+    if (!verifiedPhone) {
+      throw new BizError(ApiCode.UNAUTHORIZED, '缺少已验证手机号');
+    }
+
+    if (refType === 'parcel') {
+      const parcel: any = await this.withBypass((tx) =>
+        tx.parcel.findFirst({
+          where: { id: refId, deletedAt: null },
+          select: {
+            tenantId: true,
+            stationId: true,
+            receiverPhone: true,
+          },
+        }),
+      );
+      if (!parcel) {
+        throw new BizError(ApiCode.NOT_FOUND, '包裹不存在');
+      }
+      if (parcel.receiverPhone !== verifiedPhone) {
+        throw new BizError(ApiCode.FORBIDDEN, '无权操作该包裹');
+      }
+      return { tenantId: parcel.tenantId, stationId: parcel.stationId };
+    }
+
+    if (refType === 'ship_order') {
+      const order: any = await this.withBypass((tx) =>
+        tx.shipOrder.findFirst({
+          where: { id: refId, deletedAt: null },
+          select: {
+            tenantId: true,
+            stationId: true,
+            senderJson: true,
+          },
+        }),
+      );
+      if (!order) {
+        throw new BizError(ApiCode.NOT_FOUND, '寄件单不存在');
+      }
+      const senderPhone =
+        order.senderJson && typeof order.senderJson === 'object'
+          ? (order.senderJson as any).phone
+          : undefined;
+      if (senderPhone !== verifiedPhone) {
+        throw new BizError(ApiCode.FORBIDDEN, '无权操作该寄件单');
+      }
+      if (!order.stationId) {
+        throw new BizError(ApiCode.BAD_REQUEST, '寄件单未关联驿站');
+      }
+      return { tenantId: order.tenantId, stationId: order.stationId };
+    }
+
+    throw new BizError(ApiCode.BAD_REQUEST, '不支持的业务单类型');
+  }
+
+  private runInTenant<T>(tenantId: string, fn: () => Promise<T>) {
+    return TenantContext.run(
+      {
+        userId: TenantContext.get()?.userId ?? 'consumer',
+        tenantId,
+        roles: ['consumer'],
+        isPlatform: false,
+      },
+      fn,
+    );
   }
 
   private parsePositiveInt(

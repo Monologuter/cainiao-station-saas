@@ -114,13 +114,23 @@ export class PayService {
         throw new BizError(ApiCode.BAD_REQUEST, '支付失败，请重试');
       }
 
-      const order = await tx.shipOrder.update({
-        where: { id: before.id },
+      const advanced = await tx.shipOrder.updateMany({
+        where: { id: before.id, status: before.status, deletedAt: null },
         data: {
           status: 'PAID',
           paidAt,
           version: { increment: 1 },
         },
+      });
+      if (advanced.count !== 1) {
+        // 并发支付：另一事务已推进订单状态，本次推进作废以保证只生效一次。
+        throw new BizError(
+          ApiCode.IDEMPOTENCY_CONFLICT,
+          '寄件订单状态已被并发推进',
+        );
+      }
+      const order = await tx.shipOrder.findFirst({
+        where: { id: before.id, tenantId: ctx.tenantId, deletedAt: null },
       });
 
       return {
@@ -199,20 +209,31 @@ export class PayService {
             },
           });
 
+          let updated = order;
           if (order.status !== 'PAID') {
             ShipOrderAggregate.assertTransit(
               order.status as ShipOrderStatus,
               'PAID',
             );
+            const advanced = await tx.shipOrder.updateMany({
+              where: { id: order.id, status: order.status, deletedAt: null },
+              data: {
+                status: 'PAID',
+                paidAt,
+                version: { increment: 1 },
+              },
+            });
+            if (advanced.count !== 1) {
+              // 并发回调：另一事务已把订单推进至 PAID，幂等返回当前最新态。
+              const current = await tx.shipOrder.findFirst({
+                where: { id: order.id, tenantId, deletedAt: null },
+              });
+              return { order: current, event: null };
+            }
+            updated = await tx.shipOrder.findFirst({
+              where: { id: order.id, tenantId, deletedAt: null },
+            });
           }
-          const updated = await tx.shipOrder.update({
-            where: { id: order.id },
-            data: {
-              status: 'PAID',
-              paidAt,
-              version: { increment: 1 },
-            },
-          });
 
           return {
             order: updated,

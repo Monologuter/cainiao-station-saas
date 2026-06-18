@@ -110,6 +110,60 @@ describe('CouponService', () => {
     );
   });
 
+  describe('listTemplates cross-tenant read protection (security regression)', () => {
+    it('rejects when tenantId is missing (no full-library leak)', async () => {
+      const tx = {
+        $executeRawUnsafe: jest.fn(),
+        couponTemplate: { findMany: jest.fn() },
+      };
+      const prisma = { $transaction: (fn: any) => fn(tx) } as any;
+      const service = new CouponService({} as any, prisma, {} as any);
+
+      await expect(service.listTemplates({} as any)).rejects.toBeInstanceOf(
+        BizError,
+      );
+      // 缺 tenantId 时绝不查询，避免返回他人模板。
+      expect(tx.couponTemplate.findMany).not.toHaveBeenCalled();
+    });
+
+    it('always scopes the query to the requested tenant and ACTIVE status', async () => {
+      const tx = {
+        $executeRawUnsafe: jest.fn(),
+        couponTemplate: {
+          findMany: jest.fn().mockResolvedValue([{ id: 'ct1', tenantId: 't1' }]),
+        },
+      };
+      const prisma = { $transaction: (fn: any) => fn(tx) } as any;
+      const service = new CouponService({} as any, prisma, {} as any);
+
+      const out = await service.listTemplates({ tenantId: 't1' });
+
+      expect(out).toMatchObject({ total: 1 });
+      const where = tx.couponTemplate.findMany.mock.calls[0][0].where;
+      expect(where).toMatchObject({
+        tenantId: 't1',
+        status: 'ACTIVE',
+        deletedAt: null,
+      });
+    });
+
+    it('does not allow a different tenantId to widen the scope', async () => {
+      const tx = {
+        $executeRawUnsafe: jest.fn(),
+        couponTemplate: { findMany: jest.fn().mockResolvedValue([]) },
+      };
+      const prisma = { $transaction: (fn: any) => fn(tx) } as any;
+      const service = new CouponService({} as any, prisma, {} as any);
+
+      await service.listTemplates({ tenantId: 't-self', scene: 'SHIP' });
+
+      const where = tx.couponTemplate.findMany.mock.calls[0][0].where;
+      // 永远按传入 tenantId 过滤，绝无"未传则全库"的分支。
+      expect(where.tenantId).toBe('t-self');
+      expect(where.scene).toEqual({ in: ['SHIP', 'ALL'] });
+    });
+  });
+
   it('verifies unused coupon idempotently and expires old coupons', async () => {
     const tx = {
       $executeRawUnsafe: jest.fn(),

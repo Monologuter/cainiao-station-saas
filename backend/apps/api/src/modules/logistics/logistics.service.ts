@@ -74,14 +74,27 @@ export class LogisticsService {
           }),
       );
       const collectedAt = new Date();
-      const order = await tx.shipOrder.update({
-        where: { id: before.id },
+      const advanced = await tx.shipOrder.updateMany({
+        where: { id: before.id, status: before.status, deletedAt: null },
         data: {
           status: 'COLLECTED',
           waybillNo: waybill.waybillNo,
           collectedAt,
           version: { increment: 1 },
         },
+      });
+      if (advanced.count !== 1) {
+        // 并发揽收：另一事务已推进。重新读取，已揽收则幂等返回，否则报冲突。
+        const current = await tx.shipOrder.findFirst({
+          where: { id: before.id, tenantId: ctx.tenantId, deletedAt: null },
+        });
+        if (current?.status === 'COLLECTED' && current.waybillNo) {
+          return current;
+        }
+        throw new BizError(ApiCode.IDEMPOTENCY_CONFLICT, '寄件订单状态已被并发推进');
+      }
+      const order = await tx.shipOrder.findFirst({
+        where: { id: before.id, tenantId: ctx.tenantId, deletedAt: null },
       });
       await tx.logisticsTrack.create({
         data: {
@@ -222,27 +235,27 @@ export class LogisticsService {
       return;
     }
     if (latest.nodeStatus === 'DELIVERED' && order.status !== 'DELIVERED') {
+      // COLLECTED 需先经 IN_TRANSIT 再到 DELIVERED；每一步都用乐观锁守护，
+      // 仅当本事务赢得这一步推进（count===1）才更新内存态并继续下一步。
       if (order.status === 'COLLECTED') {
         ShipOrderAggregate.assertTransit(
           order.status as ShipOrderStatus,
           'IN_TRANSIT',
         );
-        order.status = 'IN_TRANSIT';
+        if (!(await this.advanceStatus(tx, order, 'COLLECTED', 'IN_TRANSIT'))) {
+          return;
+        }
+      }
+      if (order.status !== 'IN_TRANSIT') {
+        return;
       }
       ShipOrderAggregate.assertTransit(
         order.status as ShipOrderStatus,
         'DELIVERED',
       );
-      await tx.shipOrder.update({
-        where: { id: order.id },
-        data: {
-          status: 'DELIVERED',
-          deliveredAt: latest.happenedAt,
-          version: { increment: 1 },
-        },
+      await this.advanceStatus(tx, order, 'IN_TRANSIT', 'DELIVERED', {
+        deliveredAt: latest.happenedAt,
       });
-      order.status = 'DELIVERED';
-      order.deliveredAt = latest.happenedAt;
       return;
     }
     if (
@@ -255,12 +268,31 @@ export class LogisticsService {
         order.status as ShipOrderStatus,
         'IN_TRANSIT',
       );
-      await tx.shipOrder.update({
-        where: { id: order.id },
-        data: { status: 'IN_TRANSIT', version: { increment: 1 } },
-      });
-      order.status = 'IN_TRANSIT';
+      await this.advanceStatus(tx, order, 'COLLECTED', 'IN_TRANSIT');
     }
+  }
+
+  /**
+   * 以乐观锁推进 ShipOrder 状态。WHERE 锁定 from 状态，仅当 count===1 时
+   * 视为本事务赢得推进，回写内存态并返回 true；否则（并发已推进）返回 false。
+   */
+  private async advanceStatus(
+    tx: any,
+    order: any,
+    from: ShipOrderStatus,
+    to: ShipOrderStatus,
+    extra: Record<string, unknown> = {},
+  ): Promise<boolean> {
+    const result = await tx.shipOrder.updateMany({
+      where: { id: order.id, status: from, deletedAt: null },
+      data: { status: to, ...extra, version: { increment: 1 } },
+    });
+    if (result.count !== 1) {
+      return false;
+    }
+    order.status = to;
+    Object.assign(order, extra);
+    return true;
   }
 
   private async materializeTrackNodes(

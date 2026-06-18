@@ -80,6 +80,52 @@ describe('PickupService', () => {
     ).rejects.toMatchObject({ code: ApiCode.PARCEL_NOT_FOUND });
   });
 
+  it('rejects empty pickup request before touching the parcel store (no zero-verification dispatch)', async () => {
+    const findMany = jest.fn(async () => [
+      { id: 'p1', stationId: 's1', pickupCode: '1234', status: 'STORED', version: 1 },
+    ]);
+    const markPickedUp = jest.fn();
+    const withLock = jest.fn();
+    const release = jest.fn();
+    const service = new PickupService(
+      { withTenant: async (fn: any) => fn({ parcel: { findMany } }) } as any,
+      { withLock } as any,
+      { markPickedUp } as any,
+      { release } as any,
+    );
+
+    await expect(service.pickup({ stationId: 's1' })).rejects.toMatchObject({
+      code: ApiCode.BAD_REQUEST,
+    });
+    // Guard must short-circuit before any query so the where clause cannot
+    // degrade to "all STORED at station".
+    expect(findMany).not.toHaveBeenCalled();
+    expect(withLock).not.toHaveBeenCalled();
+    expect(markPickedUp).not.toHaveBeenCalled();
+    expect(release).not.toHaveBeenCalled();
+  });
+
+  it('does not mis-dispatch the sole stored parcel when all identifiers are absent', async () => {
+    // Even with exactly one STORED parcel at the station, an identifier-less
+    // request must be refused rather than silently picked up.
+    const findMany = jest.fn(async () => [
+      { id: 'only', stationId: 's1', pickupCode: '9999', status: 'STORED', version: 1 },
+    ]);
+    const markPickedUp = jest.fn();
+    const service = new PickupService(
+      { withTenant: async (fn: any) => fn({ parcel: { findMany } }) } as any,
+      { withLock: jest.fn() } as any,
+      { markPickedUp } as any,
+      { release: jest.fn() } as any,
+    );
+
+    await expect(
+      service.pickup({ stationId: 's1', pickupCode: '  ', phoneTail: '', parcelId: undefined }),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+    expect(findMany).not.toHaveBeenCalled();
+    expect(markPickedUp).not.toHaveBeenCalled();
+  });
+
   it('converts stale optimistic pickup to ALREADY_PICKED_UP', async () => {
     const tx = {
       parcel: {

@@ -5,6 +5,11 @@ import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { AdminConfigModule } from '../config/admin-config.module';
 import { InAppChannel } from './in-app.channel';
 import { MockSmsChannel } from './mock-sms.channel';
+import {
+  NotifyQueueShutdown,
+  notifyQueueProvider,
+} from './notify-queue.providers';
+import { NotifyProcessor } from './notify.processor';
 import { NotifyService } from './notify.service';
 import { OnboardingSubscriber } from './onboarding.subscriber';
 import { OverdueSubscriber } from './overdue.subscriber';
@@ -34,6 +39,9 @@ import { WechatSubscribeChannelFactory } from './wechat-subscribe.factory';
     PrismaService,
     TenantPrismaService,
     CircuitBreakerService,
+    notifyQueueProvider,
+    NotifyQueueShutdown,
+    NotifyProcessor,
   ],
   exports: [NotifyService],
 })

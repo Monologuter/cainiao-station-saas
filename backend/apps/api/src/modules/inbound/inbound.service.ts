@@ -25,21 +25,76 @@ export class InboundService {
     if (existing) return this.toResult(existing);
 
     const parcel = await this.parcels.create(input);
-    const slot = await this.slots.allocate(input.stationId, parcel.id);
-    const pickupCode = await this.pickupCodes.generate(input.stationId);
-    const stored = await this.parcels.markStored(parcel.id, {
-      pickupCode,
-      slotId: slot.id,
-    });
 
-    return {
-      parcelId: stored.id,
-      pickupCode: stored.pickupCode,
-      slotCode: slot.code,
-      slotSource: slot.source,
-      slotReasons: slot.reasons ?? [],
-      status: stored.status,
-    };
+    let slot: Awaited<ReturnType<SlotAllocatorService['allocate']>> | null =
+      null;
+    // The pickup code currently reserved for this parcel. markStored may ask
+    // for a fresh one on conflict; we release the superseded code immediately
+    // so only the live code (if any) needs cleanup on failure.
+    let reservedCode: string | null = null;
+
+    try {
+      slot = await this.slots.allocate(input.stationId, parcel.id);
+
+      const stored = await this.parcels.markStored(parcel.id, {
+        slotId: slot.id,
+        reservePickupCode: async () => {
+          if (reservedCode) {
+            await this.safeRelease(() =>
+              this.pickupCodes.release(input.stationId, reservedCode as string),
+            );
+          }
+          reservedCode = await this.pickupCodes.generate(input.stationId);
+          return reservedCode;
+        },
+      });
+
+      return {
+        parcelId: stored.id,
+        pickupCode: stored.pickupCode,
+        slotCode: slot.code,
+        slotSource: slot.source,
+        slotReasons: slot.reasons ?? [],
+        status: stored.status,
+      };
+    } catch (error) {
+      // Compensate so a failed inbound leaves no leaked resources: the slot
+      // must not stay OCCUPIED and the reserved pickup code must be freed
+      // within its TTL so it can be reused.
+      if (slot) {
+        const slotId = slot.id;
+        await this.safeRelease(() => this.slots.release(slotId, parcel.id));
+      }
+      if (reservedCode) {
+        const code = reservedCode;
+        await this.safeRelease(() =>
+          this.pickupCodes.release(input.stationId, code),
+        );
+      }
+      // Soft-delete the still-PENDING parcel so it does not linger as a zombie
+      // that blocks re-inbound of the same waybill (findExisting treats PENDING
+      // as a duplicate).
+      await this.safeRelease(() => this.abandonPendingParcel(parcel.id));
+      throw error;
+    }
+  }
+
+  private async abandonPendingParcel(parcelId: string) {
+    await this.tenantPrisma.withTenant(async (tx) => {
+      await tx.parcel.updateMany({
+        where: { id: parcelId, status: 'PENDING', deletedAt: null },
+        data: { deletedAt: new Date() },
+      });
+    });
+  }
+
+  private async safeRelease(release: () => Promise<void>) {
+    try {
+      await release();
+    } catch {
+      // Best-effort cleanup: swallow compensation errors so the original
+      // failure is the one that propagates to the caller.
+    }
   }
 
   private async findExisting(stationId: string, waybillNo: string) {
