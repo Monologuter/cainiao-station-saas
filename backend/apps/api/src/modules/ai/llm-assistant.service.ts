@@ -23,6 +23,24 @@ export class LlmAssistantService {
     toolName: string,
     result: Record<string, unknown>,
   ): Promise<AssistantAnswer> {
-    return this.client.continueWithToolResult(turnId, toolName, result);
+    try {
+      return await this.client.continueWithToolResult(turnId, toolName, result);
+    } catch {
+      // ai-service failed/timed out/circuit-open during the second tool-result
+      // round. Degrade instead of letting it bubble into a 500: the tool data
+      // has already been fetched and emitted by the caller, so we return an
+      // empty degraded answer marked degraded to avoid losing the turn.
+      return this.degraded();
+    }
+  }
+
+  private degraded(): AssistantAnswer {
+    return {
+      text: '',
+      citations: [],
+      toolCalls: [],
+      degraded: true,
+      mode: 'MOCK',
+    };
   }
 }

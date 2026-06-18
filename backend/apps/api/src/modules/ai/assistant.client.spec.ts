@@ -1,13 +1,27 @@
-import { AssistantClient } from './assistant.client';
+import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
+import {
+  AssistantClient,
+  AssistantServiceUnavailableError,
+} from './assistant.client';
 
 describe('AssistantClient', () => {
   const originalFetch = global.fetch;
 
   afterEach(() => {
     global.fetch = originalFetch;
+    jest.restoreAllMocks();
     delete process.env.AI_SERVICE_URL;
     delete process.env.SERVICE_TOKEN;
+    delete process.env.AI_ASSISTANT_TIMEOUT_MS;
   });
+
+  const consumerCtx = {
+    tenantId: 'tenant-1',
+    actorType: 'CONSUMER' as const,
+    channel: 'USER_APP' as const,
+    consumerId: 'consumer-1',
+    verifiedPhone: '13800001234',
+  };
 
   it('parses ai-service tool calls and continuation events', async () => {
     process.env.AI_SERVICE_URL = 'http://ai.local';
@@ -36,13 +50,7 @@ describe('AssistantClient', () => {
     global.fetch = fetchMock as any;
     const client = new AssistantClient();
 
-    const answer = await client.ask('我的包裹到了吗？', {
-      tenantId: 'tenant-1',
-      actorType: 'CONSUMER',
-      channel: 'USER_APP',
-      consumerId: 'consumer-1',
-      verifiedPhone: '13800001234',
-    });
+    const answer = await client.ask('我的包裹到了吗？', consumerCtx);
     const continued = await client.continueWithToolResult(
       'turn-1',
       'query_my_parcels',
@@ -67,6 +75,78 @@ describe('AssistantClient', () => {
         headers: expect.objectContaining({ 'X-Service-Token': 'test-token' }),
       }),
     );
+  });
+
+  it('aborts the request with AbortController when ai-service hangs past the timeout', async () => {
+    process.env.AI_ASSISTANT_TIMEOUT_MS = '20';
+    let capturedSignal: AbortSignal | undefined;
+    global.fetch = jest.fn((_url: string, init: any) => {
+      capturedSignal = init?.signal;
+      // ai-service hangs: only settle when the AbortController fires.
+      return new Promise((_resolve, reject) => {
+        init?.signal?.addEventListener('abort', () =>
+          reject(new DOMException('aborted', 'AbortError')),
+        );
+      });
+    }) as any;
+    const client = new AssistantClient(new CircuitBreakerService());
+
+    const error = await client.ask('在吗？', consumerCtx).catch((e) => e);
+
+    expect(error).toBeInstanceOf(AssistantServiceUnavailableError);
+    expect((error as AssistantServiceUnavailableError).code).toBe(
+      'AI_SERVICE_UNAVAILABLE',
+    );
+    expect(capturedSignal?.aborted).toBe(true);
+  });
+
+  it('wraps connection failures (refused/network) as AssistantServiceUnavailableError', async () => {
+    global.fetch = jest.fn(async () => {
+      throw new Error('ECONNREFUSED 127.0.0.1:8000');
+    }) as any;
+    const client = new AssistantClient(new CircuitBreakerService());
+
+    const error = await client.ask('在吗？', consumerCtx).catch((e) => e);
+
+    expect(error).toBeInstanceOf(AssistantServiceUnavailableError);
+    expect((error as AssistantServiceUnavailableError).code).toBe(
+      'AI_SERVICE_UNAVAILABLE',
+    );
+  });
+
+  it('also wraps tool-result-round (continueWithToolResult) failures', async () => {
+    global.fetch = jest.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    }) as any;
+    const client = new AssistantClient(new CircuitBreakerService());
+
+    const error = await client
+      .continueWithToolResult('turn-1', 'query_my_parcels', { items: [] })
+      .catch((e) => e);
+
+    expect(error).toBeInstanceOf(AssistantServiceUnavailableError);
+  });
+
+  it('opens the circuit after repeated failures and fails fast without calling fetch', async () => {
+    const breaker = new CircuitBreakerService();
+    const fetchMock = jest.fn(async () => {
+      throw new Error('ECONNREFUSED');
+    }) as any;
+    global.fetch = fetchMock;
+    const client = new AssistantClient(breaker);
+
+    // failureThreshold is 3 -> after 3 failures the breaker opens.
+    for (let i = 0; i < 3; i += 1) {
+      await client.ask('在吗？', consumerCtx).catch(() => undefined);
+    }
+    expect(breaker.snapshot('assistant.ai-service')?.state).toBe('OPEN');
+
+    const callsBeforeOpenAttempt = fetchMock.mock.calls.length;
+    const error = await client.ask('在吗？', consumerCtx).catch((e) => e);
+
+    // Circuit is open: fast-fail, fetch must NOT be invoked again.
+    expect(error).toBeInstanceOf(AssistantServiceUnavailableError);
+    expect(fetchMock.mock.calls.length).toBe(callsBeforeOpenAttempt);
   });
 
   function response(body: string) {

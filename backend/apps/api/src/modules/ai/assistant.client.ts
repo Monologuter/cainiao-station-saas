@@ -1,5 +1,31 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
 import { AssistantAnswer, AssistantContext } from './assistant.types';
+
+const DEFAULT_TIMEOUT_MS = 5000;
+
+const BREAKER_OPTIONS = {
+  failureThreshold: 3,
+  coolDownMs: 30_000,
+  // Give the breaker timeout a little headroom over the fetch abort so the
+  // AbortController is the primary timeout path and surfaces as a clear error.
+  timeoutMs: DEFAULT_TIMEOUT_MS + 1000,
+};
+
+/**
+ * Raised when the assistant ai-service is unreachable, times out, or the
+ * circuit breaker is open. Recognizable by the upper LlmAssistantService so it
+ * can degrade to the FAQ fallback instead of letting the failure bubble into a
+ * 500 response.
+ */
+export class AssistantServiceUnavailableError extends Error {
+  readonly code = 'AI_SERVICE_UNAVAILABLE';
+
+  constructor(message: string, readonly cause?: unknown) {
+    super(message);
+    this.name = 'AssistantServiceUnavailableError';
+  }
+}
 
 @Injectable()
 export class AssistantClient {
@@ -9,6 +35,12 @@ export class AssistantClient {
     process.env.AI_SERVICE_TOKEN ??
     process.env.SERVICE_TOKEN ??
     'dev-service-token';
+
+  private readonly breaker: CircuitBreakerService;
+
+  constructor(@Optional() breaker?: CircuitBreakerService) {
+    this.breaker = breaker ?? new CircuitBreakerService();
+  }
 
   async ask(question: string, ctx: AssistantContext): Promise<AssistantAnswer> {
     const events = await this.postSse('/assistant/chat', {
@@ -34,18 +66,59 @@ export class AssistantClient {
   }
 
   private async postSse(path: string, payload: Record<string, unknown>) {
-    const response = await fetch(`${this.baseUrl}${path}`, {
-      method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        'X-Service-Token': this.serviceToken,
-      },
-      body: JSON.stringify(payload),
-    });
-    if (!response.ok) {
-      throw new Error(`assistant service error: ${response.status}`);
+    try {
+      return await this.breaker.execute(
+        'assistant.ai-service',
+        BREAKER_OPTIONS,
+        () => this.callAiService(path, payload),
+      );
+    } catch (error) {
+      if (error instanceof AssistantServiceUnavailableError) {
+        throw error;
+      }
+      // Circuit open, breaker timeout, or any other transport failure.
+      throw new AssistantServiceUnavailableError(
+        `assistant ai-service unavailable: ${path}`,
+        error,
+      );
     }
-    return this.parseSse(await response.text());
+  }
+
+  private async callAiService(path: string, payload: Record<string, unknown>) {
+    const controller = new AbortController();
+    const timeout = setTimeout(() => controller.abort(), this.resolveTimeoutMs());
+    try {
+      const response = await fetch(`${this.baseUrl}${path}`, {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          'X-Service-Token': this.serviceToken,
+        },
+        body: JSON.stringify(payload),
+        signal: controller.signal,
+      } as any);
+      if (!response.ok) {
+        throw new AssistantServiceUnavailableError(
+          `assistant service error: ${response.status}`,
+        );
+      }
+      return this.parseSse(await response.text());
+    } catch (error) {
+      if (error instanceof AssistantServiceUnavailableError) {
+        throw error;
+      }
+      // Aborted (timeout) or connection refused / network error.
+      throw new AssistantServiceUnavailableError(
+        `assistant ai-service request failed: ${path}`,
+        error,
+      );
+    } finally {
+      clearTimeout(timeout);
+    }
+  }
+
+  private resolveTimeoutMs(): number {
+    return Number(process.env.AI_ASSISTANT_TIMEOUT_MS ?? DEFAULT_TIMEOUT_MS);
   }
 
   private parseSse(text: string) {
