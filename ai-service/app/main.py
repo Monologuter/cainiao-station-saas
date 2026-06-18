@@ -2,9 +2,11 @@ from __future__ import annotations
 
 import os
 import time
+import json
 from typing import Any, Callable, Optional
 
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
+from fastapi.responses import StreamingResponse
 
 from .kb.keyword import KbEntry, KeywordKnowledgeBase
 from .llm.claude_llm import ClaudeLlmProvider
@@ -13,6 +15,7 @@ from .llm.provider import LlmProvider
 from .providers.mock_ocr import MockOcrProvider
 from .providers.ocr_provider import OcrProvider, WaybillResult
 from .providers.real_ocr import RealOcrProvider
+from .rag.orchestrator import AssistantOrchestrator
 
 
 def create_app(
@@ -37,6 +40,10 @@ def create_app(
     app.state.ocr_provider = provider
     app.state.llm_provider = llm_provider
     app.state.knowledge_base = KeywordKnowledgeBase(kb_entries)
+    app.state.assistant = AssistantOrchestrator(
+        app.state.knowledge_base,
+        app.state.llm_provider,
+    )
     app.state.service_token = token
 
     @app.get("/healthz")
@@ -71,6 +78,50 @@ def create_app(
         kb_entries = [to_kb_entry(entry) for entry in entries]
         app.state.knowledge_base.reindex(kb_entries)
         return {"indexed": len(kb_entries)}
+
+    @app.post("/assistant/chat")
+    async def assistant_chat(
+        payload: dict[str, Any],
+        x_service_token: Optional[str] = Header(
+            default=None,
+            alias="X-Service-Token",
+        ),
+    ):
+        if x_service_token != token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        return StreamingResponse(
+            to_sse(
+                app.state.assistant.chat(
+                    tenant_id=str(payload["tenantId"]),
+                    question=str(payload["question"]),
+                )
+            ),
+            media_type="text/event-stream",
+        )
+
+    @app.post("/assistant/chat/{turn_id}/tool_result")
+    async def assistant_tool_result(
+        turn_id: str,
+        payload: dict[str, Any],
+        x_service_token: Optional[str] = Header(
+            default=None,
+            alias="X-Service-Token",
+        ),
+    ):
+        if x_service_token != token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        return StreamingResponse(
+            to_sse(
+                app.state.assistant.continue_with_tool_result(
+                    turn_id=turn_id,
+                    tool_name=str(payload["toolName"]),
+                    result=dict(payload.get("result") or {}),
+                )
+            ),
+            media_type="text/event-stream",
+        )
 
     @app.post("/ocr/waybill")
     async def recognize_waybill(
@@ -107,6 +158,12 @@ def to_kb_entry(payload: dict[str, Any]) -> KbEntry:
         enabled=bool(payload.get("enabled", True)),
         source=str(payload.get("source") or "reindex"),
     )
+
+
+async def to_sse(events):
+    async for event in events:
+        yield f"event: {event['event']}\n"
+        yield f"data: {json.dumps(event['data'], ensure_ascii=False)}\n\n"
 
 
 def create_provider(name: str) -> OcrProvider:
