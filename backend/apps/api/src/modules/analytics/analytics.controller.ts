@@ -9,6 +9,7 @@ import {
 } from '@nestjs/common';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { CurrentUser, RequirePermission } from '../identity/decorators';
+import { ForecastService } from './forecast.service';
 import { QueryService } from './query.service';
 import { RankingService } from './ranking.service';
 import { ReconcileService } from './reconcile.service';
@@ -21,6 +22,7 @@ export class AnalyticsController {
     private readonly rankings: RankingService,
     private readonly reconcileService: ReconcileService,
     private readonly reports: ReportService,
+    private readonly forecasts: ForecastService,
   ) {}
 
   @RequirePermission('analytics:read')
@@ -91,6 +93,37 @@ export class AnalyticsController {
       query.stationId,
     );
     return this.queries.heatmap({ tenantId: user.tenantId, stationId });
+  }
+
+  @RequirePermission('analytics:read')
+  @Post('forecast/run')
+  async runForecast(@CurrentUser() user: any, @Body() body: any) {
+    const stationId = await this.requireStationId(
+      user.tenantId,
+      body.stationId,
+    );
+    return this.forecasts.run({
+      tenantId: user.tenantId,
+      stationId,
+      horizon: Number(body.horizon ?? 7),
+      granularity: body.granularity ?? 'DAY',
+    });
+  }
+
+  @RequirePermission('analytics:read')
+  @Get('forecast/volume')
+  async forecastVolume(@CurrentUser() user: any, @Query() query: any) {
+    const stationId = await this.requireStationId(
+      user.tenantId,
+      query.stationId,
+    );
+    return this.forecasts.list({
+      tenantId: user.tenantId,
+      stationId,
+      from: this.parseRequiredDate(query.from, 'from'),
+      to: this.parseRequiredDate(query.to, 'to'),
+      granularity: query.granularity ?? 'DAY',
+    });
   }
 
   @RequirePermission('analytics:read')

@@ -9,6 +9,8 @@ import {
   AnalyticsController,
 } from './analytics.controller';
 import { AnalyticsService } from './analytics.service';
+import { ForecastClient } from './forecast.client';
+import { ForecastService } from './forecast.service';
 import {
   ParcelLifecycleAnalyticsListener,
   ParcelStoredAnalyticsListener,
@@ -33,6 +35,8 @@ import { ReportService } from './report.service';
   providers: [
     AnalyticsService,
     AnalyticsGateway,
+    ForecastClient,
+    ForecastService,
     MetricsService,
     QueryService,
     RankingService,
