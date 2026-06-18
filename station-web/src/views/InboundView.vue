@@ -351,6 +351,12 @@ async function submit() {
           <span class="tag green"><span class="d"></span>{{ lastResult.status }}</span>
           <div class="pickup-code tnum">{{ lastResult.pickupCode }}</div>
           <p>库位 {{ lastResult.slotCode }}</p>
+          <div v-if="lastResult.slotSource" class="slot-recommend-meta">
+            <span :class="['tag', lastResult.slotSource === 'AI' ? 'green' : 'gray']">
+              <span class="d"></span>{{ lastResult.slotSource === 'AI' ? '智能推荐' : '规则分配' }}
+            </span>
+            <small v-if="lastResult.slotReasons?.length">{{ lastResult.slotReasons.join(' / ') }}</small>
+          </div>
         </div>
         <div v-else class="empty compact-empty">
           <p>完成入库后显示取件码与库位。</p>
@@ -386,3 +392,21 @@ async function submit() {
     </div>
   </section>
 </template>
+
+<style scoped>
+.slot-recommend-meta {
+  display: grid;
+  justify-items: center;
+  gap: 8px;
+  margin-top: 12px;
+}
+
+.slot-recommend-meta small {
+  max-width: 220px;
+  overflow: hidden;
+  color: var(--muted);
+  font-size: 12px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+</style>

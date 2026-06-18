@@ -2,11 +2,14 @@ import { describe, expect, it, vi } from "vitest";
 import { http } from "./http";
 import {
   createAnalyticsReportApi,
+  forecastSummary,
+  forecastVolumeApi,
   getAnalyticsReportApi,
   heatmapApi,
   overviewApi,
   overviewToKpis,
   rankingApi,
+  runForecastApi,
   stationCompareApi,
   toAnalyticsQueryParams,
   trendApi,
@@ -51,6 +54,13 @@ describe("analytics overview mapping", () => {
     await trendApi({ metric: "inbound", from: "2026-06-17", to: "2026-06-18" });
     await rankingApi({ type: "overdue", stationId: "s1", limit: 8 });
     await heatmapApi({ stationId: "s1" });
+    await forecastVolumeApi({
+      stationId: "s1",
+      from: "2026-06-19",
+      to: "2026-06-25",
+      granularity: "DAY",
+    });
+    await runForecastApi({ stationId: "s1", horizon: 7, granularity: "DAY" });
     await stationCompareApi({ metric: "pickup", date: "2026-06-18" });
     await createAnalyticsReportApi({
       type: "daily_summary",
@@ -73,6 +83,19 @@ describe("analytics overview mapping", () => {
     expect(get).toHaveBeenCalledWith("/analytics/heatmap", {
       params: { stationId: "s1" },
     });
+    expect(get).toHaveBeenCalledWith("/analytics/forecast/volume", {
+      params: {
+        stationId: "s1",
+        from: "2026-06-19",
+        to: "2026-06-25",
+        granularity: "DAY",
+      },
+    });
+    expect(post).toHaveBeenCalledWith("/analytics/forecast/run", {
+      stationId: "s1",
+      horizon: 7,
+      granularity: "DAY",
+    });
     expect(get).toHaveBeenCalledWith("/analytics/stations/compare", {
       params: { metric: "pickup", date: "2026-06-18" },
     });
@@ -84,5 +107,38 @@ describe("analytics overview mapping", () => {
       stationId: "s1",
     });
     expect(get).toHaveBeenCalledWith("/analytics/reports/job-1");
+  });
+
+  it("summarizes forecast confidence and peak hour", () => {
+    expect(
+      forecastSummary([
+        {
+          stationId: "s1",
+          targetDate: "2026-06-19",
+          granularity: "HOUR",
+          predictedVolume: 36,
+          lowerBound: 30,
+          upperBound: 42,
+          method: "MA",
+          hourBreakdown: [0, 0, 0, 0, 0, 0, 0, 0, 3, 12, 9],
+        },
+      ]),
+    ).toEqual({
+      total: 36,
+      method: "MA",
+      peakHour: 9,
+      peakVolume: 12,
+      confidenceLabel: "30-42",
+      coldStart: false,
+    });
+
+    expect(forecastSummary([])).toEqual({
+      total: 0,
+      method: "FALLBACK_MEAN",
+      peakHour: null,
+      peakVolume: 0,
+      confidenceLabel: "0-0",
+      coldStart: true,
+    });
   });
 });

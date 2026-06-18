@@ -11,6 +11,8 @@ export interface InboundResult {
   parcelId: string;
   pickupCode: string;
   slotCode: string;
+  slotSource?: 'AI' | 'RULE_FALLBACK';
+  slotReasons?: string[];
   status: 'STORED';
 }
 

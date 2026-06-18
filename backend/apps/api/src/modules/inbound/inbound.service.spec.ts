@@ -12,7 +12,12 @@ describe('InboundService', () => {
       }),
     };
     const allocator = {
-      allocate: jest.fn().mockResolvedValue({ id: 'slot1', code: 'A-01' }),
+      allocate: jest.fn().mockResolvedValue({
+        id: 'slot1',
+        code: 'A-01',
+        source: 'AI',
+        reasons: ['近门动线', '小件高密'],
+      }),
     };
     const pickupCodes = { generate: jest.fn().mockResolvedValue('1234') };
     const prisma = {
@@ -53,6 +58,8 @@ describe('InboundService', () => {
       parcelId: 'p1',
       pickupCode: '1234',
       slotCode: 'A-01',
+      slotSource: 'AI',
+      slotReasons: ['近门动线', '小件高密'],
       status: 'STORED',
     });
   });

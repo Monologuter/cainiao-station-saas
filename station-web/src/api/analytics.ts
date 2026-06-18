@@ -59,6 +59,42 @@ export interface StationCompare {
   rows: StationCompareRow[];
 }
 
+export type ForecastGranularity = "DAY" | "HOUR";
+export type ForecastMethod = "MA" | "HOLT_WINTERS" | "FALLBACK_MEAN";
+
+export interface VolumeForecastItem {
+  stationId: string;
+  targetDate: string;
+  granularity: ForecastGranularity;
+  predictedVolume: number;
+  lowerBound: number;
+  upperBound: number;
+  actualVolume?: number | null;
+  method: ForecastMethod;
+  hourBreakdown?: number[] | null;
+  generatedAt?: string;
+}
+
+export interface VolumeForecastResponse {
+  items: VolumeForecastItem[];
+}
+
+export interface ForecastRunResponse {
+  stationId: string;
+  granularity: ForecastGranularity;
+  method: ForecastMethod;
+  forecasts: VolumeForecastItem[];
+}
+
+export interface ForecastSummary {
+  total: number;
+  method: ForecastMethod;
+  peakHour: number | null;
+  peakVolume: number;
+  confidenceLabel: string;
+  coldStart: boolean;
+}
+
 export interface CreateReportBody {
   type:
     | "daily_summary"
@@ -128,6 +164,25 @@ export function heatmapApi(query: { stationId?: string }) {
   });
 }
 
+export function forecastVolumeApi(query: {
+  stationId?: string;
+  from: string;
+  to: string;
+  granularity?: ForecastGranularity;
+}) {
+  return http.get<never, VolumeForecastResponse>("/analytics/forecast/volume", {
+    params: toAnalyticsQueryParams(query),
+  });
+}
+
+export function runForecastApi(body: {
+  stationId?: string;
+  horizon?: number;
+  granularity?: ForecastGranularity;
+}) {
+  return http.post<never, ForecastRunResponse>("/analytics/forecast/run", body);
+}
+
 export function stationCompareApi(query: {
   metric: string;
   date?: string;
@@ -167,4 +222,36 @@ export function overviewToKpis(overview: AnalyticsOverview): DashboardKpi[] {
       warn: overview.overdueCount > 0,
     },
   ];
+}
+
+export function forecastSummary(items: VolumeForecastItem[]): ForecastSummary {
+  if (!items.length) {
+    return {
+      total: 0,
+      method: "FALLBACK_MEAN",
+      peakHour: null,
+      peakVolume: 0,
+      confidenceLabel: "0-0",
+      coldStart: true,
+    };
+  }
+
+  const first = items[0];
+  const total = items.reduce((sum, item) => sum + item.predictedVolume, 0);
+  const lower = items.reduce((sum, item) => sum + item.lowerBound, 0);
+  const upper = items.reduce((sum, item) => sum + item.upperBound, 0);
+  const hours = items.find((item) => item.hourBreakdown?.length)?.hourBreakdown ?? [];
+  const peak = hours.reduce(
+    (best, value, hour) => (value > best.value ? { hour, value } : best),
+    { hour: null as number | null, value: 0 },
+  );
+
+  return {
+    total,
+    method: first.method,
+    peakHour: peak.hour,
+    peakVolume: peak.value,
+    confidenceLabel: `${lower}-${upper}`,
+    coldStart: first.method === "FALLBACK_MEAN" && items.length < 7,
+  };
 }

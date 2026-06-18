@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { buildBatchSlotPayload, shelfUsagePercent } from './station';
+import {
+  buildBatchSlotPayload,
+  listSlotHeatmapApi,
+  slotHeatIntensity,
+  shelfUsagePercent,
+} from './station';
+import { http } from './http';
+import { vi } from 'vitest';
 
 describe('station api helpers', () => {
   it('builds matrix batch slot payload', () => {
@@ -14,5 +21,17 @@ describe('station api helpers', () => {
     expect(shelfUsagePercent({ totalSlots: 10, occupiedSlots: 3, usageRate: 0.3 })).toBe(30);
     expect(shelfUsagePercent({ totalSlots: 4, occupiedSlots: 1 })).toBe(25);
     expect(shelfUsagePercent({ totalSlots: 0, occupiedSlots: 0 })).toBe(0);
+  });
+
+  it('maps slot heatmap endpoint and intensity', async () => {
+    const get = vi.spyOn(http, 'get').mockResolvedValue([]);
+
+    await listSlotHeatmapApi('station-1', '2026-06-18');
+
+    expect(get).toHaveBeenCalledWith('/stations/station-1/slots/heatmap', {
+      params: { date: '2026-06-18' },
+    });
+    expect(slotHeatIntensity({ pickCount: 8 }, 10)).toBe(80);
+    expect(slotHeatIntensity({ pickCount: 0 }, 0)).toBe(0);
   });
 });

@@ -36,6 +36,8 @@ export class InboundService {
       parcelId: stored.id,
       pickupCode: stored.pickupCode,
       slotCode: slot.code,
+      slotSource: slot.source,
+      slotReasons: slot.reasons ?? [],
       status: stored.status,
     };
   }

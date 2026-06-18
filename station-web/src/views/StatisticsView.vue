@@ -4,6 +4,7 @@ import { ElMessage } from "element-plus";
 import {
   BarChart3,
   Boxes,
+  CalendarDays,
   Download,
   LineChart,
   PackageCheck,
@@ -13,11 +14,14 @@ import {
 } from "lucide-vue-next";
 import {
   createAnalyticsReportApi,
+  forecastSummary,
+  forecastVolumeApi,
   getAnalyticsReportApi,
   heatmapApi,
   overviewApi,
   overviewToKpis,
   rankingApi,
+  runForecastApi,
   stationCompareApi,
   trendApi,
   type AnalyticsHeatmap,
@@ -26,9 +30,12 @@ import {
   type AnalyticsTrend,
   type ReportJob,
   type StationCompare,
+  type VolumeForecastItem,
 } from "@/api/analytics";
 
 const today = new Date().toISOString().slice(0, 10);
+const tomorrow = offsetDate(today, 1);
+const nextWeek = offsetDate(today, 7);
 const weekStart = new Date(Date.now() - 6 * 24 * 60 * 60 * 1000)
   .toISOString()
   .slice(0, 10);
@@ -41,6 +48,7 @@ const filters = reactive({
 });
 const loading = ref(false);
 const reportLoading = ref(false);
+const forecastLoading = ref(false);
 const overview = ref<AnalyticsOverview>({
   inbound: 0,
   pickup: 0,
@@ -56,6 +64,8 @@ const trend = ref<AnalyticsTrend>({ metric: "inbound", points: [] });
 const ranking = ref<AnalyticsRanking>({ type: "overdue", items: [] });
 const heatmap = ref<AnalyticsHeatmap>({ shelves: [] });
 const compare = ref<StationCompare>({ metric: "inbound", rows: [] });
+const forecast = ref<VolumeForecastItem[]>([]);
+const hourForecast = ref<VolumeForecastItem[]>([]);
 const report = ref<ReportJob | null>(null);
 let timer: number | undefined;
 
@@ -68,6 +78,26 @@ const decoratedKpis = computed(() =>
 const maxTrend = computed(() =>
   Math.max(1, ...trend.value.points.map((item) => item.value)),
 );
+const maxForecast = computed(() =>
+  Math.max(
+    1,
+    ...forecast.value.flatMap((item) => [
+      item.predictedVolume,
+      item.upperBound,
+      item.actualVolume ?? 0,
+    ]),
+  ),
+);
+const forecastInfo = computed(() => forecastSummary(forecast.value));
+const hourInfo = computed(() => forecastSummary(hourForecast.value));
+const hourBars = computed(() => {
+  const hours = hourForecast.value.find((item) => item.hourBreakdown?.length)?.hourBreakdown ?? [];
+  return Array.from({ length: 24 }, (_, hour) => ({
+    hour,
+    value: Number(hours[hour] ?? 0),
+  }));
+});
+const maxHour = computed(() => Math.max(1, ...hourBars.value.map((item) => item.value)));
 const maxCompare = computed(() =>
   Math.max(1, ...compare.value.rows.map((item) => item.value)),
 );
@@ -106,7 +136,7 @@ async function load() {
 
 async function loadQuietly() {
   const query = { stationId: filters.stationId };
-  const [overviewRes, trendRes, rankingRes, heatmapRes, compareRes] =
+  const [overviewRes, trendRes, rankingRes, heatmapRes, compareRes, forecastRes, hourForecastRes] =
     await Promise.all([
       overviewApi(query),
       trendApi({
@@ -118,12 +148,44 @@ async function loadQuietly() {
       rankingApi({ type: "overdue", stationId: filters.stationId, limit: 8 }),
       heatmapApi(query),
       stationCompareApi({ metric: filters.metric, date: filters.to, limit: 8 }),
+      forecastVolumeApi({
+        stationId: filters.stationId,
+        from: tomorrow,
+        to: nextWeek,
+        granularity: "DAY",
+      }),
+      forecastVolumeApi({
+        stationId: filters.stationId,
+        from: tomorrow,
+        to: tomorrow,
+        granularity: "HOUR",
+      }),
     ]);
   overview.value = overviewRes;
   trend.value = trendRes;
   ranking.value = rankingRes;
   heatmap.value = heatmapRes;
   compare.value = compareRes;
+  forecast.value = forecastRes.items;
+  hourForecast.value = hourForecastRes.items;
+}
+
+async function refreshForecast() {
+  if (!filters.stationId) {
+    ElMessage.error("请先填写门店 ID");
+    return;
+  }
+  forecastLoading.value = true;
+  try {
+    await Promise.all([
+      runForecastApi({ stationId: filters.stationId, horizon: 7, granularity: "DAY" }),
+      runForecastApi({ stationId: filters.stationId, horizon: 1, granularity: "HOUR" }),
+    ]);
+    await loadQuietly();
+    ElMessage.success("预测已重算");
+  } finally {
+    forecastLoading.value = false;
+  }
 }
 
 async function exportReport() {
@@ -160,6 +222,12 @@ function metricLabel(metric: string) {
 function money(value?: number) {
   return `¥${((value ?? 0) / 100).toFixed(2)}`;
 }
+
+function offsetDate(date: string, days: number) {
+  const value = new Date(`${date}T00:00:00.000Z`);
+  value.setUTCDate(value.getUTCDate() + days);
+  return value.toISOString().slice(0, 10);
+}
 </script>
 
 <template>
@@ -183,6 +251,15 @@ function money(value?: number) {
       <button class="btn" type="button" :disabled="loading" @click="load">
         <RotateCcw />
         刷新
+      </button>
+      <button
+        class="btn"
+        type="button"
+        :disabled="forecastLoading"
+        @click="refreshForecast"
+      >
+        <CalendarDays />
+        重算预测
       </button>
       <button
         class="btn btn-primary"
@@ -229,6 +306,70 @@ function money(value?: number) {
             }"
           ></i>
           <b>{{ point.date.slice(5) }}</b>
+        </div>
+      </div>
+    </article>
+
+    <article class="table-card forecast-panel">
+      <div class="card-hd">
+        <h2>包裹量预测</h2>
+        <span class="tag" :class="forecastInfo.coldStart ? 'amber' : 'green'">
+          <span class="d"></span>{{ forecastInfo.method }}
+        </span>
+      </div>
+      <div class="forecast-summary">
+        <div>
+          <span>未来 7 日</span>
+          <b class="tnum">{{ forecastInfo.total }}</b>
+        </div>
+        <div>
+          <span>置信区间</span>
+          <b class="tnum">{{ forecastInfo.confidenceLabel }}</b>
+        </div>
+        <div>
+          <span>明日峰值</span>
+          <b class="tnum">
+            {{ hourInfo.peakHour === null ? '--' : `${hourInfo.peakHour}:00` }}
+          </b>
+        </div>
+      </div>
+      <div class="forecast-chart">
+        <div v-for="item in forecast" :key="item.targetDate" class="forecast-bar">
+          <span class="bar-value tnum">{{ item.predictedVolume }}</span>
+          <i
+            class="range"
+            :style="{
+              height: `${Math.max(10, (item.upperBound / maxForecast) * 150)}px`,
+            }"
+          ></i>
+          <i
+            class="predicted"
+            :style="{
+              height: `${Math.max(8, (item.predictedVolume / maxForecast) * 150)}px`,
+            }"
+          ></i>
+          <b>{{ item.targetDate.slice(5) }}</b>
+        </div>
+        <div v-if="forecast.length === 0" class="empty compact-empty">
+          <p>暂无预测结果，可点击重算预测。</p>
+        </div>
+      </div>
+    </article>
+
+    <article class="table-card hour-panel">
+      <div class="card-hd">
+        <h2>明日时段高峰</h2>
+        <span class="muted">峰值 {{ hourInfo.peakVolume }}</span>
+      </div>
+      <div class="hour-heat">
+        <div
+          v-for="item in hourBars"
+          :key="item.hour"
+          class="hour-cell"
+          :style="{ '--hour-alpha': String(Math.min(0.85, item.value / maxHour)) }"
+        >
+          <i></i>
+          <b>{{ item.hour }}</b>
         </div>
       </div>
     </article>
@@ -366,7 +507,8 @@ function money(value?: number) {
 }
 
 .trend-panel,
-.compare-panel {
+.compare-panel,
+.forecast-panel {
   grid-column: span 1;
 }
 
@@ -398,6 +540,121 @@ function money(value?: number) {
 .bar-value {
   color: var(--muted);
   font-size: 11.5px;
+  font-weight: 600;
+}
+
+.forecast-panel {
+  grid-column: span 1;
+}
+
+.forecast-summary {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+  padding: 16px 18px 0;
+}
+
+.forecast-summary div {
+  min-width: 0;
+  padding: 12px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.forecast-summary span,
+.forecast-summary b {
+  display: block;
+}
+
+.forecast-summary span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.forecast-summary b {
+  margin-top: 6px;
+  overflow: hidden;
+  color: var(--text);
+  font-size: 18px;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.forecast-chart {
+  display: grid;
+  grid-template-columns: repeat(7, minmax(44px, 1fr));
+  align-items: end;
+  gap: 12px;
+  min-height: 230px;
+  padding: 22px 18px 18px;
+}
+
+.forecast-bar {
+  position: relative;
+  display: grid;
+  align-items: end;
+  justify-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.forecast-bar .range,
+.forecast-bar .predicted {
+  grid-row: 2;
+  grid-column: 1;
+  align-self: end;
+  border-radius: 9px 9px 4px 4px;
+}
+
+.forecast-bar .range {
+  width: 100%;
+  max-width: 38px;
+  background: var(--primary-soft);
+  border: 1px solid rgba(59, 110, 246, 0.2);
+}
+
+.forecast-bar .predicted {
+  width: 62%;
+  max-width: 24px;
+  background: linear-gradient(180deg, var(--accent), var(--primary));
+}
+
+.forecast-bar b {
+  color: var(--muted);
+  font-size: 11.5px;
+  font-weight: 600;
+}
+
+.hour-panel {
+  min-width: 0;
+}
+
+.hour-heat {
+  display: grid;
+  grid-template-columns: repeat(12, minmax(20px, 1fr));
+  gap: 8px;
+  padding: 18px;
+}
+
+.hour-cell {
+  display: grid;
+  gap: 6px;
+  justify-items: center;
+  min-width: 0;
+}
+
+.hour-cell i {
+  width: 100%;
+  height: 34px;
+  border: 1px solid rgba(217, 119, 6, 0.18);
+  border-radius: 8px;
+  background: rgba(217, 119, 6, var(--hour-alpha));
+}
+
+.hour-cell b {
+  color: var(--muted);
+  font-size: 10.5px;
   font-weight: 600;
 }
 
@@ -532,6 +789,10 @@ function money(value?: number) {
 
   .analytics-grid {
     grid-template-columns: 1fr;
+  }
+
+  .hour-heat {
+    grid-template-columns: repeat(8, minmax(20px, 1fr));
   }
 }
 </style>
