@@ -2,6 +2,7 @@ import { Injectable } from '@nestjs/common';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
+import { resolveStationFilter } from '../../core/tenant-context/station-scope';
 import { ParcelService } from '../parcel/parcel.service';
 import { ExceptionAggregate, ExceptionStatus } from './exception.aggregate';
 
@@ -223,8 +224,18 @@ export class ExceptionService {
     if (input.type) {
       where.type = input.type;
     }
-    if (input.stationId) {
-      where.stationId = input.stationId;
+    // 强制把 stationId 收敛到登录用户的可见门店集合，禁止店员越权读其它门店异常工单。
+    const ctx = TenantContext.get();
+    const stationFilter = resolveStationFilter(
+      {
+        isPlatform: !!ctx?.isPlatform,
+        allStations: !!ctx?.allStations,
+        stations: ctx?.stations ?? [],
+      },
+      input.stationId,
+    );
+    if (stationFilter) {
+      where.stationId = stationFilter.stationId;
     }
     if (input.keyword) {
       where.OR = [

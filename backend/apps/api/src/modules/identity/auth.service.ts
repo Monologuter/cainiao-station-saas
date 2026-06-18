@@ -5,6 +5,7 @@ import * as argon2 from 'argon2';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
+import { computeStationScope } from '../../core/tenant-context/station-scope';
 
 export interface MenuItem {
   code: string;
@@ -149,12 +150,19 @@ export class AuthService {
 
     const roles = user.roles.map((item) => item.role.code);
     const isPlatform = user.type === 'PLATFORM';
-    const accessToken = await this.signAccessToken(
-      user.id,
-      user.tenantId,
+    const scope = computeStationScope({
+      isPlatform,
+      roles,
+      assignedStationIds: await this.assignedStationIds(user.id),
+    });
+    const accessToken = await this.signAccessToken({
+      userId: user.id,
+      username: user.username,
+      tenantId: user.tenantId,
       roles,
       isPlatform,
-    );
+      scope,
+    });
     const refreshToken = await this.issueRefreshToken(user.id);
 
     return {
@@ -166,6 +174,8 @@ export class AuthService {
         tenantId: user.tenantId,
         roles,
         isPlatform,
+        allStations: scope.allStations,
+        stations: scope.stations,
       },
     };
   }
@@ -186,13 +196,20 @@ export class AuthService {
     const user = await this.loadUserById(payload.sub);
     const roles = user.roles.map((item) => item.role.code);
     const isPlatform = user.type === 'PLATFORM';
+    const scope = computeStationScope({
+      isPlatform,
+      roles,
+      assignedStationIds: await this.assignedStationIds(user.id),
+    });
     return {
-      accessToken: await this.signAccessToken(
-        user.id,
-        user.tenantId,
+      accessToken: await this.signAccessToken({
+        userId: user.id,
+        username: user.username,
+        tenantId: user.tenantId,
         roles,
         isPlatform,
-      ),
+        scope,
+      }),
       refreshToken: await this.issueRefreshToken(user.id),
       user: {
         id: user.id,
@@ -200,6 +217,8 @@ export class AuthService {
         tenantId: user.tenantId,
         roles,
         isPlatform,
+        allStations: scope.allStations,
+        stations: scope.stations,
       },
     };
   }
@@ -257,17 +276,33 @@ export class AuthService {
     return user;
   }
 
-  private signAccessToken(
-    userId: string,
-    tenantId: string | null,
-    roles: string[],
-    isPlatform: boolean,
-  ) {
+  /**
+   * 读取店员被分配的可见门店 id 列表。
+   *
+   * 当前数据模型尚无 user↔station 分配表，店员默认无分配门店（返回空数组），
+   * 由门店作用域强制收敛逻辑兜底（无分配门店即不可越权列其它门店数据）。
+   * 后续接入分配表后只需在此返回真实门店 id。
+   */
+  private async assignedStationIds(_userId: string): Promise<string[]> {
+    return [];
+  }
+
+  private signAccessToken(input: {
+    userId: string;
+    username: string;
+    tenantId: string | null;
+    roles: string[];
+    isPlatform: boolean;
+    scope: { allStations: boolean; stations: string[] };
+  }) {
     return this.jwt.signAsync({
-      sub: userId,
-      tenantId,
-      roles,
-      isPlatform,
+      sub: input.userId,
+      username: input.username,
+      tenantId: input.tenantId,
+      roles: input.roles,
+      isPlatform: input.isPlatform,
+      allStations: input.scope.allStations,
+      stations: input.scope.stations,
     });
   }
 

@@ -214,3 +214,93 @@ describe('ExceptionService', () => {
     expect(parcels.returnParcel).not.toHaveBeenCalled();
   });
 });
+
+describe('ExceptionService.list 门店数据范围', () => {
+  function makeService() {
+    const lastWhere: any = {};
+    const tx = {
+      exceptionTicket: {
+        count: jest.fn(async ({ where }: any) => {
+          lastWhere.value = where;
+          return 0;
+        }),
+        findMany: jest.fn(async ({ where }: any) => {
+          lastWhere.value = where;
+          return [];
+        }),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const service = new ExceptionService(tenantPrisma, {} as any);
+    return { service, lastWhere };
+  }
+
+  function runAs<T>(ctx: any, fn: () => T) {
+    return TenantContext.run(ctx, fn);
+  }
+
+  it('店员不传 stationId → 收敛为被分配门店集合', async () => {
+    const { service, lastWhere } = makeService();
+    await runAs(
+      {
+        userId: 'u1',
+        tenantId: 't1',
+        roles: ['店员'],
+        isPlatform: false,
+        allStations: false,
+        stations: ['s1', 's2'],
+      },
+      () => service.list({}),
+    );
+    expect(lastWhere.value.stationId).toEqual({ in: ['s1', 's2'] });
+  });
+
+  it('店员传被分配门店 → 仅该门店', async () => {
+    const { service, lastWhere } = makeService();
+    await runAs(
+      {
+        userId: 'u1',
+        tenantId: 't1',
+        roles: ['店员'],
+        isPlatform: false,
+        allStations: false,
+        stations: ['s1', 's2'],
+      },
+      () => service.list({ stationId: 's1' }),
+    );
+    expect(lastWhere.value.stationId).toBe('s1');
+  });
+
+  it('店员传非分配门店 → 拒绝（越权）', async () => {
+    const { service } = makeService();
+    await expect(
+      runAs(
+        {
+          userId: 'u1',
+          tenantId: 't1',
+          roles: ['店员'],
+          isPlatform: false,
+          allStations: false,
+          stations: ['s1', 's2'],
+        },
+        () => service.list({ stationId: 's9' }),
+      ),
+    ).rejects.toThrow('无权访问该门店数据');
+  });
+
+  it('店长可见全租户门店 → 不追加 stationId 过滤', async () => {
+    const { service, lastWhere } = makeService();
+    await runAs(
+      {
+        userId: 'boss',
+        tenantId: 't1',
+        roles: ['店长'],
+        isPlatform: false,
+        allStations: true,
+        stations: [],
+      },
+      () => service.list({}),
+    );
+    expect(lastWhere.value.stationId).toBeUndefined();
+  });
+});

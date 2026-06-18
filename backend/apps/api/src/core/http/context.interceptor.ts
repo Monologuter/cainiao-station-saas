@@ -22,6 +22,8 @@ export class ContextInterceptor implements NestInterceptor {
           tenantId: user.tenantId ?? null,
           roles: user.roles ?? [],
           isPlatform: !!user.isPlatform,
+          allStations: !!user.allStations,
+          stations: user.stations ?? [],
           traceId: existing?.traceId,
         },
         () => {

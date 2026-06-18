@@ -20,5 +20,21 @@ services:
     ports:
       - "16379:6379"
 
+  # 对象存储（S3 兼容）：面单图 / 存证照 / 报表。dev 也需要对象存储。
+  # 独立 container_name + 独立卷 cainiao-minio；端口错开（不占用本机 9000）。
+  minio:
+    image: minio/minio:latest
+    container_name: cainiao-station-minio
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cainiao}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cainiao-secret}
+    ports:
+      - "19000:9000"   # S3 API
+      - "19001:9001"   # 控制台
+    volumes:
+      - cainiao-minio:/data
+
 volumes:
   cainiao-pgdata:
+  cainiao-minio:

@@ -109,3 +109,98 @@ describe('ShippingService', () => {
     );
   });
 });
+
+describe('ShippingService.listOrders 门店数据范围', () => {
+  function makeService() {
+    const lastWhere: any = {};
+    const tenantPrisma = {
+      withTenant: jest.fn(async (fn) =>
+        fn({
+          shipOrder: {
+            count: jest.fn(async ({ where }: any) => {
+              lastWhere.value = where;
+              return 0;
+            }),
+            findMany: jest.fn(async ({ where }: any) => {
+              lastWhere.value = where;
+              return [];
+            }),
+          },
+        }),
+      ),
+    };
+    const service = new ShippingService(
+      {} as any,
+      {} as any,
+      tenantPrisma as any,
+      {} as any,
+    );
+    return { service, lastWhere };
+  }
+
+  it('店员不传 stationId → 收敛为被分配门店集合', async () => {
+    const { service, lastWhere } = makeService();
+    await service.listOrders(
+      {},
+      {
+        userId: 'u1',
+        tenantId: 't1',
+        roles: ['店员'],
+        isPlatform: false,
+        allStations: false,
+        stations: ['s1', 's2'],
+      },
+    );
+    expect(lastWhere.value.stationId).toEqual({ in: ['s1', 's2'] });
+  });
+
+  it('店员传被分配门店 → 仅该门店', async () => {
+    const { service, lastWhere } = makeService();
+    await service.listOrders(
+      { stationId: 's2' },
+      {
+        userId: 'u1',
+        tenantId: 't1',
+        roles: ['店员'],
+        isPlatform: false,
+        allStations: false,
+        stations: ['s1', 's2'],
+      },
+    );
+    expect(lastWhere.value.stationId).toBe('s2');
+  });
+
+  it('店员传非分配门店 → 拒绝（越权）', async () => {
+    const { service } = makeService();
+    await expect(
+      service.listOrders(
+        { stationId: 's9' },
+        {
+          userId: 'u1',
+          tenantId: 't1',
+          roles: ['店员'],
+          isPlatform: false,
+          allStations: false,
+          stations: ['s1', 's2'],
+        },
+      ),
+    ).rejects.toThrow('无权访问该门店数据');
+  });
+
+  it('店长可见全租户门店 → 不带入参时不追加 stationId 过滤', async () => {
+    const { service, lastWhere } = makeService();
+    await service.listOrders(
+      {},
+      {
+        userId: 'boss',
+        tenantId: 't1',
+        roles: ['店长'],
+        isPlatform: false,
+        allStations: true,
+        stations: [],
+      },
+    );
+    expect(lastWhere.value.stationId).toBeUndefined();
+    expect(lastWhere.value.tenantId).toBe('t1');
+  });
+});

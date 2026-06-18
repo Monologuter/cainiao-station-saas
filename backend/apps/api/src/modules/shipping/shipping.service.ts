@@ -5,6 +5,7 @@ import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
+import { resolveStationFilter } from '../../core/tenant-context/station-scope';
 import { CourierSelectorService } from './courier-selector.service';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
@@ -22,6 +23,8 @@ interface RequestUser {
   tenantId?: string | null;
   roles?: string[];
   isPlatform?: boolean;
+  allStations?: boolean;
+  stations?: string[];
 }
 
 @Injectable()
@@ -144,8 +147,13 @@ export class ShippingService {
     if (input.status) {
       where.status = input.status;
     }
-    if (input.stationId) {
-      where.stationId = input.stationId;
+    // 强制把 stationId 收敛到登录用户的可见门店集合，禁止店员越权读其它门店。
+    const stationFilter = resolveStationFilter(
+      this.stationScope(user, ctx),
+      input.stationId,
+    );
+    if (stationFilter) {
+      where.stationId = stationFilter.stationId;
     }
 
     return this.tenantPrisma.withTenant(async (tx) => {
@@ -234,6 +242,18 @@ export class ShippingService {
       throw new BizError(ApiCode.UNAUTHORIZED, '缺少租户上下文');
     }
     return ctx;
+  }
+
+  /**
+   * 取登录用户的门店作用域：优先用 controller 透传的 user，回退到 TenantContext。
+   */
+  private stationScope(user: RequestUser | undefined, ctx: any) {
+    const source = user ?? TenantContext.get();
+    return {
+      isPlatform: !!(source?.isPlatform ?? ctx?.isPlatform),
+      allStations: !!source?.allStations,
+      stations: source?.stations ?? [],
+    };
   }
 
   private nextOrderNo() {

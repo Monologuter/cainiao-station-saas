@@ -58,6 +58,11 @@ describe('Foundation e2e', () => {
       .set('Authorization', `Bearer ${bossLogin.body.data.accessToken}`)
       .expect(200);
     expect(me.body.data.tenantId).toBe(open.body.data.tenantId);
+    // #11 契约：/auth/me 必须含 id + username（前端刷新后保留用户名）
+    expect(me.body.data.id).toBe(bossLogin.body.data.user.id);
+    expect(me.body.data.username).toBe(phone);
+    // #6：店长门店作用域为「全门店」
+    expect(me.body.data.allStations).toBe(true);
   });
 
   it('店长无 tenant:create 权限 → 开店被拒(403 业务码)', async () => {

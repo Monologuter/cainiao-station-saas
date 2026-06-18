@@ -550,3 +550,77 @@ describe('ParcelService', () => {
     expect(bus.publish).not.toHaveBeenCalled();
   });
 });
+
+describe('ParcelService.list 门店数据范围', () => {
+  function makeService() {
+    const lastWhere: any = {};
+    const tx = {
+      parcel: {
+        count: jest.fn(async ({ where }: any) => {
+          lastWhere.value = where;
+          return 0;
+        }),
+        findMany: jest.fn(async ({ where }: any) => {
+          lastWhere.value = where;
+          return [];
+        }),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const service = new ParcelService(tenantPrisma, { publish: jest.fn() } as any);
+    return { service, lastWhere };
+  }
+
+  function runAs<T>(ctx: any, fn: () => T) {
+    return TenantContext.run(ctx, fn);
+  }
+
+  it('店员仅可见被分配门店的在库包裹', async () => {
+    const { service, lastWhere } = makeService();
+    await runAs(
+      {
+        userId: 'u1',
+        tenantId: 't1',
+        roles: ['店员'],
+        isPlatform: false,
+        allStations: false,
+        stations: ['s1', 's2'],
+      },
+      () => service.list({}),
+    );
+    expect(lastWhere.value.stationId).toEqual({ in: ['s1', 's2'] });
+  });
+
+  it('店长可见全租户门店 → 不追加 stationId 过滤', async () => {
+    const { service, lastWhere } = makeService();
+    await runAs(
+      {
+        userId: 'boss',
+        tenantId: 't1',
+        roles: ['店长'],
+        isPlatform: false,
+        allStations: true,
+        stations: [],
+      },
+      () => service.list({}),
+    );
+    expect(lastWhere.value.stationId).toBeUndefined();
+  });
+
+  it('未分配门店的店员被拒绝列全租户包裹（FORBIDDEN）', async () => {
+    const { service } = makeService();
+    await expect(
+      runAs(
+        {
+          userId: 'u1',
+          tenantId: 't1',
+          roles: ['店员'],
+          isPlatform: false,
+          allStations: false,
+          stations: [],
+        },
+        () => service.list({}),
+      ),
+    ).rejects.toThrow('当前账号未分配可见门店');
+  });
+});

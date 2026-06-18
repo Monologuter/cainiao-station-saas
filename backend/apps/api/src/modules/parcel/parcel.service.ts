@@ -3,6 +3,7 @@ import { EventBus } from '../../core/event-bus/event-bus';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
+import { resolveStationFilter } from '../../core/tenant-context/station-scope';
 import { ParcelAggregate, ParcelStatus } from './parcel.aggregate';
 
 interface CreateParcelInput {
@@ -610,6 +611,16 @@ export class ParcelService {
     }
     if (input.slot) {
       where.slot = { is: { code: input.slot } };
+    }
+    // 强制把可见门店收敛到登录用户作用域：店员仅可见被分配门店的在库包裹。
+    const ctx = TenantContext.get();
+    const stationFilter = resolveStationFilter({
+      isPlatform: !!ctx?.isPlatform,
+      allStations: !!ctx?.allStations,
+      stations: ctx?.stations ?? [],
+    });
+    if (stationFilter) {
+      where.stationId = stationFilter.stationId;
     }
     return where;
   }
