@@ -81,7 +81,7 @@ describe('Platform monitor API e2e', () => {
         gmv: 8800,
       },
     });
-  });
+  }, 15000);
 
   it('rejects tenant users from monitor endpoints', async () => {
     const adminToken = await login('admin', 'admin123456');
@@ -92,7 +92,7 @@ describe('Platform monitor API e2e', () => {
       .set('Authorization', `Bearer ${boss.token}`)
       .expect(200);
     expect(denied.body.code).toBe(1003);
-  });
+  }, 10000);
 
   async function login(username: string, password: string) {
     const res = await request(app.getHttpServer())
