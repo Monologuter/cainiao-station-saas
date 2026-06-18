@@ -232,6 +232,49 @@ const defaultChannelConfigs = [
   },
 ];
 
+const defaultFaqEntries = [
+  {
+    category: 'PICKUP',
+    question: '取件码在哪里查看？',
+    answer:
+      '您可以在用户端首页的「待取件」或「取件码」页面查看取件码。到站后向店员出示取件码即可领取包裹。',
+    keywords: ['取件码', '取件', '领取', '待取件'],
+    priority: 100,
+  },
+  {
+    category: 'SHIPPING',
+    question: '怎么在线寄件？',
+    answer:
+      '进入用户端「寄件」页面，填写寄件人、收件人、物品信息并选择快递报价，支付后把包裹交给驿站即可。',
+    keywords: ['寄件', '在线寄件', '下单', '快递报价'],
+    priority: 90,
+  },
+  {
+    category: 'PARCEL_STATUS',
+    question: '我的包裹到了吗？',
+    answer:
+      '您可以问我「我的包裹到了吗」，系统会在确认本人身份后查询在库包裹。如果有待取件，会返回取件码、库位和所在门店。',
+    keywords: ['包裹', '到了吗', '在库', '物流', '状态'],
+    priority: 110,
+  },
+  {
+    category: 'MEMBER',
+    question: '积分有什么用？',
+    answer:
+      '会员积分可用于兑换优惠券或参与驿站活动。积分明细和可用优惠券可在用户端「会员中心」查看。',
+    keywords: ['积分', '会员', '优惠券', '兑换'],
+    priority: 70,
+  },
+  {
+    category: 'GENERAL',
+    question: '在线客服可以帮我做什么？',
+    answer:
+      '在线客服可以解答取件、寄件、包裹状态、会员积分等问题；涉及本人包裹时，会通过受控查询工具读取您的真实包裹状态。',
+    keywords: ['客服', '帮助', '问题', '咨询'],
+    priority: 60,
+  },
+] as const;
+
 async function main() {
   await prisma.$transaction(
     async (tx) => {
@@ -352,6 +395,30 @@ async function main() {
             enabled: true,
           },
         });
+      }
+
+      for (const faq of defaultFaqEntries) {
+        const exists = await tx.faqEntry.findFirst({
+          where: { tenantId: null, question: faq.question },
+        });
+        const data = {
+          tenantId: null,
+          category: faq.category,
+          question: faq.question,
+          answer: faq.answer,
+          keywords: [...faq.keywords],
+          priority: faq.priority,
+          enabled: true,
+          source: 'seed:p4-2',
+        };
+        if (exists) {
+          await tx.faqEntry.update({
+            where: { id: exists.id },
+            data,
+          });
+        } else {
+          await tx.faqEntry.create({ data });
+        }
       }
 
       const superRole =
@@ -549,7 +616,7 @@ async function main() {
         });
       }
     },
-    { timeout: 30000 },
+    { timeout: 120000 },
   );
 
   console.log('seed done: platform admin = admin / admin123456');

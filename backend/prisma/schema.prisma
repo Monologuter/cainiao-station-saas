@@ -289,6 +289,14 @@ enum OcrRecognitionStatus {
   FALLBACK_MANUAL
 }
 
+enum FaqCategory {
+  PICKUP
+  SHIPPING
+  PARCEL_STATUS
+  MEMBER
+  GENERAL
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -800,6 +808,7 @@ model Tenant {
   invoices             Invoice[]
   auditLogs            AuditLog[]
   ocrRecognitions      OcrRecognition[]
+  faqEntries           FaqEntry[]
 }
 
 model Station {
@@ -931,6 +940,28 @@ model OcrRecognition {
   @@index([tenantId, stationId, status])
   @@index([tenantId, waybillNo])
   @@map("ocr_recognitions")
+}
+
+model FaqEntry {
+  id        String      @id @default(uuid()) @db.Uuid
+  tenantId  String?     @map("tenant_id") @db.Uuid
+  category  FaqCategory
+  question  String      @db.VarChar(300)
+  answer    String      @db.Text
+  keywords  String[]    @default([])
+  embedding Json?
+  priority  Int         @default(0)
+  enabled   Boolean     @default(true)
+  source    String      @default("manual") @db.VarChar(120)
+  createdAt DateTime    @default(now()) @map("created_at")
+  updatedAt DateTime    @updatedAt @map("updated_at")
+  deletedAt DateTime?   @map("deleted_at")
+  createdBy String?     @map("created_by") @db.Uuid
+  tenant    Tenant?     @relation(fields: [tenantId], references: [id])
+
+  @@index([tenantId, category, enabled])
+  @@index([enabled, priority])
+  @@map("faq_entries")
 }
 
 model ExceptionTicket {
