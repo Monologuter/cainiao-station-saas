@@ -16,6 +16,8 @@ from .providers.mock_ocr import MockOcrProvider
 from .providers.ocr_provider import OcrProvider, WaybillResult
 from .providers.real_ocr import RealOcrProvider
 from .rag.orchestrator import AssistantOrchestrator
+from .slot.scorer import SlotScorer
+from .slot.schemas import SlotRecommendRequest
 
 
 def create_app(
@@ -44,6 +46,7 @@ def create_app(
         app.state.knowledge_base,
         app.state.llm_provider,
     )
+    app.state.slot_scorer = SlotScorer()
     app.state.service_token = token
 
     @app.get("/healthz")
@@ -122,6 +125,19 @@ def create_app(
             ),
             media_type="text/event-stream",
         )
+
+    @app.post("/slot/recommend")
+    async def slot_recommend(
+        payload: SlotRecommendRequest,
+        x_service_token: Optional[str] = Header(
+            default=None,
+            alias="X-Service-Token",
+        ),
+    ):
+        if x_service_token != token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        return app.state.slot_scorer.recommend(payload)
 
     @app.post("/ocr/waybill")
     async def recognize_waybill(
