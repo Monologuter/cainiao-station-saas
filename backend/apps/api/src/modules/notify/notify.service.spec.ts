@@ -140,6 +140,62 @@ describe('NotifyService', () => {
     );
   });
 
+  it('routes consumer-bound parcel notifications through WeChat before SMS', async () => {
+    const created: any[] = [];
+    const tx = {
+      notification: {
+        upsert: jest.fn(async ({ create }: any) => {
+          created.push(create);
+          return create;
+        }),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const renderer = {
+      render: jest.fn(async (_code, channel, vars) => ({
+        content: `${channel}:${vars.code}:${vars.slot}`,
+      })),
+    } as any;
+    const eventBus = { publish: jest.fn() };
+    const wechatChannel = {
+      send: jest.fn().mockResolvedValue({ ok: true }),
+    };
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      eventBus as any,
+      channelResolver as any,
+      undefined,
+      undefined,
+      { get: jest.fn().mockResolvedValue(wechatChannel) } as any,
+    );
+
+    await service.notifyParcelStored({
+      parcelId: 'p1',
+      tenantId: 't1',
+      stationId: 's1',
+      receiverPhone: '13800000000',
+      pickupCode: '1234',
+      slotCode: 'A-01',
+      consumerId: 'c1',
+    });
+
+    expect(created.map((item) => item.channel)).toEqual([
+      'IN_APP',
+      'WECHAT',
+      'SMS',
+    ]);
+    expect(wechatChannel.send).toHaveBeenCalledWith(
+      expect.objectContaining({
+        channel: 'WECHAT',
+        tenantId: 't1',
+        consumerId: 'c1',
+        templateCode: 'PARCEL_STORED',
+        variables: ['1234', 'A-01', 's1', '0000'],
+      }),
+    );
+  });
+
   it('dedups repeated ParcelStored notifications by dedup key', async () => {
     const upserts: any[] = [];
     const tx = {

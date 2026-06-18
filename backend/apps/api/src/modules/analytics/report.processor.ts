@@ -1,9 +1,13 @@
 import { Injectable } from '@nestjs/common';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { FileStorageService } from '../file/file-storage.service';
 
 @Injectable()
 export class ReportProcessor {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    private readonly files: FileStorageService,
+  ) {}
 
   async process(jobId: string) {
     await this.prisma.$transaction(async (tx) => {
@@ -21,12 +25,18 @@ export class ReportProcessor {
       });
 
       try {
-        await this.buildCsv(tx, job);
+        const body = await this.buildCsv(tx, job);
+        const fileKey = this.reportFileKey(job);
+        await this.files.storeObject({
+          fileKey,
+          contentType: 'text/csv; charset=utf-8',
+          body,
+        });
         await tx.reportJob.update({
           where: { id: job.id },
           data: {
             status: 'DONE',
-            fileKey: `mock://reports/${job.id}.${job.format.toLowerCase()}`,
+            fileKey,
             error: null,
           },
         });
@@ -63,5 +73,12 @@ export class ReportProcessor {
           `${row.statDate.toISOString().slice(0, 10)},${row.metric},${row.value}`,
       ),
     ].join('\n');
+  }
+
+  private reportFileKey(job: any) {
+    const month = `${job.rangeFrom.getUTCFullYear()}${String(
+      job.rangeFrom.getUTCMonth() + 1,
+    ).padStart(2, '0')}`;
+    return `reports/${job.tenantId}/${month}/${job.id}.${job.format.toLowerCase()}`;
   }
 }

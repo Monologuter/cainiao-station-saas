@@ -66,6 +66,6 @@ describe('ParcelStoredSubscriber', () => {
     await subscriber.onParcelStored(buildEvent());
 
     const [, , opts] = (queue.add as jest.Mock).mock.calls[0];
-    expect(opts.jobId).toBe('parcel-stored:t1:p1');
+    expect(opts.jobId).toBe('parcel-stored__t1__p1');
   });
 });

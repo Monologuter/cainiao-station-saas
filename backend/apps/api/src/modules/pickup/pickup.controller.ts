@@ -19,6 +19,10 @@ class PickupDto {
   @IsOptional()
   @IsString()
   parcelId?: string;
+
+  @IsOptional()
+  @IsString()
+  authorizedPhone?: string;
 }
 
 @Controller('pickup')

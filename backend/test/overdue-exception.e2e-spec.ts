@@ -31,6 +31,7 @@ describe('Overdue exception closure e2e', () => {
   });
 
   it('scans overdue levels, sends dedup notifications and returns expired parcel', async () => {
+    await cleanupOverdueFixtureData();
     const boss = await openTenant('滞留闭环驿站');
     await prepareSlots(boss);
     const remind = await inbound(boss, '13800010001');
@@ -43,10 +44,21 @@ describe('Overdue exception closure e2e', () => {
     await ageParcel(final.parcelId, 11);
     await ageParcel(expired.parcelId, 15);
 
-    await request(app.getHttpServer())
+    const scan = await request(app.getHttpServer())
       .post('/api/parcels/overdue/scan')
       .set('Authorization', `Bearer ${boss.token}`)
       .expect(201);
+    expect(scan.body.data).toMatchObject({
+      skipped: false,
+      upgraded: 3,
+      returned: 1,
+      levels: { 1: 1, 2: 1, 3: 1 },
+    });
+    await waitForNotifications([
+      remind.parcelId,
+      urge.parcelId,
+      final.parcelId,
+    ]);
 
     const state = await prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
@@ -170,5 +182,70 @@ describe('Overdue exception closure e2e', () => {
         },
       });
     });
+  }
+
+  async function cleanupOverdueFixtureData() {
+    await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      const parcels = await tx.parcel.findMany({
+        where: {
+          waybillNo: { startsWith: 'OD' },
+          receiverPhone: {
+            in: ['13800010001', '13800010002', '13800010003', '13800010004'],
+          },
+        },
+        select: { id: true },
+      });
+      const parcelIds = parcels.map((parcel) => parcel.id);
+      if (parcelIds.length === 0) {
+        return;
+      }
+
+      await tx.slot.updateMany({
+        where: { currentParcelId: { in: parcelIds } },
+        data: { currentParcelId: null, status: 'FREE' },
+      });
+      await tx.notification.deleteMany({
+        where: { parcelId: { in: parcelIds } },
+      });
+      await tx.parcelEvent.deleteMany({
+        where: { parcelId: { in: parcelIds } },
+      });
+      await tx.exceptionTicket.deleteMany({
+        where: { parcelId: { in: parcelIds } },
+      });
+      await tx.ocrRecognition.deleteMany({
+        where: { parcelId: { in: parcelIds } },
+      });
+      await tx.parcel.deleteMany({
+        where: { id: { in: parcelIds } },
+      });
+    });
+  }
+
+  async function waitForNotifications(parcelIds: string[], timeoutMs = 5000) {
+    const deadline = Date.now() + timeoutMs;
+    while (Date.now() < deadline) {
+      const count = await prisma.$transaction(async (tx) => {
+        await tx.$executeRawUnsafe(
+          `SELECT set_config('app.bypass_rls', 'on', true)`,
+        );
+        return tx.notification.count({
+          where: {
+            parcelId: { in: parcelIds },
+            templateCode: {
+              in: ['OVERDUE_REMIND', 'OVERDUE_URGE', 'OVERDUE_FINAL'],
+            },
+          },
+        });
+      });
+      if (count >= parcelIds.length) {
+        return;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 100));
+    }
+    throw new Error('overdue notifications were not delivered');
   }
 });

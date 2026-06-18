@@ -257,6 +257,59 @@ describe('PayService', () => {
       code: ApiCode.SHIPPING_ILLEGAL_TRANSITION,
     });
   });
+
+  it('refunds a paid uncollected shipping order and cancels it', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        orderNo: 'SO1',
+        status: 'PAID',
+        quoteAmount: 800,
+        collectedAt: null,
+      },
+      payments: [
+        {
+          id: 'pay1',
+          tenantId: 't1',
+          bizType: 'SHIP_ORDER',
+          bizId: 'so1',
+          amount: 800,
+          status: 'SUCCESS',
+          outTradeNo: 'out-1',
+          rawJson: {},
+        },
+      ],
+    };
+    const channel = {
+      code: 'mock',
+      refund: jest.fn().mockResolvedValue({
+        status: 'SUCCESS',
+        refundNo: 'refund:refund-key-1',
+        raw: { refundId: 'r1' },
+      }),
+    };
+    const service = new PayService(
+      { withTenant: jest.fn(async (fn) => fn(makeTx(state))) } as any,
+      channel as any,
+      {} as any,
+    );
+
+    await expect(
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () => service.refundShipOrder('so1', 'refund-key-1'),
+      ),
+    ).resolves.toMatchObject({ status: 'CANCELLED' });
+    expect(channel.refund).toHaveBeenCalledWith(
+      expect.objectContaining({
+        outTradeNo: 'out-1',
+        amount: 800,
+        refundAmount: 800,
+      }),
+    );
+    expect(state.payments[0].status).toBe('REFUNDED');
+  });
 });
 
 function makeTx(state: any) {
@@ -275,13 +328,16 @@ function makeTx(state: any) {
         return payment;
       }),
       findFirst: jest.fn(async ({ where }) =>
-        state.payments.find(
-          (payment: any) =>
-            payment.tenantId === where.tenantId &&
-            payment.outTradeNo === where.outTradeNo &&
-            payment.bizType === where.bizType &&
-            payment.deletedAt == null,
-        ),
+        state.payments.find((payment: any) => {
+          if (where.tenantId && payment.tenantId !== where.tenantId) return false;
+          if (where.outTradeNo && payment.outTradeNo !== where.outTradeNo) {
+            return false;
+          }
+          if (where.bizType && payment.bizType !== where.bizType) return false;
+          if (where.bizId && payment.bizId !== where.bizId) return false;
+          if (where.status && payment.status !== where.status) return false;
+          return payment.deletedAt == null;
+        }),
       ),
       update: jest.fn(async ({ where, data }) => {
         const index = state.payments.findIndex(

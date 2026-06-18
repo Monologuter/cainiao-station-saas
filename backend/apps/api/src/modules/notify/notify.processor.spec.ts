@@ -1,6 +1,9 @@
 import type { Job } from 'bullmq';
 import {
+  APPLICATION_REJECTED_NOTIFY_JOB,
+  PARCEL_OVERDUE_NOTIFY_JOB,
   PARCEL_STORED_NOTIFY_JOB,
+  TENANT_APPROVED_NOTIFY_JOB,
   type ParcelStoredNotifyJobData,
 } from './notify-queue.constants';
 import { NotifyProcessor } from './notify.processor';
@@ -94,6 +97,55 @@ describe('NotifyProcessor', () => {
     expect(notify.notifyParcelStored).toHaveBeenCalledWith(
       expect.objectContaining({ parcelId: 'p1', tenantId: 't1' }),
     );
+  });
+
+  it('dispatches every notification job type through the queued processor', async () => {
+    const notify = {
+      notifyParcelStored: jest.fn(),
+      notifyParcelOverdue: jest.fn(),
+      notifyTenantApproved: jest.fn(),
+      notifyApplicationRejected: jest.fn(),
+    } as any;
+    const processor = new NotifyProcessor(notify);
+
+    await processor.process(makeJob(PAYLOAD, PARCEL_STORED_NOTIFY_JOB));
+    await processor.process(
+      makeJob(
+        {
+          ...PAYLOAD,
+          level: 2,
+          daysOverdue: 7,
+        } as any,
+        PARCEL_OVERDUE_NOTIFY_JOB,
+      ),
+    );
+    await processor.process(
+      makeJob(
+        {
+          applicationId: 'app-1',
+          tenantId: 't1',
+          ownerUserId: 'u1',
+          ownerUsername: '13800000001',
+          planCode: 'BASIC',
+        } as any,
+        TENANT_APPROVED_NOTIFY_JOB,
+      ),
+    );
+    await processor.process(
+      makeJob(
+        {
+          applicationId: 'app-2',
+          contactPhone: '13800000002',
+          rejectReason: '证照不清晰',
+        } as any,
+        APPLICATION_REJECTED_NOTIFY_JOB,
+      ),
+    );
+
+    expect(notify.notifyParcelStored).toHaveBeenCalledTimes(1);
+    expect(notify.notifyParcelOverdue).toHaveBeenCalledTimes(1);
+    expect(notify.notifyTenantApproved).toHaveBeenCalledTimes(1);
+    expect(notify.notifyApplicationRejected).toHaveBeenCalledTimes(1);
   });
 
   it('propagates a transient channel failure so BullMQ retries (job not silently dropped)', async () => {

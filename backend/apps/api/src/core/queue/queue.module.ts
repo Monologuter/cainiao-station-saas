@@ -12,7 +12,7 @@ const overdueScanQueueProvider = {
     }),
 };
 
-function queueRedisConnectionOptions() {
+export function queueRedisConnectionOptions() {
   const url = new URL(process.env.REDIS_URL ?? 'redis://localhost:16379');
   return {
     host: url.hostname,
@@ -39,6 +39,6 @@ class QueueShutdown implements OnModuleDestroy {
     RepeatableRegistrar,
     QueueShutdown,
   ],
-  exports: [RedisService, overdueScanQueueProvider, RepeatableRegistrar],
+  exports: [RedisService, OVERDUE_SCAN_QUEUE, RepeatableRegistrar],
 })
 export class QueueModule {}

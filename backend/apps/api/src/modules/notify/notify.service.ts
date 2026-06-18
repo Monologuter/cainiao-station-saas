@@ -6,6 +6,7 @@ import { ChannelResolver } from '../config/channel-resolver';
 import { NotifyChannelType } from './notify-channel';
 import { SmsChannelFactory } from './sms-channel.factory';
 import { TemplateRenderer } from './template-renderer';
+import { WechatSubscribeChannelFactory } from './wechat-subscribe.factory';
 
 interface ParcelStoredNotification {
   parcelId: string;
@@ -15,6 +16,7 @@ interface ParcelStoredNotification {
   receiverPhone: string;
   pickupCode: string;
   slotCode?: string;
+  consumerId?: string | null;
 }
 
 interface ParcelOverdueNotification {
@@ -25,6 +27,7 @@ interface ParcelOverdueNotification {
   receiverPhone: string;
   pickupCode?: string | null;
   slotCode?: string | null;
+  consumerId?: string | null;
   level: 1 | 2 | 3;
   daysOverdue: number;
 }
@@ -64,16 +67,23 @@ export class NotifyService {
     private readonly channelResolver: ChannelResolver,
     @Optional() private readonly breaker?: CircuitBreakerService,
     @Optional() private readonly smsFactory?: SmsChannelFactory,
+    @Optional() private readonly wechatFactory?: WechatSubscribeChannelFactory,
   ) {}
 
   async notifyParcelStored(payload: ParcelStoredNotification) {
-    for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+    for (const channel of this.channelsFor(payload)) {
       await this.ensureChannelReady(channel);
+      const variables = [
+        payload.pickupCode,
+        payload.slotCode ?? '',
+        payload.stationName ?? payload.stationId,
+        payload.receiverPhone.slice(-4),
+      ];
       const rendered = await this.renderer.render('PARCEL_STORED', channel, {
-        code: payload.pickupCode,
-        slot: payload.slotCode ?? '',
-        station: payload.stationName ?? payload.stationId,
-        tail: payload.receiverPhone.slice(-4),
+        code: variables[0],
+        slot: variables[1],
+        station: variables[2],
+        tail: variables[3],
       });
       const dedupKey = `${payload.parcelId}:ParcelStored:${channel}`;
 
@@ -104,17 +114,13 @@ export class NotifyService {
         payload,
         dedupKey,
         notification.sentAt,
-        await this.sendSmsIfNeeded(
+        await this.sendChannelIfNeeded(
           channel,
           rendered.content,
           payload.receiverPhone,
+          payload,
           'PARCEL_STORED',
-          [
-            payload.pickupCode,
-            payload.slotCode ?? '',
-            payload.stationName ?? payload.stationId,
-            payload.receiverPhone.slice(-4),
-          ],
+          variables,
         ),
       );
     }
@@ -122,13 +128,19 @@ export class NotifyService {
 
   async notifyParcelOverdue(payload: ParcelOverdueNotification) {
     const templateCode = OVERDUE_TEMPLATE_BY_LEVEL[payload.level];
-    for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+    for (const channel of this.channelsFor(payload)) {
       await this.ensureChannelReady(channel);
+      const variables = [
+        payload.pickupCode ?? '',
+        payload.slotCode ?? '',
+        payload.stationName ?? payload.stationId,
+        String(payload.daysOverdue),
+      ];
       const rendered = await this.renderer.render(templateCode, channel, {
-        code: payload.pickupCode ?? '',
-        slot: payload.slotCode ?? '',
-        station: payload.stationName ?? payload.stationId,
-        daysOverdue: String(payload.daysOverdue),
+        code: variables[0],
+        slot: variables[1],
+        station: variables[2],
+        daysOverdue: variables[3],
       });
       const dedupKey = `${payload.parcelId}:ParcelOverdue:${payload.level}:${channel}`;
 
@@ -159,17 +171,13 @@ export class NotifyService {
         payload,
         dedupKey,
         notification.sentAt,
-        await this.sendSmsIfNeeded(
+        await this.sendChannelIfNeeded(
           channel,
           rendered.content,
           payload.receiverPhone,
+          payload,
           templateCode,
-          [
-            payload.pickupCode ?? '',
-            payload.slotCode ?? '',
-            payload.stationName ?? payload.stationId,
-            String(payload.daysOverdue),
-          ],
+          variables,
         ),
       );
     }
@@ -215,10 +223,11 @@ export class NotifyService {
         },
         dedupKey,
         notification.sentAt,
-        await this.sendSmsIfNeeded(
+        await this.sendChannelIfNeeded(
           channel,
           rendered.content,
           payload.ownerUsername,
+          { ...payload, consumerId: undefined },
           'TENANT_APPROVED',
           [payload.ownerUsername, payload.tempPassword ?? '', payload.planCode],
         ),
@@ -245,6 +254,13 @@ export class NotifyService {
       await this.withBreaker(
         'notify.sms',
         () => this.channelResolver.resolve('sms'),
+        async () => undefined,
+      );
+    }
+    if (channel === 'WECHAT') {
+      await this.withBreaker(
+        'notify.wechat',
+        () => this.channelResolver.resolve('wechat'),
         async () => undefined,
       );
     }
@@ -285,13 +301,41 @@ export class NotifyService {
     );
   }
 
-  private async sendSmsIfNeeded(
+  private channelsFor(payload: { consumerId?: string | null }) {
+    const channels: NotifyChannelType[] = ['IN_APP'];
+    if (payload.consumerId) {
+      channels.push('WECHAT');
+    }
+    channels.push('SMS');
+    return channels;
+  }
+
+  private async sendChannelIfNeeded(
     channel: NotifyChannelType,
     content: string,
     receiverPhone: string,
+    payload: { tenantId: string; consumerId?: string | null },
     templateCode: string,
     variables: string[],
   ) {
+    if (channel === 'WECHAT') {
+      if (!payload.consumerId || !this.wechatFactory) {
+        return 0;
+      }
+      const wechatChannel = await this.wechatFactory.get();
+      const result = await wechatChannel.send({
+        channel: 'WECHAT',
+        content,
+        tenantId: payload.tenantId,
+        consumerId: payload.consumerId,
+        templateCode,
+        variables,
+      });
+      if (!result.ok && result.retryable) {
+        throw new Error(result.error ?? 'wechat notify failed');
+      }
+      return result.ok ? 1 : 0;
+    }
     if (channel !== 'SMS' || !this.smsFactory) {
       return 1;
     }

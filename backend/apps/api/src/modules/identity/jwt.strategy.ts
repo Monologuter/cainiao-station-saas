@@ -32,7 +32,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       });
       const found = await tx.user.findUnique({
         where: { id: payload.sub },
-        select: { username: true, status: true, tokenVersion: true },
+        select: {
+          username: true,
+          status: true,
+          tokenVersion: true,
+          tenant: { select: { status: true } },
+        },
       });
       const assignments = await tx.staffStation.findMany({
         where: { userId: payload.sub },
@@ -67,6 +72,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantId: payload.tenantId,
       roles: payload.roles,
       isPlatform: payload.isPlatform,
+      tenantStatus: user.tenant?.status ?? null,
       perms,
       allStations: scope.allStations,
       stations: scope.stations,

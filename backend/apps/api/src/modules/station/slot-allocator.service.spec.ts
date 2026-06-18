@@ -108,6 +108,92 @@ describe('SlotAllocatorService', () => {
     );
   });
 
+  it('feeds recent slot heat into the recommender instead of zero-filled placeholders', async () => {
+    const candidates = [
+      { id: 'slot1', code: 'A-01', version: 0, rowNo: 1, levelNo: 1, colNo: 1 },
+      { id: 'slot2', code: 'B-01', version: 0, rowNo: 2, levelNo: 1, colNo: 1 },
+    ];
+    const tx = {
+      parcel: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'parcel1',
+          receiverPhoneTail: '1234',
+          createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        }),
+      },
+      slot: {
+        findMany: jest.fn().mockResolvedValue(candidates),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          ...candidates[0],
+          status: 'OCCUPIED',
+        }),
+      },
+      slotHeatDaily: {
+        findMany: jest.fn().mockResolvedValue([
+          {
+            slotId: 'slot1',
+            pickCount: 3,
+            hourHistogram: Array.from({ length: 24 }, (_, hour) =>
+              hour === 9 ? 2 : 0,
+            ),
+          },
+          {
+            slotId: 'slot1',
+            pickCount: 4,
+            hourHistogram: Array.from({ length: 24 }, (_, hour) =>
+              hour === 10 ? 5 : 0,
+            ),
+          },
+          {
+            slotId: 'slot2',
+            pickCount: 1,
+            hourHistogram: Array(24).fill(0),
+          },
+        ]),
+      },
+    };
+    const recommender = {
+      recommend: jest
+        .fn()
+        .mockResolvedValue([{ slotId: 'slot1', score: 0.93, reasons: [] }]),
+    };
+    const service = new SlotAllocatorService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any,
+      recommender as any,
+    );
+
+    await service.allocate('station1', 'parcel1');
+
+    expect(tx.slotHeatDaily.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          stationId: 'station1',
+          slotId: { in: ['slot1', 'slot2'] },
+        }),
+      }),
+    );
+    expect(recommender.recommend).toHaveBeenCalledWith(
+      expect.objectContaining({
+        candidates: expect.arrayContaining([
+          expect.objectContaining({
+            slotId: 'slot1',
+            heat: expect.objectContaining({
+              pickCount7d: 7,
+              hourHistogram: expect.arrayContaining([expect.any(Number)]),
+            }),
+          }),
+        ]),
+      }),
+    );
+    const slot1 = recommender.recommend.mock.calls[0][0].candidates.find(
+      (candidate: any) => candidate.slotId === 'slot1',
+    );
+    expect(slot1.heat.hourHistogram[9]).toBe(2);
+    expect(slot1.heat.hourHistogram[10]).toBe(5);
+  });
+
   it('tries the next recommended slot when the first recommendation loses the race', async () => {
     const candidates = [
       { id: 'slot1', code: 'A-01', version: 0 },

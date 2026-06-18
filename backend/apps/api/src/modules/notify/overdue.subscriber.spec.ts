@@ -1,6 +1,5 @@
 import { DomainEvent, EventBus } from '../../core/event-bus/event-bus';
-import { TenantContext } from '../../core/tenant-context/tenant-context';
-import { NotifyService } from './notify.service';
+import { PARCEL_OVERDUE_NOTIFY_JOB } from './notify-queue.constants';
 import { OverdueSubscriber } from './overdue.subscriber';
 
 describe('OverdueSubscriber', () => {
@@ -8,8 +7,8 @@ describe('OverdueSubscriber', () => {
     const eventBus = {
       subscribe: jest.fn(),
     } as unknown as jest.Mocked<EventBus>;
-    const notify = { notifyParcelOverdue: jest.fn() } as any;
-    const subscriber = new OverdueSubscriber(eventBus, notify);
+    const queue = { add: jest.fn() } as any;
+    const subscriber = new OverdueSubscriber(eventBus, queue);
 
     subscriber.onModuleInit();
 
@@ -19,14 +18,10 @@ describe('OverdueSubscriber', () => {
     );
   });
 
-  it('runs overdue notification in event tenant context', async () => {
+  it('enqueues overdue notification with retry options', async () => {
     const eventBus = { subscribe: jest.fn() } as any;
-    const notify = {
-      notifyParcelOverdue: jest.fn(async () => {
-        expect(TenantContext.get()?.tenantId).toBe('t1');
-      }),
-    } as unknown as jest.Mocked<NotifyService>;
-    const subscriber = new OverdueSubscriber(eventBus, notify);
+    const queue = { add: jest.fn().mockResolvedValue(undefined) } as any;
+    const subscriber = new OverdueSubscriber(eventBus, queue);
 
     await subscriber.onParcelOverdue({
       name: 'ParcelOverdueDetected',
@@ -43,11 +38,12 @@ describe('OverdueSubscriber', () => {
       },
     } as DomainEvent<any>);
 
-    expect(notify.notifyParcelOverdue).toHaveBeenCalledWith(
+    expect(queue.add).toHaveBeenCalledWith(
+      PARCEL_OVERDUE_NOTIFY_JOB,
+      expect.objectContaining({ tenantId: 't1', parcelId: 'p1', level: 3 }),
       expect.objectContaining({
-        tenantId: 't1',
-        parcelId: 'p1',
-        level: 3,
+        attempts: 5,
+        jobId: 'parcel-overdue__t1__p1__3',
       }),
     );
   });

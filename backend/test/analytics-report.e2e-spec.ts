@@ -53,8 +53,9 @@ describe('Analytics report e2e', () => {
     expect(job.body.data).toMatchObject({
       id: created.body.data.jobId,
       status: 'DONE',
-      downloadUrl: expect.stringContaining('mock://reports/'),
+      downloadUrl: expect.stringContaining('mock://download/reports/'),
     });
+    expect(job.body.data.downloadUrl).toMatch(/\.csv$/);
 
     const denied = await request(app.getHttpServer())
       .get(`/api/analytics/reports/${created.body.data.jobId}`)

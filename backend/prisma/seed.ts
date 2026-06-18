@@ -286,6 +286,7 @@ async function main() {
         { code: 'tenant:create', name: '开店', module: 'tenant' },
         { code: 'tenant:read', name: '查看租户', module: 'tenant' },
         { code: 'tenant:review', name: '审核入驻', module: 'tenant' },
+        { code: 'platform:user:manage', name: '管理平台用户', module: 'identity' },
         { code: 'station:manage', name: '货架库位管理', module: 'station' },
         { code: 'station:read', name: '查看门店货架库位', module: 'station' },
         { code: 'parcel:inbound', name: '入库', module: 'parcel' },

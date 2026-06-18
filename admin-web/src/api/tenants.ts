@@ -1,0 +1,33 @@
+import { http } from "./http";
+import { toAdminAnalyticsQueryParams } from "./analytics";
+
+export interface TenantRow {
+  id: string;
+  name: string;
+  ownerName: string;
+  contactPhone: string;
+  status: "ACTIVE" | "SUSPENDED" | "CLOSED";
+  stationCount: number;
+  userCount: number;
+  createdAt: string;
+}
+
+export interface TenantListResult {
+  list: TenantRow[];
+  total: number;
+}
+
+export function tenantsApi(query: { status?: string } = {}) {
+  return http.get<never, TenantListResult>("/platform/tenants", {
+    params: toAdminAnalyticsQueryParams(query),
+  });
+}
+
+export function updateTenantStatusApi(
+  id: string,
+  status: TenantRow["status"],
+) {
+  return http.patch<never, TenantRow>(`/platform/tenants/${id}/status`, {
+    status,
+  });
+}

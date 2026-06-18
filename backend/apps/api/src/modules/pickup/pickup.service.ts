@@ -10,6 +10,7 @@ interface PickupInput {
   pickupCode?: string;
   phoneTail?: string;
   parcelId?: string;
+  authorizedPhone?: string;
 }
 
 @Injectable()
@@ -24,6 +25,7 @@ export class PickupService {
   async pickup(input: PickupInput) {
     this.assertHasIdentifier(input);
     const parcel = await this.findStoredParcel(input);
+    await this.assertPickupAuthorized(parcel, input.authorizedPhone);
 
     return this.locks.withLock(`lock:parcel:${parcel.id}`, 10000, async () => {
       const picked = await this.parcels.markPickedUp(parcel.id, parcel.version);
@@ -75,5 +77,27 @@ export class PickupService {
       );
     }
     return rows[0];
+  }
+
+  private async assertPickupAuthorized(parcel: any, authorizedPhone?: string) {
+    const phone = authorizedPhone?.trim();
+    if (!phone || phone === parcel.receiverPhone) {
+      return;
+    }
+    const authorization = await this.tenantPrisma.withTenant((tx) =>
+      tx.pickupAuthorization.findFirst({
+        where: {
+          tenantId: parcel.tenantId,
+          ownerPhone: parcel.receiverPhone,
+          authorizedPhone: phone,
+          status: 'ACTIVE',
+          deletedAt: null,
+          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
+        },
+      }),
+    );
+    if (!authorization) {
+      throw new BizError(ApiCode.FORBIDDEN, '未获得代取授权');
+    }
   }
 }

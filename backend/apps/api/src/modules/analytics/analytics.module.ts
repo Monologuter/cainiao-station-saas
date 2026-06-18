@@ -6,6 +6,7 @@ import { RedisLockService } from '../../core/redis/redis-lock.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { ScheduledLockService } from '../../core/scheduler-lock/scheduler-lock.service';
+import { FileModule } from '../file/file.module';
 import { AnalyticsGateway } from './analytics.gateway';
 import {
   AdminAnalyticsController,
@@ -30,6 +31,7 @@ import { ReportService } from './report.service';
 
 @Module({
   imports: [
+    FileModule,
     JwtModule.register({
       secret: requireJwtSecret(),
       signOptions: { expiresIn: (process.env.JWT_EXPIRES_IN ?? '2h') as any },

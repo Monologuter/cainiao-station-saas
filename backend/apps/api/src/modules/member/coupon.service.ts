@@ -180,6 +180,7 @@ export class CouponService {
     return this.withBypass(async (tx) => {
       const coupon = await tx.coupon.findFirstOrThrow({
         where: { id, memberId },
+        include: { template: true },
       });
       if (
         coupon.status === 'USED' &&
@@ -202,6 +203,7 @@ export class CouponService {
           usedRefId: input.usedRefId,
           usedAt: new Date(),
         },
+        include: { template: true },
       });
     });
   }

@@ -140,7 +140,10 @@ export class AuthService {
       );
       return tx.user.findFirst({
         where: { username },
-        include: { roles: { include: { role: true } } },
+        include: {
+          tenant: { select: { status: true } },
+          roles: { include: { role: true } },
+        },
       });
     });
 
@@ -179,6 +182,7 @@ export class AuthService {
         tenantId: user.tenantId,
         roles,
         isPlatform,
+        tenantStatus: user.tenant?.status ?? null,
         allStations: scope.allStations,
         stations: scope.stations,
       },
@@ -223,6 +227,7 @@ export class AuthService {
         tenantId: user.tenantId,
         roles,
         isPlatform,
+        tenantStatus: user.tenant?.status ?? null,
         allStations: scope.allStations,
         stations: scope.stations,
       },
@@ -276,7 +281,10 @@ export class AuthService {
       );
       return tx.user.findUnique({
         where: { id },
-        include: { roles: { include: { role: true } } },
+        include: {
+          tenant: { select: { status: true } },
+          roles: { include: { role: true } },
+        },
       });
     });
     if (!user || user.status !== 'active') {

@@ -255,6 +255,85 @@ export class PayService {
     return confirmed.order;
   }
 
+  async refundShipOrder(
+    orderId: string,
+    idempotencyKey: string,
+    user?: RequestUser,
+  ) {
+    if (user?.tenantId && !TenantContext.get()?.tenantId) {
+      return TenantContext.run(
+        {
+          userId: user.userId ?? 'consumer',
+          tenantId: user.tenantId,
+          roles: user.roles ?? [],
+          isPlatform: !!user.isPlatform,
+        },
+        () => this.refundShipOrder(orderId, idempotencyKey, user),
+      );
+    }
+    const ctx = this.requireContext(user);
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const order = await tx.shipOrder.findFirst({
+        where: { id: orderId, tenantId: ctx.tenantId, deletedAt: null },
+      });
+      if (!order) {
+        throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
+      }
+      if (order.status === 'CANCELLED') {
+        return order;
+      }
+      if (order.status !== 'PAID' || order.collectedAt) {
+        throw new BizError(ApiCode.SHIPPING_ILLEGAL_TRANSITION, '当前订单不可退款');
+      }
+      const payment = await tx.payment.findFirst({
+        where: {
+          tenantId: ctx.tenantId,
+          bizType: 'SHIP_ORDER',
+          bizId: order.id,
+          status: 'SUCCESS',
+          deletedAt: null,
+        },
+      });
+      if (!payment) {
+        throw new BizError(ApiCode.NOT_FOUND, '支付单不存在');
+      }
+
+      const refundNo = `refund:${idempotencyKey}`;
+      const result = this.channel.refund
+        ? await this.channel.refund({
+            outTradeNo: payment.outTradeNo,
+            refundNo,
+            amount: payment.amount,
+            refundAmount: payment.amount,
+            reason: '寄件订单取消退款',
+          })
+        : { status: 'SUCCESS' as const, refundNo, raw: { provider: 'mock' } };
+      if (result.status !== 'SUCCESS') {
+        throw new BizError(ApiCode.BAD_REQUEST, '退款失败，请重试');
+      }
+
+      await tx.payment.update({
+        where: { id: payment.id },
+        data: {
+          status: 'REFUNDED',
+          rawJson: {
+            ...(payment.rawJson ?? {}),
+            refund: result.raw,
+            refundNo: result.refundNo,
+          },
+        },
+      });
+      return tx.shipOrder.update({
+        where: { id: order.id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          version: { increment: 1 },
+        },
+      });
+    });
+  }
+
   private requireContext(user?: RequestUser) {
     if (user?.tenantId) {
       return {

@@ -1,4 +1,4 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { randomInt } from 'node:crypto';
 import { EventBus } from '../../core/event-bus/event-bus';
 import { ApiCode, BizError } from '../../core/http/api-code';
@@ -6,6 +6,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { resolveStationFilter } from '../../core/tenant-context/station-scope';
+import { CouponService } from '../member/coupon.service';
 import { CourierSelectorService } from './courier-selector.service';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
@@ -35,6 +36,7 @@ export class ShippingService {
     private readonly tenantPrisma: TenantPrismaService,
     private readonly eventBus: EventBus,
     private readonly basePrisma?: PrismaService,
+    @Optional() private readonly coupons?: CouponService,
   ) {}
 
   quote(input: QuoteDto) {
@@ -55,7 +57,7 @@ export class ShippingService {
       input.item.weightGram,
     );
 
-    const order = await this.tenantPrisma.withTenant<any>((tx) =>
+    let order = await this.tenantPrisma.withTenant<any>((tx) =>
       tx.shipOrder.create({
         data: {
           tenantId: ctx.tenantId,
@@ -84,6 +86,10 @@ export class ShippingService {
         },
       }),
     );
+
+    if ((input as any).couponId) {
+      order = await this.applyCoupon(order, (input as any).couponId);
+    }
 
     await this.eventBus.publish(
       EventBus.createEvent('ShipOrderCreated', {
@@ -228,6 +234,33 @@ export class ShippingService {
     return order.tenantId;
   }
 
+  async cancelOrder(id: string, user?: RequestUser) {
+    const ctx = this.requireContext(user);
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const order = await tx.shipOrder.findFirst({
+        where: { id, tenantId: ctx.tenantId, deletedAt: null },
+      });
+      if (!order) {
+        throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
+      }
+      if (order.status === 'CANCELLED') {
+        return this.toOrderDto(order);
+      }
+      if (order.status !== 'CREATED') {
+        throw new BizError(ApiCode.SHIPPING_ILLEGAL_TRANSITION, '当前订单不可取消');
+      }
+      const updated = await tx.shipOrder.update({
+        where: { id },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          version: { increment: 1 },
+        },
+      });
+      return this.toOrderDto(updated);
+    });
+  }
+
   private requireContext(user?: RequestUser) {
     if (user?.tenantId) {
       return {
@@ -291,6 +324,70 @@ export class ShippingService {
       throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
     }
     return order;
+  }
+
+  private async applyCoupon(order: any, couponId: string) {
+    if (!order.consumerId || !this.coupons || !this.basePrisma) {
+      throw new BizError(ApiCode.BAD_REQUEST, '当前寄件单不可使用优惠券');
+    }
+    const member = await this.basePrisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.member.findUniqueOrThrow({
+        where: { consumerId: order.consumerId },
+      });
+    });
+    const coupon: any = await this.coupons.verifyForMember(member.id, couponId, {
+      usedRefType: 'ship_order',
+      usedRefId: order.id,
+      idempotencyKey: `ship-coupon:${order.id}:${couponId}`,
+    });
+    const template = coupon.template;
+    if (!['SHIP', 'ALL'].includes(template.scene)) {
+      throw new BizError(ApiCode.BAD_REQUEST, '优惠券不适用于寄件');
+    }
+    const threshold = this.moneyToCents(template.threshold);
+    if (order.quoteAmount < threshold) {
+      throw new BizError(ApiCode.BAD_REQUEST, '未达到优惠券使用门槛');
+    }
+    const discountAmount = this.discountAmount(template, order.quoteAmount);
+    const payableAmount = Math.max(0, order.quoteAmount - discountAmount);
+    const quoteSnapshot = {
+      ...(order.quoteSnapshotJson ?? {}),
+      coupon: {
+        couponId,
+        templateId: template.id,
+        originalAmount: order.quoteAmount,
+        discountAmount,
+        payableAmount,
+      },
+    };
+    return this.tenantPrisma.withTenant((tx) =>
+      tx.shipOrder.update({
+        where: { id: order.id },
+        data: {
+          quoteAmount: payableAmount,
+          quoteSnapshotJson: quoteSnapshot,
+          version: { increment: 1 },
+        },
+      }),
+    );
+  }
+
+  private discountAmount(template: any, amount: number) {
+    if (template.type === 'EXEMPT') {
+      return amount;
+    }
+    if (template.type === 'RATE') {
+      const rate = Number(template.faceValue);
+      return Math.max(0, amount - Math.round(amount * rate));
+    }
+    return Math.min(amount, this.moneyToCents(template.faceValue));
+  }
+
+  private moneyToCents(value: unknown) {
+    return Math.round(Number(value ?? 0) * 100);
   }
 
   private uuidOrUndefined(value: string | undefined) {

@@ -1,7 +1,13 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { DomainEvent, EventBus } from '../../core/event-bus/event-bus';
-import { TenantContext } from '../../core/tenant-context/tenant-context';
-import { NotifyService } from './notify.service';
+import {
+  APPLICATION_REJECTED_NOTIFY_JOB,
+  NOTIFY_JOB_OPTIONS,
+  NOTIFY_QUEUE,
+  TENANT_APPROVED_NOTIFY_JOB,
+  notifyJobId,
+} from './notify-queue.constants';
 
 interface TenantApprovedPayload extends Record<string, unknown> {
   applicationId: string;
@@ -23,7 +29,7 @@ interface ApplicationRejectedPayload extends Record<string, unknown> {
 export class OnboardingSubscriber implements OnModuleInit {
   constructor(
     private readonly eventBus: EventBus,
-    private readonly notify: NotifyService,
+    @Inject(NOTIFY_QUEUE) private readonly queue: Queue,
   ) {}
 
   onModuleInit() {
@@ -38,26 +44,23 @@ export class OnboardingSubscriber implements OnModuleInit {
   }
 
   async onTenantApproved(event: DomainEvent<TenantApprovedPayload>) {
-    await TenantContext.run(
-      {
-        userId: 'system',
-        tenantId: event.payload.tenantId,
-        roles: [],
-        isPlatform: false,
-      },
-      () => this.notify.notifyTenantApproved(event.payload),
-    );
+    await this.queue.add(TENANT_APPROVED_NOTIFY_JOB, event.payload, {
+      ...NOTIFY_JOB_OPTIONS,
+      jobId: notifyJobId(
+        'tenant-approved',
+        event.payload.tenantId,
+        event.payload.applicationId,
+      ),
+    });
   }
 
   async onApplicationRejected(event: DomainEvent<ApplicationRejectedPayload>) {
-    await TenantContext.run(
-      {
-        userId: 'system',
-        tenantId: null,
-        roles: [],
-        isPlatform: true,
-      },
-      () => this.notify.notifyApplicationRejected(event.payload),
-    );
+    await this.queue.add(APPLICATION_REJECTED_NOTIFY_JOB, event.payload, {
+      ...NOTIFY_JOB_OPTIONS,
+      jobId: notifyJobId(
+        'application-rejected',
+        event.payload.applicationId,
+      ),
+    });
   }
 }

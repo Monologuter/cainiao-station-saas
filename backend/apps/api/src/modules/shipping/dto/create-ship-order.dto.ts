@@ -46,4 +46,8 @@ export class CreateShipOrderDto {
   @ValidateNested()
   @Type(() => ShippingItemDto)
   item: ShippingItemDto;
+
+  @IsOptional()
+  @IsUUID()
+  couponId?: string;
 }

@@ -5,6 +5,7 @@ import {
   NOTIFY_JOB_OPTIONS,
   NOTIFY_QUEUE,
   PARCEL_STORED_NOTIFY_JOB,
+  notifyJobId,
   type ParcelStoredNotifyJobData,
 } from './notify-queue.constants';
 
@@ -16,6 +17,7 @@ interface ParcelStoredPayload extends Record<string, unknown> {
   receiverPhone: string;
   pickupCode: string;
   slotCode?: string;
+  consumerId?: string | null;
 }
 
 @Injectable()
@@ -49,10 +51,11 @@ export class ParcelStoredSubscriber implements OnModuleInit {
       receiverPhone: payload.receiverPhone,
       pickupCode: payload.pickupCode,
       slotCode: payload.slotCode,
+      consumerId: payload.consumerId,
     };
     await this.queue.add(PARCEL_STORED_NOTIFY_JOB, data, {
       ...NOTIFY_JOB_OPTIONS,
-      jobId: `parcel-stored:${payload.tenantId}:${payload.parcelId}`,
+      jobId: notifyJobId('parcel-stored', payload.tenantId, payload.parcelId),
     });
   }
 }

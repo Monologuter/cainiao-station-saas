@@ -2,7 +2,7 @@ import pytest
 
 from app.llm.claude_llm import ClaudeLlmProvider
 from app.llm.mock_llm import MockLlmProvider
-from app.llm.provider import Done, LlmUnavailable, TextDelta
+from app.llm.provider import Done, LlmUnavailable, TextDelta, ToolCall
 from app.main import create_llm_provider
 
 
@@ -56,6 +56,43 @@ async def test_claude_provider_wraps_sdk_failure_without_leaking_secret():
 
     assert "sk-secret" not in str(error.value)
     assert "bad api key" in str(error.value)
+
+
+@pytest.mark.anyio
+async def test_claude_provider_normalizes_messages_api_text_and_tool_use():
+    async def sdk(**kwargs):
+        assert kwargs["api_key"] == "sk-test"
+        assert kwargs["model"] == "claude-opus-4-8"
+        return {
+            "content": [
+                {"type": "text", "text": "可以，我来查一下。"},
+                {
+                    "type": "tool_use",
+                    "id": "tool-1",
+                    "name": "query_my_parcels",
+                    "input": {"status": "STORED"},
+                },
+            ],
+            "stop_reason": "tool_use",
+        }
+
+    provider = ClaudeLlmProvider(api_key="sk-test", sdk=sdk)
+    events = [
+        event
+        async for event in provider.generate_stream(
+            system="system",
+            messages=[{"role": "user", "content": "我的包裹到了吗"}],
+            tools=[],
+        )
+    ]
+
+    assert isinstance(events[0], TextDelta)
+    assert events[0].text == "可以，我来查一下。"
+    assert isinstance(events[1], ToolCall)
+    assert events[1].name == "query_my_parcels"
+    assert events[1].args == {"status": "STORED"}
+    assert isinstance(events[-1], Done)
+    assert events[-1].reason == "tool_use"
 
 
 def test_factory_rejects_unknown_assistant_mode():

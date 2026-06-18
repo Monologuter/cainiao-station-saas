@@ -1,7 +1,12 @@
-import { Injectable, OnModuleInit } from '@nestjs/common';
+import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
+import { Queue } from 'bullmq';
 import { DomainEvent, EventBus } from '../../core/event-bus/event-bus';
-import { TenantContext } from '../../core/tenant-context/tenant-context';
-import { NotifyService } from './notify.service';
+import {
+  NOTIFY_JOB_OPTIONS,
+  NOTIFY_QUEUE,
+  PARCEL_OVERDUE_NOTIFY_JOB,
+  notifyJobId,
+} from './notify-queue.constants';
 
 interface ParcelOverduePayload extends Record<string, unknown> {
   parcelId: string;
@@ -11,6 +16,7 @@ interface ParcelOverduePayload extends Record<string, unknown> {
   receiverPhone: string;
   pickupCode?: string | null;
   slotCode?: string | null;
+  consumerId?: string | null;
   level: 1 | 2 | 3;
   daysOverdue: number;
 }
@@ -19,7 +25,7 @@ interface ParcelOverduePayload extends Record<string, unknown> {
 export class OverdueSubscriber implements OnModuleInit {
   constructor(
     private readonly eventBus: EventBus,
-    private readonly notify: NotifyService,
+    @Inject(NOTIFY_QUEUE) private readonly queue: Queue,
   ) {}
 
   onModuleInit() {
@@ -29,14 +35,14 @@ export class OverdueSubscriber implements OnModuleInit {
   }
 
   async onParcelOverdue(event: DomainEvent<ParcelOverduePayload>) {
-    await TenantContext.run(
-      {
-        userId: 'system',
-        tenantId: event.payload.tenantId,
-        roles: [],
-        isPlatform: false,
-      },
-      () => this.notify.notifyParcelOverdue(event.payload),
-    );
+    await this.queue.add(PARCEL_OVERDUE_NOTIFY_JOB, event.payload, {
+      ...NOTIFY_JOB_OPTIONS,
+      jobId: notifyJobId(
+        'parcel-overdue',
+        event.payload.tenantId,
+        event.payload.parcelId,
+        event.payload.level,
+      ),
+    });
   }
 }

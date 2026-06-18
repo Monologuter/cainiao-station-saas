@@ -43,6 +43,6 @@ import { UsageService } from './usage/usage.service';
     RedisLockService,
     ScheduledLockService,
   ],
-  exports: [SubscriptionService],
+  exports: [SubscriptionService, InvoiceRunProcessor, ExpiryCheckProcessor],
 })
 export class BillingModule {}

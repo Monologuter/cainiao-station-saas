@@ -24,6 +24,7 @@ describe('AuthService.validate', () => {
           type: 'STAFF',
           status: 'active',
           tokenVersion: 0,
+          tenant: { status: 'ACTIVE' },
           roles: [{ role: { code: '店长' } }],
         }),
       },
@@ -46,6 +47,7 @@ describe('AuthService.validate', () => {
       username: 'boss',
       tenantId: 't1',
       isPlatform: false,
+      tenantStatus: 'ACTIVE',
     });
     // #6：店长可见全租户门店
     expect(out.user.allStations).toBe(true);
@@ -68,6 +70,7 @@ describe('AuthService.validate', () => {
           type: 'STAFF',
           status: 'active',
           tokenVersion: 0,
+          tenant: { status: 'ACTIVE' },
           roles: [{ role: { code: '店员' } }],
         }),
       },
@@ -106,6 +109,7 @@ describe('AuthService.validate', () => {
           status: 'active',
           tokenVersion: 0,
           tenantId: 't1',
+          tenant: { status: 'ACTIVE' },
           roles: [],
         }),
       },

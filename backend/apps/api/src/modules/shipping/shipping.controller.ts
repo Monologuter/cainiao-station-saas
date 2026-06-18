@@ -172,6 +172,25 @@ export class ShippingController {
     return this.pay.payShipOrder(id, idempotencyKey, user);
   }
 
+  @RequirePermission('shipping:cancel')
+  @Post('orders/:id/cancel')
+  cancelOrder(@Param('id') id: string, @CurrentUser() user: any) {
+    return this.shipping.cancelOrder(id, user);
+  }
+
+  @RequirePermission('shipping:cancel')
+  @Post('orders/:id/refund')
+  refundOrder(
+    @Param('id') id: string,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @CurrentUser() user: any,
+  ) {
+    if (!idempotencyKey) {
+      throw new BizError(ApiCode.BAD_REQUEST, '缺少退款幂等键');
+    }
+    return this.pay.refundShipOrder(id, idempotencyKey, user);
+  }
+
   @RequirePermission('shipping:collect')
   @Post('orders/:id/collect')
   collectOrder(@Param('id') id: string, @CurrentUser() user: any) {

@@ -22,4 +22,8 @@ export class CreateConsumerShipOrderDto {
   @ValidateNested()
   @Type(() => ShippingItemDto)
   item: ShippingItemDto;
+
+  @IsOptional()
+  @IsUUID()
+  couponId?: string;
 }

@@ -108,6 +108,126 @@ describe('ShippingService', () => {
       }),
     );
   });
+
+  it('applies a member shipping coupon and stores payable amount in quote snapshot', async () => {
+    let orderState: any;
+    const tenantPrisma = {
+      withTenant: jest.fn(async (fn) =>
+        fn({
+          shipOrder: {
+            create: jest.fn(async ({ data }) => {
+              orderState = { id: 'so1', ...data };
+              return orderState;
+            }),
+            update: jest.fn(async ({ data }) => {
+              orderState = { ...orderState, ...data };
+              return orderState;
+            }),
+          },
+        }),
+      ),
+    };
+    const service = new ShippingService(
+      {
+        resolveZone: jest.fn().mockReturnValue('LOCAL'),
+      } as any,
+      {
+        quote: jest.fn().mockResolvedValue({
+          courierCode: 'YTO',
+          courierName: '圆通速递',
+          amount: 1300,
+          estHours: 24,
+          ruleId: 'rule1',
+          breakdown: { total: 1300 },
+        }),
+      } as any,
+      tenantPrisma as any,
+      { publish: jest.fn() } as any,
+      {
+        $transaction: jest.fn((fn) =>
+          fn({
+            $executeRawUnsafe: jest.fn(),
+            member: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'm1' }) },
+          }),
+        ),
+      } as any,
+      {
+        verifyForMember: jest.fn().mockResolvedValue({
+          template: {
+            id: 'tpl1',
+            type: 'DISCOUNT',
+            scene: 'SHIP',
+            faceValue: '5',
+            threshold: '0',
+          },
+        }),
+      } as any,
+    );
+
+    const result = await TenantContext.run(
+      { userId: 'consumer', tenantId: 't1', roles: [], isPlatform: false },
+      () =>
+        service.createOrder({
+          channel: 'ONLINE',
+          stationId: 's1',
+          courierCode: 'YTO',
+          couponId: 'coupon-1',
+          sender: {
+            name: '张三',
+            phone: '13800000000',
+            province: '浙江省',
+            city: '杭州市',
+            district: '西湖区',
+            address: '文三路 1 号',
+          },
+          receiver: {
+            name: '李四',
+            phone: '13900000000',
+            province: '浙江省',
+            city: '杭州市',
+            district: '西湖区',
+            address: '古墩路 2 号',
+          },
+          item: { type: '文件', weightGram: 500 },
+          consumerId: 'consumer-1',
+        } as any),
+    );
+
+    expect(result.quoteAmount).toBe(800);
+    expect(result.quoteSnapshotJson.coupon).toMatchObject({
+      couponId: 'coupon-1',
+      originalAmount: 1300,
+      discountAmount: 500,
+      payableAmount: 800,
+    });
+  });
+
+  it('cancels CREATED shipping orders', async () => {
+    const updated = { id: 'so1', tenantId: 't1', status: 'CANCELLED' };
+    const service = new ShippingService(
+      {} as any,
+      {} as any,
+      {
+        withTenant: jest.fn((fn) =>
+          fn({
+            shipOrder: {
+              findFirst: jest.fn().mockResolvedValue({
+                id: 'so1',
+                tenantId: 't1',
+                status: 'CREATED',
+              }),
+              update: jest.fn().mockResolvedValue(updated),
+            },
+          }),
+        ),
+      } as any,
+      {} as any,
+    );
+
+    await expect(
+      service.cancelOrder('so1', { userId: 'u1', tenantId: 't1' }),
+    ).resolves.toMatchObject({ id: 'so1', status: 'CANCELLED' });
+  });
 });
 
 describe('ShippingService.listOrders 门店数据范围', () => {

@@ -1,6 +1,11 @@
 import { Inject, Injectable, OnModuleInit } from '@nestjs/common';
 import { Queue } from 'bullmq';
-import { OVERDUE_SCAN_JOB, OVERDUE_SCAN_QUEUE } from './queue.constants';
+import {
+  BILLING_EXPIRY_CHECK_JOB,
+  BILLING_INVOICE_RUN_JOB,
+  OVERDUE_SCAN_JOB,
+  OVERDUE_SCAN_QUEUE,
+} from './queue.constants';
 
 @Injectable()
 export class RepeatableRegistrar implements OnModuleInit {
@@ -11,12 +16,27 @@ export class RepeatableRegistrar implements OnModuleInit {
   }
 
   async register() {
-    await this.queue.add(
+    await this.registerJob(
       OVERDUE_SCAN_JOB,
+      process.env.OVERDUE_SCAN_CRON ?? '0 2 * * *',
+    );
+    await this.registerJob(
+      BILLING_INVOICE_RUN_JOB,
+      process.env.BILLING_INVOICE_RUN_CRON ?? '0 1 * * *',
+    );
+    await this.registerJob(
+      BILLING_EXPIRY_CHECK_JOB,
+      process.env.BILLING_EXPIRY_CHECK_CRON ?? '0 3 * * *',
+    );
+  }
+
+  private async registerJob(name: string, pattern: string) {
+    await this.queue.add(
+      name,
       {},
       {
-        jobId: OVERDUE_SCAN_JOB,
-        repeat: { pattern: process.env.OVERDUE_SCAN_CRON ?? '0 2 * * *' },
+        jobId: name,
+        repeat: { pattern },
         removeOnComplete: true,
         removeOnFail: 100,
       },

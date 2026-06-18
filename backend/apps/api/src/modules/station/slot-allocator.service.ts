@@ -157,6 +157,7 @@ export class SlotAllocatorService {
       return null;
     }
     const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
+    const heatBySlot = await this.loadRecentHeat(tx, stationId, candidates);
     try {
       return await this.recommender.recommend({
         stationId,
@@ -170,15 +171,49 @@ export class SlotAllocatorService {
           slotCode: slot.code,
           sizeCapacity: this.sizeCapacity(slot),
           distanceRank: index + 1,
-          heat: {
-            pickCount7d: 0,
-            hourHistogram: Array(24).fill(0),
-          },
+          heat: heatBySlot.get(slot.id) ?? this.emptyHeat(),
         })),
       });
     } catch {
       return null;
     }
+  }
+
+  private async loadRecentHeat(tx: any, stationId: string, candidates: any[]) {
+    if (candidates.length === 0 || !tx.slotHeatDaily?.findMany) {
+      return new Map<string, { pickCount7d: number; hourHistogram: number[] }>();
+    }
+    const since = new Date();
+    since.setUTCDate(since.getUTCDate() - 7);
+    const rows = await tx.slotHeatDaily.findMany({
+      where: {
+        stationId,
+        slotId: { in: candidates.map((slot) => slot.id) },
+        statDate: { gte: since },
+      },
+    });
+    const bySlot = new Map<string, { pickCount7d: number; hourHistogram: number[] }>();
+    for (const row of rows) {
+      const heat = bySlot.get(row.slotId) ?? this.emptyHeat();
+      heat.pickCount7d += Number(row.pickCount ?? 0);
+      const histogram = this.toHistogram(row.hourHistogram);
+      for (let hour = 0; hour < 24; hour += 1) {
+        heat.hourHistogram[hour] += histogram[hour];
+      }
+      bySlot.set(row.slotId, heat);
+    }
+    return bySlot;
+  }
+
+  private emptyHeat() {
+    return { pickCount7d: 0, hourHistogram: Array(24).fill(0) };
+  }
+
+  private toHistogram(value: unknown): number[] {
+    if (!Array.isArray(value)) {
+      return Array(24).fill(0);
+    }
+    return Array.from({ length: 24 }, (_, index) => Number(value[index] ?? 0));
   }
 
   private sizeCapacity(slot: any): 'S' | 'M' | 'L' {

@@ -45,6 +45,7 @@ const TENANT_DEFAULT_PERMISSIONS = [
 ];
 
 const EXTRA_AVAILABLE_PERMISSIONS = [
+  { code: 'platform:user:manage', name: '管理平台用户', module: 'identity' },
   { code: 'tenant:review', name: '审核入驻', module: 'tenant' },
   { code: 'analytics:reconcile', name: '手动对账重算', module: 'analytics' },
   {
@@ -76,6 +77,45 @@ const ZONES = [
 @Injectable()
 export class TenantService {
   constructor(private readonly prisma: PrismaService) {}
+
+  async listTenants(query: { status?: string } = {}) {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      const where = query.status ? { status: query.status as any } : {};
+      const list = await tx.tenant.findMany({
+        where,
+        orderBy: { createdAt: 'desc' },
+        include: { stations: { select: { id: true } }, users: { select: { id: true } } },
+      });
+      return {
+        list: list.map((tenant) => ({
+          id: tenant.id,
+          name: tenant.name,
+          ownerName: tenant.ownerName,
+          contactPhone: tenant.contactPhone,
+          status: tenant.status,
+          stationCount: tenant.stations.length,
+          userCount: tenant.users.length,
+          createdAt: tenant.createdAt,
+        })),
+        total: list.length,
+      };
+    });
+  }
+
+  async updateStatus(id: string, status: 'ACTIVE' | 'SUSPENDED' | 'CLOSED') {
+    return this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.tenant.update({
+        where: { id },
+        data: { status },
+      });
+    });
+  }
 
   async createTenant(input: CreateTenantInput, externalTx?: any) {
     const passwordHash = await argon2.hash(input.ownerPassword);

@@ -1,6 +1,8 @@
 import { Test } from '@nestjs/testing';
 import { Queue } from 'bullmq';
 import {
+  BILLING_EXPIRY_CHECK_JOB,
+  BILLING_INVOICE_RUN_JOB,
   OVERDUE_SCAN_JOB,
   OVERDUE_SCAN_QUEUE,
   OVERDUE_SCAN_QUEUE_NAME,
@@ -22,7 +24,7 @@ describe('QueueModule', () => {
 });
 
 describe('RepeatableRegistrar', () => {
-  it('registers overdue scan with a stable repeatable job id', async () => {
+  it('registers all recurring operating jobs with stable repeatable ids', async () => {
     const queue = {
       add: jest.fn().mockResolvedValue(undefined),
     } as unknown as Queue;
@@ -31,12 +33,28 @@ describe('RepeatableRegistrar', () => {
     await registrar.register();
     await registrar.register();
 
-    expect(queue.add).toHaveBeenCalledTimes(2);
+    expect(queue.add).toHaveBeenCalledTimes(6);
     expect(queue.add).toHaveBeenCalledWith(
       OVERDUE_SCAN_JOB,
       {},
       expect.objectContaining({
         jobId: OVERDUE_SCAN_JOB,
+        repeat: expect.objectContaining({ pattern: expect.any(String) }),
+      }),
+    );
+    expect(queue.add).toHaveBeenCalledWith(
+      BILLING_INVOICE_RUN_JOB,
+      {},
+      expect.objectContaining({
+        jobId: BILLING_INVOICE_RUN_JOB,
+        repeat: expect.objectContaining({ pattern: expect.any(String) }),
+      }),
+    );
+    expect(queue.add).toHaveBeenCalledWith(
+      BILLING_EXPIRY_CHECK_JOB,
+      {},
+      expect.objectContaining({
+        jobId: BILLING_EXPIRY_CHECK_JOB,
         repeat: expect.objectContaining({ pattern: expect.any(String) }),
       }),
     );

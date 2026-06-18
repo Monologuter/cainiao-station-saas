@@ -8,7 +8,9 @@ describe('PickupService', () => {
         findMany: async () => [
           {
             id: 'p1',
+            tenantId: 't1',
             stationId: 's1',
+            receiverPhone: '13800000000',
             pickupCode: '1234',
             status: 'STORED',
             version: 2,
@@ -16,6 +18,7 @@ describe('PickupService', () => {
           },
         ],
       },
+      pickupAuthorization: { findFirst: jest.fn() },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
     const locks = { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any;
@@ -64,6 +67,51 @@ describe('PickupService', () => {
     await expect(
       service.pickup({ stationId: 's1', phoneTail: '0000' }),
     ).rejects.toMatchObject({ code: ApiCode.AMBIGUOUS_PICKUP });
+  });
+
+  it('requires an active authorization when a different phone picks up', async () => {
+    const tx = {
+      parcel: {
+        findMany: jest.fn(async () => [
+          {
+            id: 'p1',
+            tenantId: 't1',
+            stationId: 's1',
+            receiverPhone: '13800000000',
+            pickupCode: '1234',
+            status: 'STORED',
+            version: 1,
+          },
+        ]),
+      },
+      pickupAuthorization: {
+        findFirst: jest.fn().mockResolvedValue(null),
+      },
+    };
+    const service = new PickupService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      { withLock: jest.fn() } as any,
+      { markPickedUp: jest.fn() } as any,
+      { release: jest.fn() } as any,
+    );
+
+    await expect(
+      service.pickup({
+        stationId: 's1',
+        pickupCode: '1234',
+        authorizedPhone: '13900000000',
+      }),
+    ).rejects.toMatchObject({ code: ApiCode.FORBIDDEN });
+    expect(tx.pickupAuthorization.findFirst).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: expect.objectContaining({
+          tenantId: 't1',
+          ownerPhone: '13800000000',
+          authorizedPhone: '13900000000',
+          status: 'ACTIVE',
+        }),
+      }),
+    );
   });
 
   it('throws PARCEL_NOT_FOUND when no stored parcel matches', async () => {

@@ -1,5 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { randomUUID } from 'crypto';
+import { mkdir, writeFile } from 'node:fs/promises';
+import { dirname, resolve } from 'node:path';
 import { ApiCode, BizError } from '../../core/http/api-code';
 
 const FILE_TYPE_SLUG: Record<string, string> = {
@@ -44,9 +46,7 @@ export class FileStorageService {
   }
 
   createDownloadUrl(fileKey: string) {
-    if (!fileKey.startsWith('onboarding/')) {
-      throw new BizError(ApiCode.BAD_REQUEST, '非法文件键');
-    }
+    this.assertManagedObjectKey(fileKey);
     return {
       downloadUrl: `mock://download/${fileKey}`,
       expiresIn: 600,
@@ -73,5 +73,40 @@ export class FileStorageService {
       fileKey,
       expiresIn: 600,
     };
+  }
+
+  async storeObject(input: {
+    fileKey: string;
+    contentType: string;
+    body: string | Buffer;
+  }) {
+    this.assertManagedObjectKey(input.fileKey);
+    const absolutePath = resolve(this.storageRoot(), input.fileKey);
+    await mkdir(dirname(absolutePath), { recursive: true });
+    await writeFile(absolutePath, input.body);
+    return {
+      fileKey: input.fileKey,
+      contentType: input.contentType,
+      downloadUrl: this.createDownloadUrl(input.fileKey).downloadUrl,
+    };
+  }
+
+  private storageRoot() {
+    return resolve(process.env.FILE_STORAGE_ROOT ?? '.local-storage');
+  }
+
+  private assertManagedObjectKey(fileKey: string) {
+    const allowedPrefix =
+      fileKey.startsWith('onboarding/') ||
+      fileKey.startsWith('waybills/') ||
+      fileKey.startsWith('reports/');
+    if (
+      !allowedPrefix ||
+      fileKey.startsWith('/') ||
+      fileKey.includes('..') ||
+      fileKey.includes('\\')
+    ) {
+      throw new BizError(ApiCode.BAD_REQUEST, '非法文件键');
+    }
   }
 }

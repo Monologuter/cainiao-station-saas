@@ -101,6 +101,21 @@ describe('Billing full flow e2e', () => {
     expect(suspended.tenant.status).toBe('SUSPENDED');
     expect(suspended.subscription.status).toBe('SUSPENDED');
 
+    const blockedInbound = await request(app.getHttpServer())
+      .post('/api/inbound')
+      .set('Authorization', `Bearer ${boss.token}`)
+      .send({
+        stationId: boss.stationId,
+        waybillNo: `BLOCK${Date.now()}`,
+        carrier: 'YTO',
+        receiverPhone: '13800000000',
+      })
+      .expect(200);
+    expect(blockedInbound.body).toMatchObject({
+      code: 1003,
+      message: '租户已欠费停用',
+    });
+
     await request(app.getHttpServer())
       .post(`/api/billing/invoices/${overdueInvoice.id}/pay`)
       .set('Authorization', `Bearer ${boss.token}`)

@@ -30,6 +30,7 @@ import { NotifyModule } from './modules/notify/notify.module';
 import { ParcelModule } from './modules/parcel/parcel.module';
 import { PickupModule } from './modules/pickup/pickup.module';
 import { ReviewModule } from './modules/review/review.module';
+import { SchedulerModule } from './modules/scheduler/scheduler.module';
 import { ShippingModule } from './modules/shipping/shipping.module';
 import { StationModule } from './modules/station/station.module';
 import { TenantModule } from './modules/tenant/tenant.module';
@@ -53,6 +54,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     ParcelModule,
     PickupModule,
     ReviewModule,
+    SchedulerModule,
     ShippingModule,
     StationModule,
     TenantModule,

@@ -14,13 +14,21 @@ function createReportService() {
   };
   const tenantPrisma = { withTenant: (fn: any) => fn(tx) } as any;
   const processor = { process: jest.fn().mockResolvedValue(undefined) };
+  const files = {
+    createDownloadUrl: jest.fn((fileKey: string) => ({
+      downloadUrl: `mock://download/${fileKey}`,
+      expiresIn: 600,
+    })),
+  };
   return {
     service: new ReportService(
       tenantPrisma,
       processor as unknown as ReportProcessor,
+      files as any,
     ),
     tx,
     processor,
+    files,
   };
 }
 
@@ -77,7 +85,7 @@ describe('ReportService', () => {
     tx.reportJob.findFirst.mockResolvedValue({
       id: 'job-1',
       status: 'DONE',
-      fileKey: 'mock://reports/job-1.csv',
+      fileKey: 'reports/t1/202606/job-1.csv',
       error: null,
       format: 'CSV',
       type: 'DAILY_SUMMARY',
@@ -88,7 +96,7 @@ describe('ReportService', () => {
     await expect(service.get('t1', 'job-1')).resolves.toMatchObject({
       id: 'job-1',
       status: 'DONE',
-      downloadUrl: 'mock://reports/job-1.csv',
+      downloadUrl: 'mock://download/reports/t1/202606/job-1.csv',
     });
     expect(tx.reportJob.findFirst).toHaveBeenCalledWith({
       where: { id: 'job-1', tenantId: 't1' },
@@ -97,19 +105,34 @@ describe('ReportService', () => {
 });
 
 describe('ReportProcessor', () => {
-  it('marks a report job done with a mock file key', async () => {
+  it('stores generated csv and marks the report job done with a file key', async () => {
     const tx = createProcessorTx();
-    const processor = new ReportProcessor({
-      $transaction: (fn: any) => fn(tx),
-    } as any);
+    const files = {
+      storeObject: jest.fn().mockResolvedValue({
+        fileKey: 'reports/t1/202606/job-1.csv',
+      }),
+    };
+    const processor = new ReportProcessor(
+      {
+        $transaction: (fn: any) => fn(tx),
+      } as any,
+      files as any,
+    );
 
     await processor.process('job-1');
 
+    expect(files.storeObject).toHaveBeenCalledWith(
+      expect.objectContaining({
+        fileKey: 'reports/t1/202606/job-1.csv',
+        contentType: 'text/csv; charset=utf-8',
+        body: expect.stringContaining('2026-06-18,inbound,3'),
+      }),
+    );
     expect(tx.reportJob.update).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
           status: 'DONE',
-          fileKey: 'mock://reports/job-1.csv',
+          fileKey: 'reports/t1/202606/job-1.csv',
         }),
       }),
     );
@@ -118,9 +141,12 @@ describe('ReportProcessor', () => {
   it('marks a report job failed when generation throws', async () => {
     const tx = createProcessorTx();
     tx.metricDaily.findMany.mockRejectedValue(new Error('csv failed'));
-    const processor = new ReportProcessor({
-      $transaction: (fn: any) => fn(tx),
-    } as any);
+    const processor = new ReportProcessor(
+      {
+        $transaction: (fn: any) => fn(tx),
+      } as any,
+      { storeObject: jest.fn() } as any,
+    );
 
     await processor.process('job-1');
 

@@ -13,6 +13,11 @@ import {
   TrendingUp,
 } from "lucide-vue-next";
 import {
+  connectAnalyticsRealtime,
+  type AnalyticsRealtimeConnection,
+  type AnalyticsSnapshot,
+} from "@/api/analytics-realtime";
+import {
   createAnalyticsReportApi,
   forecastSummary,
   forecastVolumeApi,
@@ -67,7 +72,8 @@ const compare = ref<StationCompare>({ metric: "inbound", rows: [] });
 const forecast = ref<VolumeForecastItem[]>([]);
 const hourForecast = ref<VolumeForecastItem[]>([]);
 const report = ref<ReportJob | null>(null);
-let timer: number | undefined;
+let realtime: AnalyticsRealtimeConnection | undefined;
+let realtimeRefreshTimer: number | undefined;
 
 const decoratedKpis = computed(() =>
   overviewToKpis(overview.value).map((item, index) => ({
@@ -116,12 +122,18 @@ const heatUsage = computed(() => {
 
 onMounted(() => {
   load();
-  timer = window.setInterval(loadQuietly, 15000);
+  realtime = connectAnalyticsRealtime({
+    stationId: filters.stationId || undefined,
+    onSnapshot: applyRealtimeSnapshot,
+    onMetric: scheduleRealtimeRefresh,
+    onParcelStored: scheduleRealtimeRefresh,
+  });
 });
 
 onUnmounted(() => {
-  if (timer) {
-    window.clearInterval(timer);
+  realtime?.disconnect();
+  if (realtimeRefreshTimer) {
+    window.clearTimeout(realtimeRefreshTimer);
   }
 });
 
@@ -168,6 +180,25 @@ async function loadQuietly() {
   compare.value = compareRes;
   forecast.value = forecastRes.items;
   hourForecast.value = hourForecastRes.items;
+}
+
+function applyRealtimeSnapshot(payload: AnalyticsSnapshot) {
+  if (payload.overview) {
+    overview.value = payload.overview;
+  }
+  if (payload.ranking) {
+    ranking.value = payload.ranking;
+  }
+}
+
+function scheduleRealtimeRefresh() {
+  if (realtimeRefreshTimer) {
+    return;
+  }
+  realtimeRefreshTimer = window.setTimeout(async () => {
+    realtimeRefreshTimer = undefined;
+    await loadQuietly();
+  }, 300);
 }
 
 async function refreshForecast() {

@@ -1,6 +1,7 @@
 import { Injectable } from '@nestjs/common';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
+import { FileStorageService } from '../file/file-storage.service';
 import { ReportProcessor } from './report.processor';
 
 const REPORT_TYPES = new Map([
@@ -44,6 +45,7 @@ export class ReportService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly processor: ReportProcessor,
+    private readonly files: FileStorageService,
   ) {}
 
   async create(input: CreateReportInput, operator: Operator) {
@@ -84,7 +86,10 @@ export class ReportService {
       format: job.format,
       rangeFrom: this.toDateKey(job.rangeFrom),
       rangeTo: this.toDateKey(job.rangeTo),
-      downloadUrl: job.status === 'DONE' ? job.fileKey : undefined,
+      downloadUrl:
+        job.status === 'DONE' && job.fileKey
+          ? this.files.createDownloadUrl(job.fileKey).downloadUrl
+          : undefined,
       error: job.error,
     };
   }
