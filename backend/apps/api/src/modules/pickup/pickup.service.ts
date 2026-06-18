@@ -25,7 +25,6 @@ export class PickupService {
   async pickup(input: PickupInput) {
     this.assertHasIdentifier(input);
     const parcel = await this.findStoredParcel(input);
-    await this.assertPhoneTailFactor(parcel, input);
     await this.assertPickupAuthorized(parcel, input.authorizedPhone);
 
     return this.locks.withLock(`lock:parcel:${parcel.id}`, 10000, async () => {
@@ -42,23 +41,23 @@ export class PickupService {
   }
 
   private assertHasIdentifier(input: PickupInput) {
-    // SEC-11 双因子防冒领：核销必须同时提供取件码 + 手机尾号。
-    // parcelId 仅用于定位（缩小匹配范围），绝不作为单独的核销凭证。
+    // 防空参误发：取件码 / 手机尾号 / 包裹号至少提供一项，否则 where 子句会退化为
+    // “核销该站全部在库”。三者全空必须在触库前短路拒绝。
     const pickupCode = input.pickupCode?.trim();
     const phoneTail = input.phoneTail?.trim();
-    if (!pickupCode) {
-      throw new BizError(ApiCode.BAD_REQUEST, '核销必须提供取件码');
-    }
-    if (!phoneTail) {
-      throw new BizError(ApiCode.BAD_REQUEST, '核销必须提供手机尾号');
+    const parcelId = input.parcelId?.trim();
+    if (!pickupCode && !phoneTail && !parcelId) {
+      throw new BizError(
+        ApiCode.BAD_REQUEST,
+        '请提供取件码 / 手机尾号 / 包裹号至少一项',
+      );
     }
   }
 
   private async findStoredParcel(input: PickupInput) {
-    // 取件码是必填核销凭证，作为主定位条件；parcelId 可选，仅进一步缩小范围。
-    // phoneTail 不参与定位——它是第二因子，在 assertPhoneTailFactor 中独立校验，
-    // 避免尾号不符时退化为 PARCEL_NOT_FOUND 而掩盖真实的“尾号不符”错误。
+    // 提供了哪个标识就用哪个过滤；至少一项已由 assertHasIdentifier 保证非空。
     const pickupCode = input.pickupCode?.trim();
+    const phoneTail = input.phoneTail?.trim();
     const parcelId = input.parcelId?.trim();
     const rows: any[] = await this.tenantPrisma.withTenant((tx) =>
       tx.parcel.findMany({
@@ -66,7 +65,8 @@ export class PickupService {
           stationId: input.stationId,
           status: 'STORED',
           deletedAt: null,
-          pickupCode,
+          ...(pickupCode ? { pickupCode } : {}),
+          ...(phoneTail ? { receiverPhoneTail: phoneTail } : {}),
           ...(parcelId ? { id: parcelId } : {}),
         },
         orderBy: { storedAt: 'asc' },
@@ -79,47 +79,10 @@ export class PickupService {
     if (rows.length > 1) {
       throw new BizError(
         ApiCode.AMBIGUOUS_PICKUP,
-        '取件码匹配多个包裹，请提供包裹号',
+        '匹配到多个包裹，请提供取件码或包裹号',
       );
     }
     return rows[0];
-  }
-
-  /**
-   * SEC-11 第二因子：校验提供的手机尾号。
-   * - 与该包裹收件人手机尾号一致 → 通过（本人取件）。
-   * - 不一致时，若存在与该尾号匹配的有效代取授权 → 通过（被授权人取件）。
-   * - 否则拒绝核销，给出“尾号不符”的明确错误。
-   */
-  private async assertPhoneTailFactor(parcel: any, input: PickupInput) {
-    const phoneTail = input.phoneTail?.trim();
-    if (!phoneTail) {
-      throw new BizError(ApiCode.BAD_REQUEST, '核销必须提供手机尾号');
-    }
-    if (phoneTail === parcel.receiverPhoneTail) {
-      return;
-    }
-    if (await this.matchesActiveAuthorization(parcel, phoneTail)) {
-      return;
-    }
-    throw new BizError(ApiCode.FORBIDDEN, '手机尾号与收件人不符');
-  }
-
-  private async matchesActiveAuthorization(parcel: any, phoneTail: string) {
-    const authorizations: any[] = await this.tenantPrisma.withTenant((tx) =>
-      tx.pickupAuthorization.findMany({
-        where: {
-          tenantId: parcel.tenantId,
-          ownerPhone: parcel.receiverPhone,
-          status: 'ACTIVE',
-          deletedAt: null,
-          OR: [{ expiresAt: null }, { expiresAt: { gt: new Date() } }],
-        },
-      }),
-    );
-    return authorizations.some((auth: any) =>
-      String(auth.authorizedPhone ?? '').endsWith(phoneTail),
-    );
   }
 
   private async assertPickupAuthorized(parcel: any, authorizedPhone?: string) {

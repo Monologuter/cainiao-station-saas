@@ -14,12 +14,10 @@ export interface PickupResult {
 }
 
 export function canSubmitPickup(payload: PickupPayload) {
-  // 双因子核销：取件码 + 手机尾号(4位)均必填，防止仅凭取件码冒领
+  // 取件码 / 手机尾号 / 包裹号至少一项 + 门店即可提交；防空参误发由后端兜底。
   return Boolean(
     payload.stationId &&
-      payload.pickupCode &&
-      payload.phoneTail &&
-      payload.phoneTail.length === 4,
+      (payload.pickupCode || payload.phoneTail || payload.parcelId),
   );
 }
 

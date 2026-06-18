@@ -1,5 +1,5 @@
 import { Body, Controller, Post } from '@nestjs/common';
-import { IsNotEmpty, IsOptional, IsString } from 'class-validator';
+import { IsOptional, IsString } from 'class-validator';
 import { RateLimit } from '../../core/rate-limit/rate-limit.decorator';
 import { RequirePermission } from '../identity/decorators';
 import { PickupService } from './pickup.service';
@@ -8,16 +8,15 @@ class PickupDto {
   @IsString()
   stationId: string;
 
-  // SEC-11 双因子：取件码 + 手机尾号均为核销必填项。
+  // 取件码 / 手机尾号 / 包裹号至少提供一项即可核销（防空参由 service 保证）。
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  pickupCode: string;
+  pickupCode?: string;
 
+  @IsOptional()
   @IsString()
-  @IsNotEmpty()
-  phoneTail: string;
+  phoneTail?: string;
 
-  // parcelId 仅用于定位（缩小匹配范围），不是核销凭证。
   @IsOptional()
   @IsString()
   parcelId?: string;
