@@ -7,6 +7,9 @@ from typing import Any, Callable, Optional
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 
 from .kb.keyword import KbEntry, KeywordKnowledgeBase
+from .llm.claude_llm import ClaudeLlmProvider
+from .llm.mock_llm import MockLlmProvider
+from .llm.provider import LlmProvider
 from .providers.mock_ocr import MockOcrProvider
 from .providers.ocr_provider import OcrProvider, WaybillResult
 from .providers.real_ocr import RealOcrProvider
@@ -17,13 +20,22 @@ def create_app(
     ocr_provider: Optional[str] = None,
     provider_factory: Optional[Callable[[], OcrProvider]] = None,
     kb_entries: Optional[list[KbEntry]] = None,
+    assistant_mode: Optional[str] = None,
+    llm_provider_factory: Optional[Callable[[], LlmProvider]] = None,
 ) -> FastAPI:
     token = service_token or os.getenv("SERVICE_TOKEN", "dev-service-token")
     provider_name = ocr_provider or os.getenv("OCR_PROVIDER", "mock")
     provider = provider_factory() if provider_factory else create_provider(provider_name)
+    llm_mode = assistant_mode or os.getenv("AI_ASSISTANT_MODE", "mock")
+    llm_provider = (
+        llm_provider_factory()
+        if llm_provider_factory
+        else create_llm_provider(llm_mode)
+    )
 
     app = FastAPI(title="Cainiao Station AI Service")
     app.state.ocr_provider = provider
+    app.state.llm_provider = llm_provider
     app.state.knowledge_base = KeywordKnowledgeBase(kb_entries)
     app.state.service_token = token
 
@@ -40,7 +52,7 @@ def create_app(
         kb = app.state.knowledge_base
         return {
             "status": "ok",
-            "mode": "mock",
+            "mode": llm_provider.mode,
             "kbReady": True,
             "entries": kb.count,
         }
@@ -103,6 +115,15 @@ def create_provider(name: str) -> OcrProvider:
     if name == "tencent":
         return RealOcrProvider(code="tencent")
     raise RuntimeError(f"Unsupported OCR_PROVIDER: {name}")
+
+
+def create_llm_provider(mode: Optional[str] = None) -> LlmProvider:
+    selected = mode or os.getenv("AI_ASSISTANT_MODE", "mock")
+    if selected == "mock":
+        return MockLlmProvider()
+    if selected == "real":
+        return ClaudeLlmProvider()
+    raise RuntimeError(f"Unsupported AI_ASSISTANT_MODE: {selected}")
 
 
 def to_response(result: WaybillResult, request_id: Optional[str], latency_ms: int):
