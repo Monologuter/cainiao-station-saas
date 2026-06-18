@@ -5,6 +5,8 @@ import { RedisLockService } from '../../core/redis/redis-lock.service';
 import { RedisService } from '../../core/redis/redis.service';
 import { ShelfController } from './shelf.controller';
 import { SlotAllocatorService } from './slot-allocator.service';
+import { SlotHeatService } from './slot-heat.service';
+import { SlotHeatSubscriber } from './slot-heat.subscriber';
 import { SlotRecommenderClient } from './slot-recommender.client';
 import { SlotReleaseSubscriber } from './slot-release.subscriber';
 import { SlotService } from './slot.service';
@@ -17,6 +19,8 @@ import { StationService } from './station.service';
     StationService,
     SlotService,
     SlotAllocatorService,
+    SlotHeatService,
+    SlotHeatSubscriber,
     SlotRecommenderClient,
     SlotReleaseSubscriber,
     PrismaService,
@@ -24,6 +28,6 @@ import { StationService } from './station.service';
     RedisService,
     RedisLockService,
   ],
-  exports: [StationService, SlotService, SlotAllocatorService],
+  exports: [StationService, SlotService, SlotAllocatorService, SlotHeatService],
 })
 export class StationModule {}

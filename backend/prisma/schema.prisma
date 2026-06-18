@@ -837,6 +837,7 @@ model Tenant {
   faqEntries           FaqEntry[]
   aiConversations      AiConversation[]
   aiMessages           AiMessage[]
+  slotHeatDailies      SlotHeatDaily[]
 }
 
 model Station {
@@ -857,6 +858,7 @@ model Station {
   reportJobs      ReportJob[]
   subscriptions   Subscription[]
   ocrRecognitions OcrRecognition[]
+  slotHeatDailies SlotHeatDaily[]
 
   @@index([tenantId])
 }
@@ -902,10 +904,32 @@ model Slot {
   station         Station    @relation(fields: [stationId], references: [id])
   shelf           Shelf      @relation(fields: [shelfId], references: [id])
   parcels         Parcel[]
+  heatDailies     SlotHeatDaily[]
 
   @@unique([stationId, code])
   @@index([tenantId, stationId, status])
   @@map("slots")
+}
+
+model SlotHeatDaily {
+  id              String   @id @default(uuid()) @db.Uuid
+  tenantId        String   @map("tenant_id") @db.Uuid
+  stationId       String   @map("station_id") @db.Uuid
+  slotId          String   @map("slot_id") @db.Uuid
+  statDate        DateTime @map("stat_date") @db.Date
+  pickCount       Int      @default(0) @map("pick_count")
+  storeCount      Int      @default(0) @map("store_count")
+  avgDwellMinutes Int      @default(0) @map("avg_dwell_minutes")
+  hourHistogram   Json     @default("[]") @map("hour_histogram")
+  createdAt       DateTime @default(now()) @map("created_at")
+  updatedAt       DateTime @updatedAt @map("updated_at")
+  tenant          Tenant   @relation(fields: [tenantId], references: [id])
+  station         Station  @relation(fields: [stationId], references: [id])
+  slot            Slot     @relation(fields: [slotId], references: [id])
+
+  @@unique([tenantId, slotId, statDate])
+  @@index([tenantId, stationId, statDate])
+  @@map("slot_heat_daily")
 }
 
 model Parcel {

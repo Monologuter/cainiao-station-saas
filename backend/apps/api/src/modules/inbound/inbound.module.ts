@@ -7,6 +7,7 @@ import { AiModule } from '../ai/ai.module';
 import { FileModule } from '../file/file.module';
 import { ParcelService } from '../parcel/parcel.service';
 import { SlotAllocatorService } from '../station/slot-allocator.service';
+import { SlotHeatService } from '../station/slot-heat.service';
 import { SlotRecommenderClient } from '../station/slot-recommender.client';
 import { InboundController } from './inbound.controller';
 import { InboundOcrController } from './inbound-ocr.controller';
@@ -23,6 +24,7 @@ import { PickupCodeService } from './pickup-code.service';
     PickupCodeService,
     ParcelService,
     SlotAllocatorService,
+    SlotHeatService,
     SlotRecommenderClient,
     PrismaService,
     TenantPrismaService,
