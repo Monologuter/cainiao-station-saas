@@ -8,6 +8,8 @@ from typing import Any, Callable, Optional
 from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 from fastapi.responses import StreamingResponse
 
+from .forecast.models import VolumeForecaster
+from .forecast.schemas import ForecastRequest
 from .kb.keyword import KbEntry, KeywordKnowledgeBase
 from .llm.claude_llm import ClaudeLlmProvider
 from .llm.mock_llm import MockLlmProvider
@@ -47,6 +49,7 @@ def create_app(
         app.state.llm_provider,
     )
     app.state.slot_scorer = SlotScorer()
+    app.state.volume_forecaster = VolumeForecaster()
     app.state.service_token = token
 
     @app.get("/healthz")
@@ -138,6 +141,19 @@ def create_app(
             raise HTTPException(status_code=401, detail="Unauthorized")
 
         return app.state.slot_scorer.recommend(payload)
+
+    @app.post("/forecast/volume")
+    async def forecast_volume(
+        payload: ForecastRequest,
+        x_service_token: Optional[str] = Header(
+            default=None,
+            alias="X-Service-Token",
+        ),
+    ):
+        if x_service_token != token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        return app.state.volume_forecaster.forecast(payload)
 
     @app.post("/ocr/waybill")
     async def recognize_waybill(
