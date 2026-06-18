@@ -952,6 +952,82 @@ textarea.input {
   min-width: 420px;
 }
 
+.store-grid {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 16px;
+  margin-bottom: 18px;
+}
+
+.store-card {
+  display: grid;
+  gap: 14px;
+  padding: 16px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius);
+  background: var(--surface);
+  box-shadow: var(--shadow);
+}
+
+.store-card-hd,
+.store-card-ft {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+}
+
+.store-card-hd b {
+  display: block;
+}
+
+.store-card-hd span,
+.store-line {
+  display: block;
+  margin-top: 3px;
+}
+
+.store-metrics,
+.store-detail-kpi {
+  display: grid;
+  grid-template-columns: repeat(3, minmax(0, 1fr));
+  gap: 10px;
+}
+
+.store-metrics div,
+.store-detail-kpi div {
+  display: grid;
+  gap: 5px;
+  padding: 12px;
+  border-radius: var(--radius-sm);
+  background: var(--surface-2);
+}
+
+.store-metrics svg,
+.store-detail-kpi svg {
+  color: var(--primary);
+}
+
+.store-metrics b,
+.store-detail-kpi b {
+  font-size: 18px;
+}
+
+.store-metrics span,
+.store-detail-kpi span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.store-modal {
+  width: 760px;
+}
+
+.store-detail {
+  display: grid;
+  gap: 16px;
+}
+
 .review-layout {
   display: grid;
   grid-template-columns: 1fr 300px;

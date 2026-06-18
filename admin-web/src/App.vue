@@ -18,6 +18,7 @@ import AuditView from "@/views/AuditView.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import PlansView from "@/views/PlansView.vue";
 import SystemConfigView from "@/views/SystemConfigView.vue";
+import StoresMonitorView from "@/views/StoresMonitorView.vue";
 
 type ViewKey =
   | "overview"
@@ -25,7 +26,8 @@ type ViewKey =
   | "billing"
   | "plans"
   | "audit"
-  | "settings";
+  | "settings"
+  | "stores";
 
 const currentView = ref<ViewKey>("overview");
 
@@ -84,6 +86,11 @@ const viewMeta = computed(() => {
       sub: "2026年6月18日 周四 · 追踪平台与租户关键写操作",
       component: AuditView,
     },
+    stores: {
+      title: "门店监控",
+      sub: "2026年6月18日 周四 · 巡检跨租户门店健康与异常",
+      component: StoresMonitorView,
+    },
     settings: {
       title: "系统配置",
       sub: "2026年6月18日 周四 · 管理参数、字典、渠道与通知模板",
@@ -100,7 +107,8 @@ function selectView(key: string) {
     key === "billing" ||
     key === "plans" ||
     key === "audit" ||
-    key === "settings"
+    key === "settings" ||
+    key === "stores"
   ) {
     currentView.value = key;
   }

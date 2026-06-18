@@ -9,22 +9,19 @@ import {
   WalletCards,
 } from "lucide-vue-next";
 import {
-  platformOverviewApi,
   tenantCompareApi,
-  type PlatformOverview,
   type TenantCompare,
 } from "@/api/analytics";
+import { monitorOverviewApi, type MonitorOverview } from "@/api/monitor";
 
 const today = new Date().toISOString().slice(0, 10);
 const filters = reactive({ metric: "inbound", date: today });
 const loading = ref(false);
-const overview = ref<PlatformOverview>({
+const overview = ref<MonitorOverview>({
   tenants: 0,
   stations: 0,
-  parcels: 0,
-  inbound: 0,
-  pickup: 0,
-  shipPaid: 0,
+  inStockParcels: 0,
+  exceptionCount: 0,
   gmv: 0,
 });
 const compare = ref<TenantCompare>({ metric: "inbound", rows: [] });
@@ -47,14 +44,14 @@ const kpis = computed(() => [
   },
   {
     label: "全平台包裹",
-    value: overview.value.parcels,
-    delta: "累计包裹",
+    value: overview.value.inStockParcels,
+    delta: "当前在库",
     icon: PackageCheck,
   },
   {
-    label: "今日入库",
-    value: overview.value.inbound ?? 0,
-    delta: "事件热层",
+    label: "异常总数",
+    value: overview.value.exceptionCount,
+    delta: "需巡检",
     icon: BarChart3,
   },
   {
@@ -71,7 +68,7 @@ async function load() {
   loading.value = true;
   try {
     const [overviewRes, compareRes] = await Promise.all([
-      platformOverviewApi({ date: filters.date }),
+      monitorOverviewApi(),
       tenantCompareApi({
         metric: filters.metric,
         date: filters.date,
@@ -183,12 +180,12 @@ function money(value: number) {
       </div>
       <div class="health-list">
         <div>
-          <b>取件转化</b>
-          <span class="tnum">{{ overview.pickup ?? 0 }}</span>
+          <b>异常总数</b>
+          <span class="tnum">{{ overview.exceptionCount }}</span>
         </div>
         <div>
-          <b>寄件支付单</b>
-          <span class="tnum">{{ overview.shipPaid ?? 0 }}</span>
+          <b>在库包裹</b>
+          <span class="tnum">{{ overview.inStockParcels }}</span>
         </div>
         <div>
           <b>租户门店比</b>
