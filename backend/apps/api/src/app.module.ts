@@ -14,6 +14,7 @@ import { RedisLockService } from './core/redis/redis-lock.service';
 import { RedisService } from './core/redis/redis.service';
 import { AnalyticsModule } from './modules/analytics/analytics.module';
 import { MonitorModule } from './modules/admin/monitor/monitor.module';
+import { AiModule } from './modules/ai/ai.module';
 import { AuditInterceptor } from './modules/audit/audit.interceptor';
 import { AuditModule } from './modules/audit/audit.module';
 import { BillingModule } from './modules/billing/billing.module';
@@ -39,6 +40,7 @@ import { TenantModule } from './modules/tenant/tenant.module';
     EventBusModule,
     AnalyticsModule,
     MonitorModule,
+    AiModule,
     AuditModule,
     BillingModule,
     AdminConfigModule,
