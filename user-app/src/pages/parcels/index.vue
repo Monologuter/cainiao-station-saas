@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
 import { statusLabel, type ConsumerParcelStatus } from '@/api/parcel';
-import { useParcelStore } from '@/store/parcel';
+import { useParcelStore } from '@/stores/parcel';
 
 const parcel = useParcelStore();
 const active = ref<ConsumerParcelStatus | ''>('STORED');

@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { reactive, ref } from 'vue';
-import { useUserStore } from '@/store/user';
+import { useUserStore } from '@/stores/user';
 
 const user = useUserStore();
 const loading = ref(false);

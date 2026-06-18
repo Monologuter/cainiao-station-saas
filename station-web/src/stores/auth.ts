@@ -7,7 +7,12 @@ import {
   type AuthUser,
   type MenuGroup,
 } from '@/api/auth';
-import { clearStoredToken, getStoredToken, setStoredToken } from '@/api/http';
+import {
+  clearStoredToken,
+  getStoredToken,
+  setStoredRefreshToken,
+  setStoredToken,
+} from '@/api/http';
 
 interface AuthState {
   token: string;
@@ -35,6 +40,9 @@ export const useAuthStore = defineStore('auth', {
       this.user = result.user;
       this.routesReady = false;
       setStoredToken(result.accessToken);
+      if (result.refreshToken) {
+        setStoredRefreshToken(result.refreshToken);
+      }
       return result;
     },
     async loadProfile() {
@@ -46,7 +54,10 @@ export const useAuthStore = defineStore('auth', {
         permissionsApi(),
         menusApi(),
       ]);
-      this.user = user;
+      // /auth/me is the source of truth for identity (id, username, tenantId,
+      // roles, stations…). Merge over any existing user so a refresh never
+      // drops fields the login response had set.
+      this.user = { ...this.user, ...user };
       this.perms = perms;
       this.menus = menus;
       return this.user;

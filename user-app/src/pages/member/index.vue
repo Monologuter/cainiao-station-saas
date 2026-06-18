@@ -1,8 +1,18 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
+import { storeToRefs } from 'pinia';
 import { memberProfileApi, type MemberProfile } from '@/api/member';
+import { useAppStore, type AppTheme } from '@/stores/app';
 
 const profile = ref<MemberProfile | null>(null);
+
+const appStore = useAppStore();
+const { theme } = storeToRefs(appStore);
+
+const themeOptions: { value: AppTheme; label: string }[] = [
+  { value: 'light', label: '浅色' },
+  { value: 'dark', label: '暗色' },
+];
 
 onMounted(load);
 
@@ -12,6 +22,10 @@ async function load() {
 
 function go(url: string) {
   uni.navigateTo({ url });
+}
+
+function selectTheme(value: AppTheme) {
+  appStore.setTheme(value);
 }
 </script>
 
@@ -51,6 +65,28 @@ function go(url: string) {
         <text class="entry-title">在线客服</text>
         <text class="entry-desc">咨询包裹与寄件</text>
       </button>
+    </view>
+
+    <view class="mobile-card settings-card">
+      <text class="section-title">设置</text>
+      <view class="setting-row">
+        <view class="setting-label">
+          <text class="setting-title">外观主题</text>
+          <text class="setting-desc">浅色 / 暗色，自动记住你的选择</text>
+        </view>
+        <view class="theme-seg">
+          <button
+            v-for="option in themeOptions"
+            :key="option.value"
+            class="theme-seg-btn"
+            :class="{ on: theme === option.value }"
+            type="button"
+            @click="selectTheme(option.value)"
+          >
+            {{ option.label }}
+          </button>
+        </view>
+      </view>
     </view>
   </view>
 </template>

@@ -1,17 +1,121 @@
+/* ===========================================================
+   菜鸟驿站 · user-app 主题 Token（移动端 H5）
+   口径对齐 design/_kit/kit.css（清爽蓝）+ design/mockups/theme-switch-demo.html
+   - 浅色 [data-theme='light']（默认）/ 暗色 [data-theme='dark'] 两档
+   - 圆角成体系：移动端保留稍大圆角（--radius:18px），其余按比例
+   - 页面统一使用变量，禁止硬编码颜色
+   =========================================================== */
+
+/* ---------- 浅色（默认）---------- */
 :root,
+:root[data-theme='light'],
 page {
   --bg: #f7f8fa;
   --surface: #ffffff;
+  --surface-2: #fbfcfe;
+  --surface-elev: #ffffff;
+
   --text: #1e293b;
   --muted: #64748b;
+  --subtle: #334155;
   --border: #e8ebf0;
+  --border-2: #f1f3f7;
+
   --primary: #3b6ef6;
   --primary-fg: #ffffff;
   --primary-soft: #ebf1fe;
+  --primary-700: #2557e6;
+  --primary-line: #c7d8ff;
+
+  --accent: #10b981;
+  --accent-soft: #e7f8f1;
+
+  --ok: #16a34a;
+  --ok-soft: #ecfdf3;
+  --warn: #d97706;
+  --warn-soft: #fef3c7;
+  --danger: #dc2626;
+  --danger-soft: #fef2f2;
+  --info: #0ea5e9;
+  --info-soft: #e0f2fe;
+  --purple: #7c5cfc;
+  --purple-soft: #efebff;
+
+  --chip-bg: #eef2f7;
+  --chip-fg: #334155;
+  --neutral-soft: #f1f5f9;
+
+  /* 圆角体系（移动端稍大，但成比例） */
   --radius: 18px;
+  --radius-pill: 999px;
+  --radius-lg: 16px;
+  --radius-md: 14px;
+  --radius-sm: 12px;
+  --radius-xs: 10px;
+
+  /* 阴影 / 渐变 / 描边 */
+  --shadow-card: 0 8px 22px rgba(16, 24, 40, 0.08);
+  --shadow-up: 0 -8px 24px rgba(16, 24, 40, 0.08);
+  --hero-grad: linear-gradient(135deg, #ffffff 0%, #edf4ff 100%);
+  --member-glow: radial-gradient(circle at top right, rgba(59, 110, 246, 0.16), transparent 34%);
+  --assistant-glow: linear-gradient(180deg, rgba(59, 110, 246, 0.12), transparent 220px);
+  --progress-track: #dbe7ff;
+  --tool-line: #b7c8f8;
+  --barcode-ink: #111111;
+  --barcode-paper: #ffffff;
+
   font-family: 'Inter', 'PingFang SC', system-ui, sans-serif;
   color: var(--text);
   background: var(--bg);
+}
+
+/* ---------- 暗色 ---------- */
+:root[data-theme='dark'],
+[data-theme='dark'] page {
+  --bg: #0b0f1a;
+  --surface: #131a2a;
+  --surface-2: #0f1626;
+  --surface-elev: #182236;
+
+  --text: #e6edf7;
+  --muted: #8595ad;
+  --subtle: #c7d2e0;
+  --border: #1e2a40;
+  --border-2: #1b2436;
+
+  --primary: #22d3ee;
+  --primary-fg: #04121a;
+  --primary-soft: rgba(34, 211, 238, 0.12);
+  --primary-700: #0ea5c4;
+  --primary-line: rgba(34, 211, 238, 0.4);
+
+  --accent: #34d399;
+  --accent-soft: rgba(52, 211, 153, 0.12);
+
+  --ok: #34d399;
+  --ok-soft: rgba(52, 211, 153, 0.14);
+  --warn: #fbbf24;
+  --warn-soft: rgba(251, 191, 36, 0.14);
+  --danger: #fb7185;
+  --danger-soft: rgba(251, 113, 133, 0.14);
+  --info: #38bdf8;
+  --info-soft: rgba(56, 189, 248, 0.14);
+  --purple: #a78bfa;
+  --purple-soft: rgba(167, 139, 250, 0.16);
+
+  --chip-bg: rgba(133, 149, 173, 0.16);
+  --chip-fg: #c7d2e0;
+  --neutral-soft: rgba(133, 149, 173, 0.14);
+
+  --shadow-card: 0 0 0 1px rgba(34, 211, 238, 0.08), 0 10px 28px rgba(0, 0, 0, 0.45);
+  --shadow-up: 0 0 0 1px rgba(34, 211, 238, 0.08), 0 -10px 28px rgba(0, 0, 0, 0.5);
+  --hero-grad: linear-gradient(135deg, #182236 0%, #0f1d2e 100%);
+  --member-glow: radial-gradient(circle at top right, rgba(34, 211, 238, 0.18), transparent 34%);
+  --assistant-glow: linear-gradient(180deg, rgba(34, 211, 238, 0.14), transparent 220px);
+  --progress-track: rgba(34, 211, 238, 0.18);
+  --tool-line: rgba(34, 211, 238, 0.4);
+  --barcode-ink: #e6edf7;
+  --barcode-paper: #0b0f1a;
 }
 
 .mobile-page {
@@ -24,7 +128,7 @@ page {
   border: 1px solid var(--border);
   border-radius: var(--radius);
   background: var(--surface);
-  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .hero-card {
@@ -64,7 +168,7 @@ page {
   height: 46px;
   padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   color: var(--text);
   background: var(--surface);
   font-size: 15px;
@@ -82,7 +186,7 @@ page {
   align-items: center;
   justify-content: center;
   border: 0;
-  border-radius: 12px;
+  border-radius: var(--radius-sm);
   color: var(--primary-fg);
   background: var(--primary);
   font-weight: 700;
@@ -114,9 +218,68 @@ page {
   grid-column: 1 / -1;
 }
 
+/* ---------- 设置 / 主题切换 ---------- */
+.settings-card {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+  margin-top: 14px;
+  padding: 18px;
+}
+
+.setting-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.setting-label {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+}
+
+.setting-title {
+  color: var(--text);
+  font-size: 15px;
+  font-weight: 800;
+}
+
+.setting-desc {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.theme-seg {
+  display: flex;
+  gap: 4px;
+  padding: 4px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-md);
+  background: var(--surface-2);
+}
+
+.theme-seg-btn {
+  min-width: 56px;
+  height: 34px;
+  padding: 0 14px;
+  border: 0;
+  border-radius: var(--radius-xs);
+  color: var(--muted);
+  background: transparent;
+  font-size: 13px;
+  font-weight: 700;
+}
+
+.theme-seg-btn.on {
+  color: var(--primary-fg);
+  background: var(--primary);
+}
+
 .member-page {
   background:
-    radial-gradient(circle at top right, rgba(59, 110, 246, 0.16), transparent 34%),
+    var(--member-glow),
     var(--bg);
 }
 
@@ -125,8 +288,8 @@ page {
   flex-direction: column;
   gap: 10px;
   padding: 22px;
-  border-color: #c7d8ff;
-  background: linear-gradient(135deg, #ffffff 0%, #edf4ff 100%);
+  border-color: var(--primary-line);
+  background: var(--hero-grad);
 }
 
 .member-points {
@@ -139,8 +302,8 @@ page {
 .progress-track {
   height: 8px;
   overflow: hidden;
-  border-radius: 999px;
-  background: #dbe7ff;
+  border-radius: var(--radius-pill);
+  background: var(--progress-track);
 }
 
 .progress-fill {
@@ -185,7 +348,7 @@ page {
 
 .date-pill {
   padding: 7px 10px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--primary);
   background: var(--primary-soft);
   font-size: 12px;
@@ -204,13 +367,13 @@ page {
 }
 
 .point-change {
-  color: #16a34a;
+  color: var(--ok);
   font-size: 20px;
   font-weight: 900;
 }
 
 .point-change.minus {
-  color: #dc2626;
+  color: var(--danger);
 }
 
 .mini-btn.ghost {
@@ -225,7 +388,7 @@ page {
   min-height: 100vh;
   padding: 18px;
   background:
-    linear-gradient(180deg, rgba(59, 110, 246, 0.12), transparent 220px),
+    var(--assistant-glow),
     var(--bg);
 }
 
@@ -253,10 +416,10 @@ page {
   flex: 0 0 auto;
   height: 36px;
   padding: 0 14px;
-  border: 1px solid #c7d8ff;
-  border-radius: 999px;
+  border: 1px solid var(--primary-line);
+  border-radius: var(--radius-pill);
   color: var(--primary);
-  background: #ffffff;
+  background: var(--surface);
   font-size: 13px;
   font-weight: 700;
 }
@@ -285,19 +448,19 @@ page {
 .bubble {
   max-width: 78%;
   padding: 12px 14px;
-  border-radius: 16px;
+  border-radius: var(--radius-lg);
   background: var(--surface);
-  box-shadow: 0 8px 22px rgba(16, 24, 40, 0.08);
+  box-shadow: var(--shadow-card);
 }
 
 .message-row.user .bubble {
-  color: #ffffff;
+  color: var(--primary-fg);
   background: var(--primary);
 }
 
 .message-row.tool .bubble {
   color: var(--muted);
-  border: 1px dashed #b7c8f8;
+  border: 1px dashed var(--tool-line);
   background: var(--primary-soft);
   box-shadow: none;
 }
@@ -311,7 +474,7 @@ page {
   display: inline-flex;
   margin-top: 8px;
   padding: 4px 8px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
   color: var(--primary);
   background: var(--primary-soft);
   font-size: 11px;
@@ -327,9 +490,9 @@ page {
 
 .citation {
   padding: 4px 8px;
-  border-radius: 999px;
-  color: #334155;
-  background: #eef2f7;
+  border-radius: var(--radius-pill);
+  color: var(--chip-fg);
+  background: var(--chip-bg);
   font-size: 11px;
 }
 
@@ -342,7 +505,7 @@ page {
 
 .error-line {
   padding: 8px 2px;
-  color: #dc2626;
+  color: var(--danger);
   font-size: 12px;
 }
 
@@ -357,7 +520,7 @@ page {
   height: 44px;
   padding: 0 14px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--surface);
   color: var(--text);
   font-size: 15px;
@@ -369,8 +532,8 @@ page {
   justify-content: center;
   height: 44px;
   border: 0;
-  border-radius: 14px;
-  color: #ffffff;
+  border-radius: var(--radius-md);
+  color: var(--primary-fg);
   background: var(--primary);
   font-size: 14px;
   font-weight: 800;
@@ -381,8 +544,8 @@ page {
 }
 
 .ship-hero {
-  border-color: #d6e2fd;
-  background: linear-gradient(135deg, #ffffff 0%, #edf4ff 100%);
+  border-color: var(--primary-line);
+  background: var(--hero-grad);
 }
 
 .section-title {
@@ -457,7 +620,7 @@ page {
   padding: 12px 18px 18px;
   border-top: 1px solid var(--border);
   background: var(--surface);
-  box-shadow: 0 -8px 24px rgba(16, 24, 40, 0.08);
+  box-shadow: var(--shadow-up);
 }
 
 .checkout-label,
@@ -471,14 +634,14 @@ page {
 }
 
 .checkout-amount {
-  color: #dc2626;
+  color: var(--danger);
   font-size: 24px;
   font-weight: 900;
 }
 
 .pay-mobile {
   width: 148px;
-  border-radius: 999px;
+  border-radius: var(--radius-pill);
 }
 
 .plain-link {
@@ -497,14 +660,14 @@ page {
   margin-bottom: 14px;
   padding: 4px;
   border: 1px solid var(--border);
-  border-radius: 14px;
+  border-radius: var(--radius-md);
   background: var(--surface);
 }
 
 .tab-mobile {
   height: 38px;
   border: 0;
-  border-radius: 10px;
+  border-radius: var(--radius-xs);
   color: var(--muted);
   background: transparent;
   font-weight: 700;
@@ -553,7 +716,7 @@ page {
   min-width: 58px;
   height: 24px;
   padding: 0 8px;
-  border-radius: 8px;
+  border-radius: var(--radius-xs);
   font-size: 11px;
   font-weight: 800;
 }
@@ -564,23 +727,23 @@ page {
 }
 
 .mini-tag.green {
-  color: #16a34a;
-  background: #ecfdf3;
+  color: var(--ok);
+  background: var(--ok-soft);
 }
 
 .mini-tag.amber {
-  color: #d97706;
-  background: #fef3c7;
+  color: var(--warn);
+  background: var(--warn-soft);
 }
 
 .mini-tag.purple {
-  color: #7c5cfc;
-  background: #efebff;
+  color: var(--purple);
+  background: var(--purple-soft);
 }
 
 .mini-tag.gray {
-  color: #64748b;
-  background: #f1f5f9;
+  color: var(--muted);
+  background: var(--neutral-soft);
 }
 
 .empty-mobile {
@@ -692,6 +855,12 @@ page {
 .fake-barcode {
   width: 220px;
   height: 72px;
-  border-radius: 8px;
-  background: repeating-linear-gradient(90deg, #111 0 3px, #fff 3px 7px, #111 7px 9px, #fff 9px 14px);
+  border-radius: var(--radius-xs);
+  background: repeating-linear-gradient(
+    90deg,
+    var(--barcode-ink) 0 3px,
+    var(--barcode-paper) 3px 7px,
+    var(--barcode-ink) 7px 9px,
+    var(--barcode-paper) 9px 14px
+  );
 }

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { formatPickupCode } from '@/api/parcel';
-import { useParcelStore } from '@/store/parcel';
+import { useParcelStore } from '@/stores/parcel';
 
 const parcel = useParcelStore();
 const first = computed(() => parcel.firstStored);

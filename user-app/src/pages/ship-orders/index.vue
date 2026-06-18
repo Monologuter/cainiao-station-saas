@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
 import { shippingStatusLabel, shippingStatusTag, type ShipOrderStatus } from '@/api/shipping';
-import { useShippingStore } from '@/store/shipping';
+import { useShippingStore } from '@/stores/shipping';
 
 const shipping = useShippingStore();
 const active = ref<ShipOrderStatus | ''>('');

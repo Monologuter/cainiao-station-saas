@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from 'vue';
-import { useAssistantStore } from '@/store/assistant';
-import { useParcelStore } from '@/store/parcel';
+import { useAssistantStore } from '@/stores/assistant';
+import { useParcelStore } from '@/stores/parcel';
 
 const assistant = useAssistantStore();
 const parcels = useParcelStore();

@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from 'vue';
 import type { ShippingAddress, ShippingQuote } from '@/api/shipping';
-import { useShippingStore } from '@/store/shipping';
+import { useShippingStore } from '@/stores/shipping';
 
 const shipping = useShippingStore();
 const loading = ref(false);

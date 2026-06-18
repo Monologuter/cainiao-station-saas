@@ -1,7 +1,7 @@
 <script setup lang="ts">
 import { computed, onMounted } from 'vue';
 import { shippingStatusLabel, shippingStatusTag } from '@/api/shipping';
-import { useShippingStore } from '@/store/shipping';
+import { useShippingStore } from '@/stores/shipping';
 
 const shipping = useShippingStore();
 const order = computed(() => shipping.current);
