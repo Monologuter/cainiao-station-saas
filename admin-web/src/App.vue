@@ -6,6 +6,7 @@ import {
   ClipboardCheck,
   CreditCard,
   LayoutDashboard,
+  ScrollText,
   Settings,
   ShieldCheck,
   Store,
@@ -13,10 +14,11 @@ import {
 } from "lucide-vue-next";
 import BillingView from "@/views/BillingView.vue";
 import ApplicationsView from "@/views/ApplicationsView.vue";
+import AuditView from "@/views/AuditView.vue";
 import OverviewView from "@/views/OverviewView.vue";
 import PlansView from "@/views/PlansView.vue";
 
-type ViewKey = "overview" | "applications" | "billing" | "plans";
+type ViewKey = "overview" | "applications" | "billing" | "plans" | "audit";
 
 const currentView = ref<ViewKey>("overview");
 
@@ -42,6 +44,7 @@ const navGroups = [
     items: [
       { key: "platform-users", label: "平台用户", icon: UsersRound },
       { key: "roles", label: "角色权限", icon: ShieldCheck },
+      { key: "audit", label: "操作审计", icon: ScrollText },
       { key: "settings", label: "系统配置", icon: Settings },
     ],
   },
@@ -69,6 +72,11 @@ const viewMeta = computed(() => {
       sub: "2026年6月18日 周四 · 管理平台订阅套餐与用量加费规则",
       component: PlansView,
     },
+    audit: {
+      title: "操作审计",
+      sub: "2026年6月18日 周四 · 追踪平台与租户关键写操作",
+      component: AuditView,
+    },
   };
   return meta[currentView.value];
 });
@@ -78,7 +86,8 @@ function selectView(key: string) {
     key === "overview" ||
     key === "applications" ||
     key === "billing" ||
-    key === "plans"
+    key === "plans" ||
+    key === "audit"
   ) {
     currentView.value = key;
   }

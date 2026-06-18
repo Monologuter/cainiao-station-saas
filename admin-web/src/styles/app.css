@@ -833,6 +833,50 @@ textarea.input {
   width: 760px;
 }
 
+.audit-modal {
+  width: 920px;
+}
+
+.audit-toolbar {
+  flex-wrap: wrap;
+}
+
+.audit-filter {
+  width: 150px;
+}
+
+.audit-resource {
+  display: block;
+  margin-top: 3px;
+  font-size: 12px;
+}
+
+.audit-detail {
+  display: grid;
+  gap: 16px;
+}
+
+.audit-summary {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.audit-meta {
+  grid-template-columns: 86px 1fr;
+}
+
+.diff-table {
+  box-shadow: none;
+}
+
+.audit-value {
+  max-width: 260px;
+  color: var(--muted);
+  font-family: ui-monospace, SFMono-Regular, Menlo, monospace;
+  word-break: break-all;
+}
+
 .review-layout {
   display: grid;
   grid-template-columns: 1fr 300px;
