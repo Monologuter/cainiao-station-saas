@@ -4,6 +4,7 @@ import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breake
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { ChannelResolver } from '../config/channel-resolver';
 import { NotifyChannelType } from './notify-channel';
+import { SmsChannelFactory } from './sms-channel.factory';
 import { TemplateRenderer } from './template-renderer';
 
 interface ParcelStoredNotification {
@@ -62,6 +63,7 @@ export class NotifyService {
     private readonly eventBus: EventBus,
     private readonly channelResolver: ChannelResolver,
     @Optional() private readonly breaker?: CircuitBreakerService,
+    @Optional() private readonly smsFactory?: SmsChannelFactory,
   ) {}
 
   async notifyParcelStored(payload: ParcelStoredNotification) {
@@ -102,6 +104,18 @@ export class NotifyService {
         payload,
         dedupKey,
         notification.sentAt,
+        await this.sendSmsIfNeeded(
+          channel,
+          rendered.content,
+          payload.receiverPhone,
+          'PARCEL_STORED',
+          [
+            payload.pickupCode,
+            payload.slotCode ?? '',
+            payload.stationName ?? payload.stationId,
+            payload.receiverPhone.slice(-4),
+          ],
+        ),
       );
     }
   }
@@ -145,6 +159,18 @@ export class NotifyService {
         payload,
         dedupKey,
         notification.sentAt,
+        await this.sendSmsIfNeeded(
+          channel,
+          rendered.content,
+          payload.receiverPhone,
+          templateCode,
+          [
+            payload.pickupCode ?? '',
+            payload.slotCode ?? '',
+            payload.stationName ?? payload.stationId,
+            String(payload.daysOverdue),
+          ],
+        ),
       );
     }
   }
@@ -189,6 +215,13 @@ export class NotifyService {
         },
         dedupKey,
         notification.sentAt,
+        await this.sendSmsIfNeeded(
+          channel,
+          rendered.content,
+          payload.ownerUsername,
+          'TENANT_APPROVED',
+          [payload.ownerUsername, payload.tempPassword ?? '', payload.planCode],
+        ),
       );
     }
   }
@@ -236,8 +269,9 @@ export class NotifyService {
     payload: { tenantId: string; stationId: string },
     dedupKey: string,
     sentAt?: Date | null,
+    quantity = 1,
   ) {
-    if (channel !== 'SMS') {
+    if (channel !== 'SMS' || quantity <= 0) {
       return;
     }
     await this.eventBus.publish(
@@ -245,8 +279,30 @@ export class NotifyService {
         tenantId: payload.tenantId,
         stationId: payload.stationId,
         usageEventId: `notify:${payload.tenantId}:${dedupKey}`,
+        quantity,
         sentAt: (sentAt ?? new Date()).toISOString(),
       }),
     );
+  }
+
+  private async sendSmsIfNeeded(
+    channel: NotifyChannelType,
+    content: string,
+    receiverPhone: string,
+    templateCode: string,
+    variables: string[],
+  ) {
+    if (channel !== 'SMS' || !this.smsFactory) {
+      return 1;
+    }
+    const smsChannel = await this.smsFactory.get();
+    const result = await smsChannel.send({
+      channel: 'SMS',
+      content,
+      receiverPhone,
+      templateCode,
+      variables,
+    });
+    return result.ok ? (result.billingUnits ?? 1) : 0;
   }
 }

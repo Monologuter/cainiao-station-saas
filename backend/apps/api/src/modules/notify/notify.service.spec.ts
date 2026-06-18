@@ -88,6 +88,58 @@ describe('NotifyService', () => {
     expect(channelResolver.resolve).toHaveBeenCalledWith('sms');
   });
 
+  it('sends SMS through selected channel and publishes real billing units', async () => {
+    const tx = {
+      notification: {
+        upsert: jest.fn(async ({ create }: any) => create),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const renderer = {
+      render: jest.fn(async (_code, channel, vars) => ({
+        content: `${channel}:${vars.code}:${vars.slot}`,
+      })),
+    } as any;
+    const eventBus = { publish: jest.fn() };
+    const smsChannel = {
+      send: jest.fn().mockResolvedValue({ ok: true, billingUnits: 2 }),
+    };
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      eventBus as any,
+      channelResolver as any,
+      undefined,
+      { get: jest.fn().mockResolvedValue(smsChannel) } as any,
+    );
+
+    await service.notifyParcelStored({
+      parcelId: 'p1',
+      tenantId: 't1',
+      stationId: 's1',
+      stationName: '城南驿站',
+      receiverPhone: '13800000000',
+      pickupCode: '1234',
+      slotCode: 'A-01',
+    });
+
+    expect(smsChannel.send).toHaveBeenCalledWith({
+      channel: 'SMS',
+      content: 'SMS:1234:A-01',
+      receiverPhone: '13800000000',
+      templateCode: 'PARCEL_STORED',
+      variables: ['1234', 'A-01', '城南驿站', '0000'],
+    });
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'SmsNotificationSent',
+        payload: expect.objectContaining({
+          quantity: 2,
+        }),
+      }),
+    );
+  });
+
   it('dedups repeated ParcelStored notifications by dedup key', async () => {
     const upserts: any[] = [];
     const tx = {

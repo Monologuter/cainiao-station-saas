@@ -9,7 +9,9 @@ import { NotifyService } from './notify.service';
 import { OnboardingSubscriber } from './onboarding.subscriber';
 import { OverdueSubscriber } from './overdue.subscriber';
 import { ParcelStoredSubscriber } from './parcel-stored.subscriber';
+import { SmsChannelFactory } from './sms-channel.factory';
 import { TemplateRenderer } from './template-renderer';
+import { TencentSmsChannel } from './tencent-sms.channel';
 
 @Module({
   imports: [AdminConfigModule],
@@ -18,6 +20,8 @@ import { TemplateRenderer } from './template-renderer';
     TemplateRenderer,
     InAppChannel,
     MockSmsChannel,
+    TencentSmsChannel,
+    SmsChannelFactory,
     ParcelStoredSubscriber,
     OverdueSubscriber,
     OnboardingSubscriber,

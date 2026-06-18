@@ -8,6 +8,7 @@ interface SmsNotificationSentPayload extends Record<string, unknown> {
   tenantId: string;
   stationId?: string;
   usageEventId: string;
+  quantity?: number;
   sentAt?: string;
 }
 
@@ -41,7 +42,7 @@ export class SmsUsageSubscriber implements OnModuleInit {
             stationId: event.payload.stationId,
             eventId: event.payload.usageEventId,
             metric: 'SMS',
-            quantity: 1,
+            quantity: Number(event.payload.quantity ?? 1),
             eventAt: event.payload.sentAt
               ? new Date(event.payload.sentAt)
               : event.occurredAt,
