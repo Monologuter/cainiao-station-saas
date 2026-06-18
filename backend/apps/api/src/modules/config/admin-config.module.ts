@@ -1,5 +1,7 @@
 import { Module } from '@nestjs/common';
+import { MultiLevelCacheService } from '../../core/cache/multi-level-cache.service';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { RedisService } from '../../core/redis/redis.service';
 import { ChannelConfigService } from './channel-config.service';
 import { ChannelResolver } from './channel-resolver';
 import {
@@ -32,6 +34,8 @@ import { SystemConfigService } from './system-config.service';
     RuntimeConfigService,
     SystemConfigService,
     PrismaService,
+    RedisService,
+    MultiLevelCacheService,
   ],
   exports: [
     ChannelConfigService,

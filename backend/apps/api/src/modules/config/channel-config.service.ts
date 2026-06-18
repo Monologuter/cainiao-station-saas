@@ -1,4 +1,5 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { MultiLevelCacheService } from '../../core/cache/multi-level-cache.service';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
 import { ProviderRegistry } from './provider-registry';
@@ -12,11 +13,10 @@ export type UpdateChannelConfigInput = {
 
 @Injectable()
 export class ChannelConfigService {
-  private readonly cache = new Map<string, any>();
-
   constructor(
     private readonly prisma: PrismaService,
     private readonly registry: ProviderRegistry,
+    @Optional() private readonly cache?: MultiLevelCacheService,
   ) {}
 
   async list() {
@@ -27,19 +27,11 @@ export class ChannelConfigService {
   }
 
   async get(channel: string) {
-    if (this.cache.has(channel)) {
-      return this.cache.get(channel);
-    }
-
-    const record = (await this.withBypass((tx) =>
-      tx.channelConfig.findUnique({ where: { channel } }),
-    )) as any;
-    if (!record) {
-      throw new BizError(ApiCode.NOT_FOUND, '渠道配置不存在');
-    }
-    const presented = this.present(record);
-    this.cache.set(channel, presented);
-    return presented;
+    return (
+      this.cache?.getOrLoad(this.cacheKey(channel), 30_000, () =>
+        this.loadChannel(channel),
+      ) ?? this.loadChannel(channel)
+    );
   }
 
   async update(
@@ -76,8 +68,22 @@ export class ChannelConfigService {
       });
     })) as any;
 
-    this.cache.delete(channel);
+    await this.cache?.invalidate(this.cacheKey(channel));
     return this.present(updated);
+  }
+
+  private async loadChannel(channel: string) {
+    const record = (await this.withBypass((tx) =>
+      tx.channelConfig.findUnique({ where: { channel } }),
+    )) as any;
+    if (!record) {
+      throw new BizError(ApiCode.NOT_FOUND, '渠道配置不存在');
+    }
+    return this.present(record);
+  }
+
+  private cacheKey(channel: string) {
+    return `channel:${channel}`;
   }
 
   private present(record: any) {
