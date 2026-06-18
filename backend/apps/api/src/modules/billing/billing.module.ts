@@ -3,6 +3,7 @@ import { PrismaService } from '../../core/prisma/prisma.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisLockService } from '../../core/redis/redis-lock.service';
 import { RedisService } from '../../core/redis/redis.service';
+import { ScheduledLockService } from '../../core/scheduler-lock/scheduler-lock.service';
 import { PayModule } from '../pay/pay.module';
 import { InvoiceController } from './invoice/invoice.controller';
 import { InvoiceService } from './invoice/invoice.service';
@@ -40,6 +41,7 @@ import { UsageService } from './usage/usage.service';
     TenantPrismaService,
     RedisService,
     RedisLockService,
+    ScheduledLockService,
   ],
   exports: [SubscriptionService],
 })

@@ -1,4 +1,4 @@
-import { RedisLockService } from '../../../core/redis/redis-lock.service';
+import { ScheduledLockService } from '../../../core/scheduler-lock/scheduler-lock.service';
 import { InvoiceService } from '../invoice/invoice.service';
 import { InvoiceRunProcessor } from './invoice-run.processor';
 
@@ -10,35 +10,35 @@ function createProcessor(subscriptions: any[]) {
     },
   };
   const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as any;
-  const release = jest.fn();
-  const locks = {
-    acquire: jest.fn().mockResolvedValue({ ok: true, release }),
-  } as unknown as jest.Mocked<RedisLockService>;
+  const schedulerLocks = {
+    runExclusive: jest.fn((_name, _ttl, fn) => fn()),
+  } as unknown as jest.Mocked<ScheduledLockService>;
   const invoices = {
     generateInvoice: jest.fn().mockResolvedValue({ id: 'inv-1' }),
   } as unknown as jest.Mocked<InvoiceService>;
   return {
-    processor: new InvoiceRunProcessor(prisma, locks, invoices),
+    processor: new InvoiceRunProcessor(prisma, schedulerLocks, invoices),
     tx,
-    locks,
+    schedulerLocks,
     invoices,
-    release,
   };
 }
 
 describe('InvoiceRunProcessor', () => {
   it('scans due subscriptions under lock and generates invoices in tenant context', async () => {
     const now = new Date('2026-07-01T00:00:00.000Z');
-    const { processor, tx, locks, invoices, release } = createProcessor([
+    const { processor, tx, schedulerLocks, invoices } = createProcessor([
       { id: 'sub-1', tenantId: 'tenant-1' },
       { id: 'sub-2', tenantId: 'tenant-2' },
     ]);
 
     const result = await processor.runInvoiceRun(now);
 
-    expect(locks.acquire).toHaveBeenCalledWith(
-      'lock:billing-invoice-run',
+    expect(schedulerLocks.runExclusive).toHaveBeenCalledWith(
+      'billing.invoice-run',
       600000,
+      expect.any(Function),
+      { skipped: true, scanned: 0, generated: 0 },
     );
     expect(tx.subscription.findMany).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -55,15 +55,18 @@ describe('InvoiceRunProcessor', () => {
       subscriptionId: 'sub-1',
       now,
     });
-    expect(release).toHaveBeenCalled();
     expect(result).toEqual({ skipped: false, scanned: 2, generated: 2 });
   });
 
   it('skips when another instance holds the lock', async () => {
-    const { processor, tx, locks, invoices, release } = createProcessor([
+    const { processor, tx, schedulerLocks, invoices } = createProcessor([
       { id: 'sub-1', tenantId: 'tenant-1' },
     ]);
-    locks.acquire.mockResolvedValueOnce({ ok: false, release });
+    schedulerLocks.runExclusive.mockResolvedValueOnce({
+      skipped: true,
+      scanned: 0,
+      generated: 0,
+    });
 
     await expect(processor.runInvoiceRun()).resolves.toEqual({
       skipped: true,

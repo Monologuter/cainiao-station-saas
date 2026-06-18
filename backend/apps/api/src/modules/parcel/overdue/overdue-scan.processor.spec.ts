@@ -1,5 +1,5 @@
 import { EventBus } from '../../../core/event-bus/event-bus';
-import { RedisLockService } from '../../../core/redis/redis-lock.service';
+import { ScheduledLockService } from '../../../core/scheduler-lock/scheduler-lock.service';
 import { ParcelService } from '../parcel.service';
 import { OverdueScanProcessor } from './overdue-scan.processor';
 
@@ -20,10 +20,9 @@ function createProcessor(parcels: any[]) {
   const prisma = {
     $transaction: jest.fn((fn: any) => fn(tx)),
   } as any;
-  const release = jest.fn();
-  const lock = {
-    acquire: jest.fn().mockResolvedValue({ ok: true, release }),
-  } as unknown as jest.Mocked<RedisLockService>;
+  const schedulerLocks = {
+    runExclusive: jest.fn((_name, _ttl, fn) => fn()),
+  } as unknown as jest.Mocked<ScheduledLockService>;
   const eventBus = {
     publish: jest.fn(),
   } as unknown as jest.Mocked<EventBus>;
@@ -32,12 +31,16 @@ function createProcessor(parcels: any[]) {
   } as unknown as jest.Mocked<ParcelService>;
 
   return {
-    processor: new OverdueScanProcessor(prisma, lock, eventBus, parcelService),
+    processor: new OverdueScanProcessor(
+      prisma,
+      schedulerLocks,
+      eventBus,
+      parcelService,
+    ),
     tx,
-    lock,
+    schedulerLocks,
     eventBus,
     parcelService,
-    release,
   };
 }
 
@@ -143,7 +146,7 @@ describe('OverdueScanProcessor', () => {
   });
 
   it('skips scanning when lock is not acquired', async () => {
-    const { processor, tx, lock, eventBus, parcelService, release } =
+    const { processor, tx, schedulerLocks, eventBus, parcelService } =
       createProcessor([
         {
           id: 'p1',
@@ -153,7 +156,13 @@ describe('OverdueScanProcessor', () => {
           lastOverdueLevel: 3,
         },
       ]);
-    lock.acquire.mockResolvedValueOnce({ ok: false, release });
+    schedulerLocks.runExclusive.mockResolvedValueOnce({
+      skipped: true,
+      scanned: 0,
+      upgraded: 0,
+      returned: 0,
+      levels: { 1: 0, 2: 0, 3: 0 },
+    });
 
     const result = await processor.runOverdueScan(NOW);
 
@@ -161,6 +170,5 @@ describe('OverdueScanProcessor', () => {
     expect(tx.parcel.findMany).not.toHaveBeenCalled();
     expect(eventBus.publish).not.toHaveBeenCalled();
     expect(parcelService.returnParcel).not.toHaveBeenCalled();
-    expect(release).not.toHaveBeenCalled();
   });
 });

@@ -1,5 +1,5 @@
 import { EventBus } from '../../../core/event-bus/event-bus';
-import { RedisLockService } from '../../../core/redis/redis-lock.service';
+import { ScheduledLockService } from '../../../core/scheduler-lock/scheduler-lock.service';
 import { ExpiryCheckProcessor } from './expiry-check.processor';
 
 function createProcessor() {
@@ -32,25 +32,31 @@ function createProcessor() {
     },
   };
   const prisma = { $transaction: jest.fn((fn: any) => fn(tx)) } as any;
-  const release = jest.fn();
-  const locks = {
-    acquire: jest.fn().mockResolvedValue({ ok: true, release }),
-  } as unknown as jest.Mocked<RedisLockService>;
+  const schedulerLocks = {
+    runExclusive: jest.fn((_name, _ttl, fn) => fn()),
+  } as unknown as jest.Mocked<ScheduledLockService>;
   const eventBus = { publish: jest.fn() } as unknown as jest.Mocked<EventBus>;
   return {
-    processor: new ExpiryCheckProcessor(prisma, locks, eventBus),
+    processor: new ExpiryCheckProcessor(prisma, schedulerLocks, eventBus),
     tx,
     eventBus,
+    schedulerLocks,
   };
 }
 
 describe('ExpiryCheckProcessor', () => {
   it('marks overdue invoices and suspends tenants after grace period', async () => {
     const now = new Date('2026-07-15T00:00:00.000Z');
-    const { processor, tx, eventBus } = createProcessor();
+    const { processor, tx, eventBus, schedulerLocks } = createProcessor();
 
     const result = await processor.runExpiryCheck(now);
 
+    expect(schedulerLocks.runExclusive).toHaveBeenCalledWith(
+      'billing.expiry-check',
+      600000,
+      expect.any(Function),
+      { skipped: true, overdue: 0, suspended: 0 },
+    );
     expect(tx.invoice.updateMany).toHaveBeenCalledWith({
       where: { id: 'inv-1', status: 'OPEN' },
       data: { status: 'OVERDUE' },

@@ -1,9 +1,9 @@
 import { Injectable } from '@nestjs/common';
 import { EventBus } from '../../../core/event-bus/event-bus';
 import { PrismaService } from '../../../core/prisma/prisma.service';
-import { RedisLockService } from '../../../core/redis/redis-lock.service';
+import { ScheduledLockService } from '../../../core/scheduler-lock/scheduler-lock.service';
 
-const EXPIRY_CHECK_LOCK_KEY = 'lock:billing-expiry-check';
+const EXPIRY_CHECK_JOB_NAME = 'billing.expiry-check';
 const EXPIRY_CHECK_LOCK_TTL_MS = 10 * 60 * 1000;
 const EXPIRY_CHECK_BATCH_SIZE = 500;
 const SUSPEND_GRACE_DAYS = 7;
@@ -18,105 +18,102 @@ export interface ExpiryCheckResult {
 export class ExpiryCheckProcessor {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly locks: RedisLockService,
+    private readonly schedulerLocks: ScheduledLockService,
     private readonly eventBus: EventBus,
   ) {}
 
   async runExpiryCheck(now = new Date()): Promise<ExpiryCheckResult> {
-    const lock = await this.locks.acquire(
-      EXPIRY_CHECK_LOCK_KEY,
+    return this.schedulerLocks.runExclusive(
+      EXPIRY_CHECK_JOB_NAME,
       EXPIRY_CHECK_LOCK_TTL_MS,
+      () => this.applyExpiryPolicy(now),
+      { skipped: true, overdue: 0, suspended: 0 },
     );
-    if (!lock.ok) {
-      return { skipped: true, overdue: 0, suspended: 0 };
-    }
+  }
 
+  private async applyExpiryPolicy(now: Date): Promise<ExpiryCheckResult> {
     const events: Array<ReturnType<typeof EventBus.createEvent>> = [];
-    try {
-      const result = await this.withBypass<ExpiryCheckResult>(async (tx) => {
-        const dueInvoices = await tx.invoice.findMany({
-          where: {
-            status: 'OPEN',
-            dueAt: { lt: now },
-            deletedAt: null,
-          },
-          select: { id: true, tenantId: true, subscriptionId: true },
-          orderBy: { dueAt: 'asc' },
-          take: EXPIRY_CHECK_BATCH_SIZE,
-        });
-
-        for (const invoice of dueInvoices) {
-          await tx.invoice.updateMany({
-            where: { id: invoice.id, status: 'OPEN' },
-            data: { status: 'OVERDUE' },
-          });
-          await tx.subscription.updateMany({
-            where: { id: invoice.subscriptionId, status: 'ACTIVE' },
-            data: { status: 'PAST_DUE' },
-          });
-        }
-
-        const suspendCutoff = this.addDays(now, -SUSPEND_GRACE_DAYS);
-        const overdueInvoices = await tx.invoice.findMany({
-          where: {
-            status: 'OVERDUE',
-            dueAt: { lt: suspendCutoff },
-            deletedAt: null,
-          },
-          select: {
-            id: true,
-            tenantId: true,
-            subscriptionId: true,
-            tenant: { select: { status: true } },
-          },
-          orderBy: { dueAt: 'asc' },
-          take: EXPIRY_CHECK_BATCH_SIZE,
-        });
-
-        let suspended = 0;
-        const suspendedTenants = new Set<string>();
-        for (const invoice of overdueInvoices) {
-          await tx.subscription.updateMany({
-            where: {
-              id: invoice.subscriptionId,
-              status: { in: ['ACTIVE', 'PAST_DUE'] },
-            },
-            data: { status: 'SUSPENDED' },
-          });
-          const tenantUpdate = await tx.tenant.updateMany({
-            where: { id: invoice.tenantId, status: 'ACTIVE' },
-            data: { status: 'SUSPENDED' },
-          });
-          if (
-            tenantUpdate.count === 1 &&
-            !suspendedTenants.has(invoice.tenantId)
-          ) {
-            suspendedTenants.add(invoice.tenantId);
-            suspended += 1;
-            events.push(
-              EventBus.createEvent('TenantStatusChanged', {
-                tenantId: invoice.tenantId,
-                status: 'SUSPENDED',
-                reason: 'OVERDUE',
-              }),
-            );
-          }
-        }
-
-        return {
-          skipped: false,
-          overdue: dueInvoices.length,
-          suspended,
-        };
+    const result = await this.withBypass<ExpiryCheckResult>(async (tx) => {
+      const dueInvoices = await tx.invoice.findMany({
+        where: {
+          status: 'OPEN',
+          dueAt: { lt: now },
+          deletedAt: null,
+        },
+        select: { id: true, tenantId: true, subscriptionId: true },
+        orderBy: { dueAt: 'asc' },
+        take: EXPIRY_CHECK_BATCH_SIZE,
       });
 
-      for (const event of events) {
-        await this.eventBus.publish(event);
+      for (const invoice of dueInvoices) {
+        await tx.invoice.updateMany({
+          where: { id: invoice.id, status: 'OPEN' },
+          data: { status: 'OVERDUE' },
+        });
+        await tx.subscription.updateMany({
+          where: { id: invoice.subscriptionId, status: 'ACTIVE' },
+          data: { status: 'PAST_DUE' },
+        });
       }
-      return result;
-    } finally {
-      await lock.release();
+
+      const suspendCutoff = this.addDays(now, -SUSPEND_GRACE_DAYS);
+      const overdueInvoices = await tx.invoice.findMany({
+        where: {
+          status: 'OVERDUE',
+          dueAt: { lt: suspendCutoff },
+          deletedAt: null,
+        },
+        select: {
+          id: true,
+          tenantId: true,
+          subscriptionId: true,
+          tenant: { select: { status: true } },
+        },
+        orderBy: { dueAt: 'asc' },
+        take: EXPIRY_CHECK_BATCH_SIZE,
+      });
+
+      let suspended = 0;
+      const suspendedTenants = new Set<string>();
+      for (const invoice of overdueInvoices) {
+        await tx.subscription.updateMany({
+          where: {
+            id: invoice.subscriptionId,
+            status: { in: ['ACTIVE', 'PAST_DUE'] },
+          },
+          data: { status: 'SUSPENDED' },
+        });
+        const tenantUpdate = await tx.tenant.updateMany({
+          where: { id: invoice.tenantId, status: 'ACTIVE' },
+          data: { status: 'SUSPENDED' },
+        });
+        if (
+          tenantUpdate.count === 1 &&
+          !suspendedTenants.has(invoice.tenantId)
+        ) {
+          suspendedTenants.add(invoice.tenantId);
+          suspended += 1;
+          events.push(
+            EventBus.createEvent('TenantStatusChanged', {
+              tenantId: invoice.tenantId,
+              status: 'SUSPENDED',
+              reason: 'OVERDUE',
+            }),
+          );
+        }
+      }
+
+      return {
+        skipped: false,
+        overdue: dueInvoices.length,
+        suspended,
+      };
+    });
+
+    for (const event of events) {
+      await this.eventBus.publish(event);
     }
+    return result;
   }
 
   async restoreTenantIfCleared(tenantId: string) {

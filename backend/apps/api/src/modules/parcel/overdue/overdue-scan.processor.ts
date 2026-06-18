@@ -1,12 +1,12 @@
 import { Injectable } from '@nestjs/common';
 import { EventBus } from '../../../core/event-bus/event-bus';
 import { PrismaService } from '../../../core/prisma/prisma.service';
-import { RedisLockService } from '../../../core/redis/redis-lock.service';
+import { ScheduledLockService } from '../../../core/scheduler-lock/scheduler-lock.service';
 import { TenantContext } from '../../../core/tenant-context/tenant-context';
 import { ParcelService } from '../parcel.service';
 import { classifyOverdue } from './overdue-policy';
 
-const OVERDUE_SCAN_LOCK_KEY = 'lock:overdue-scan';
+const OVERDUE_SCAN_JOB_NAME = 'parcel.overdue-scan';
 const OVERDUE_SCAN_LOCK_TTL_MS = 10 * 60 * 1000;
 const OVERDUE_SCAN_BATCH_SIZE = 1000;
 const SYSTEM_OPERATOR_ID = '00000000-0000-0000-0000-000000000000';
@@ -35,25 +35,18 @@ export interface OverdueScanResult {
 export class OverdueScanProcessor {
   constructor(
     private readonly prisma: PrismaService,
-    private readonly locks: RedisLockService,
+    private readonly schedulerLocks: ScheduledLockService,
     private readonly eventBus: EventBus,
     private readonly parcels: ParcelService,
   ) {}
 
   async runOverdueScan(now = new Date()): Promise<OverdueScanResult> {
-    const lock = await this.locks.acquire(
-      OVERDUE_SCAN_LOCK_KEY,
+    return this.schedulerLocks.runExclusive(
+      OVERDUE_SCAN_JOB_NAME,
       OVERDUE_SCAN_LOCK_TTL_MS,
+      () => this.scanStoredParcels(now),
+      this.emptyResult(true),
     );
-    if (!lock.ok) {
-      return this.emptyResult(true);
-    }
-
-    try {
-      return await this.scanStoredParcels(now);
-    } finally {
-      await lock.release();
-    }
   }
 
   private async scanStoredParcels(now: Date): Promise<OverdueScanResult> {

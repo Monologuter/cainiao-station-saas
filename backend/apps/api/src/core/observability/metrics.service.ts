@@ -9,6 +9,7 @@ export class MetricsService {
     MetricKey,
     { count: number; sum: number }
   >();
+  private readonly scheduledJobSkips = new Map<string, number>();
 
   recordHttpRequest(input: {
     method: string;
@@ -56,6 +57,21 @@ export class MetricsService {
       );
     }
 
+    lines.push(
+      '# HELP scheduled_job_skipped_total Total scheduled job executions skipped because another instance holds the lock.',
+      '# TYPE scheduled_job_skipped_total counter',
+    );
+    for (const [name, value] of this.scheduledJobSkips.entries()) {
+      lines.push(`scheduled_job_skipped_total{name="${name}"} ${value}`);
+    }
+
     return `${lines.join('\n')}\n`;
+  }
+
+  recordScheduledJobSkipped(name: string) {
+    this.scheduledJobSkips.set(
+      name,
+      (this.scheduledJobSkips.get(name) ?? 0) + 1,
+    );
   }
 }
