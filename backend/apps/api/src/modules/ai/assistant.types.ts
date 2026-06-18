@@ -2,6 +2,7 @@ export interface AssistantContext {
   tenantId: string;
   actorType: 'CONSUMER' | 'STAFF';
   consumerId?: string;
+  verifiedPhone?: string;
   staffUserId?: string;
   channel: 'USER_APP' | 'STATION_WEB';
   conversationId?: string;

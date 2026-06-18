@@ -58,6 +58,19 @@ interface ListOverdueInput {
   size?: string;
 }
 
+interface ListAssistantParcelsInput {
+  tenantId: string;
+  receiverPhone: string;
+  status?: string;
+  limit?: number;
+}
+
+interface AssistantOwnedParcelInput {
+  tenantId: string;
+  parcelId: string;
+  receiverPhone: string;
+}
+
 @Injectable()
 export class ParcelService {
   constructor(
@@ -379,6 +392,79 @@ export class ParcelService {
         size,
       };
     });
+  }
+
+  async listForAssistantTool(input: ListAssistantParcelsInput) {
+    const ctx = TenantContext.get();
+    if (!ctx?.tenantId) {
+      return TenantContext.run(
+        {
+          userId: 'assistant-tool',
+          tenantId: input.tenantId,
+          roles: [],
+          isPlatform: false,
+        },
+        () => this.listForAssistantTool(input),
+      );
+    }
+    if (ctx.tenantId !== input.tenantId) {
+      throw new BizError(ApiCode.FORBIDDEN, '租户上下文不匹配');
+    }
+
+    const take = Math.min(Math.max(input.limit ?? 10, 1), 20);
+    const where: Record<string, unknown> = {
+      tenantId: input.tenantId,
+      receiverPhone: input.receiverPhone,
+      deletedAt: null,
+    };
+    if (input.status && input.status !== 'ALL') {
+      where.status = this.parseStatus(input.status);
+    }
+
+    return this.tenantPrisma.withTenant((tx) =>
+      tx.parcel.findMany({
+        where,
+        include: {
+          station: true,
+          slot: true,
+        },
+        orderBy: { createdAt: 'desc' },
+        take,
+      }),
+    );
+  }
+
+  async getAssistantOwnedParcel(input: AssistantOwnedParcelInput) {
+    const ctx = TenantContext.get();
+    if (!ctx?.tenantId) {
+      return TenantContext.run(
+        {
+          userId: 'assistant-tool',
+          tenantId: input.tenantId,
+          roles: [],
+          isPlatform: false,
+        },
+        () => this.getAssistantOwnedParcel(input),
+      );
+    }
+    if (ctx.tenantId !== input.tenantId) {
+      throw new BizError(ApiCode.FORBIDDEN, '租户上下文不匹配');
+    }
+
+    return this.tenantPrisma.withTenant((tx) =>
+      tx.parcel.findFirst({
+        where: {
+          id: input.parcelId,
+          tenantId: input.tenantId,
+          receiverPhone: input.receiverPhone,
+          deletedAt: null,
+        },
+        include: {
+          station: true,
+          slot: true,
+        },
+      }),
+    );
   }
 
   async detail(id: string) {
