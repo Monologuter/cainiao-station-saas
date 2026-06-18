@@ -281,6 +281,14 @@ enum ConfigValueType {
   JSON
 }
 
+enum OcrRecognitionStatus {
+  RECOGNIZED
+  LOW_CONFIDENCE
+  FAILED
+  CONFIRMED
+  FALLBACK_MANUAL
+}
+
 model Consumer {
   id        String   @id @default(uuid()) @db.Uuid
   phone     String   @unique @db.VarChar(20)
@@ -791,25 +799,27 @@ model Tenant {
   usageDedups          UsageDedup[]
   invoices             Invoice[]
   auditLogs            AuditLog[]
+  ocrRecognitions      OcrRecognition[]
 }
 
 model Station {
-  id            String            @id @default(uuid()) @db.Uuid
-  tenantId      String            @map("tenant_id") @db.Uuid
-  name          String
-  code          String
-  createdAt     DateTime          @default(now())
-  tenant        Tenant            @relation(fields: [tenantId], references: [id])
-  shelves       Shelf[]
-  slots         Slot[]
-  parcels       Parcel[]
-  shipOrders    ShipOrder[]
-  exceptions    ExceptionTicket[]
-  reviews       Review[]
-  complaints    Complaint[]
-  metrics       MetricDaily[]
-  reportJobs    ReportJob[]
-  subscriptions Subscription[]
+  id              String            @id @default(uuid()) @db.Uuid
+  tenantId        String            @map("tenant_id") @db.Uuid
+  name            String
+  code            String
+  createdAt       DateTime          @default(now())
+  tenant          Tenant            @relation(fields: [tenantId], references: [id])
+  shelves         Shelf[]
+  slots           Slot[]
+  parcels         Parcel[]
+  shipOrders      ShipOrder[]
+  exceptions      ExceptionTicket[]
+  reviews         Review[]
+  complaints      Complaint[]
+  metrics         MetricDaily[]
+  reportJobs      ReportJob[]
+  subscriptions   Subscription[]
+  ocrRecognitions OcrRecognition[]
 
   @@index([tenantId])
 }
@@ -887,11 +897,40 @@ model Parcel {
   events            ParcelEvent[]
   notifications     Notification[]
   exceptionTickets  ExceptionTicket[]
+  ocrRecognitions   OcrRecognition[]
 
   @@index([tenantId, stationId, status])
   @@index([tenantId, receiverPhone])
   @@index([tenantId, stationId, receiverPhoneTail, status])
   @@map("parcels")
+}
+
+model OcrRecognition {
+  id          String               @id @default(uuid()) @db.Uuid
+  tenantId    String               @map("tenant_id") @db.Uuid
+  stationId   String               @map("station_id") @db.Uuid
+  fileId      String               @map("file_id") @db.Uuid
+  provider    String               @db.VarChar(40)
+  waybillNo   String?              @map("waybill_no") @db.VarChar(64)
+  phoneTail   String?              @map("phone_tail") @db.VarChar(4)
+  courierCode String?              @map("courier_code") @db.VarChar(16)
+  confidence  Json
+  status      OcrRecognitionStatus
+  parcelId    String?              @map("parcel_id") @db.Uuid
+  latencyMs   Int?                 @map("latency_ms")
+  errorCode   String?              @map("error_code") @db.VarChar(60)
+  createdAt   DateTime             @default(now()) @map("created_at")
+  updatedAt   DateTime             @updatedAt @map("updated_at")
+  deletedAt   DateTime?            @map("deleted_at")
+  createdBy   String?              @map("created_by") @db.Uuid
+  tenant      Tenant               @relation(fields: [tenantId], references: [id])
+  station     Station              @relation(fields: [stationId], references: [id])
+  parcel      Parcel?              @relation(fields: [parcelId], references: [id])
+
+  @@index([tenantId, createdAt])
+  @@index([tenantId, stationId, status])
+  @@index([tenantId, waybillNo])
+  @@map("ocr_recognitions")
 }
 
 model ExceptionTicket {
