@@ -2,10 +2,11 @@ from __future__ import annotations
 
 import os
 import time
-from typing import Callable, Optional
+from typing import Any, Callable, Optional
 
-from fastapi import Depends, FastAPI, File, Header, HTTPException, UploadFile
+from fastapi import FastAPI, File, Header, HTTPException, UploadFile
 
+from .kb.keyword import KbEntry, KeywordKnowledgeBase
 from .providers.mock_ocr import MockOcrProvider
 from .providers.ocr_provider import OcrProvider, WaybillResult
 from .providers.real_ocr import RealOcrProvider
@@ -15,6 +16,7 @@ def create_app(
     service_token: Optional[str] = None,
     ocr_provider: Optional[str] = None,
     provider_factory: Optional[Callable[[], OcrProvider]] = None,
+    kb_entries: Optional[list[KbEntry]] = None,
 ) -> FastAPI:
     token = service_token or os.getenv("SERVICE_TOKEN", "dev-service-token")
     provider_name = ocr_provider or os.getenv("OCR_PROVIDER", "mock")
@@ -22,6 +24,7 @@ def create_app(
 
     app = FastAPI(title="Cainiao Station AI Service")
     app.state.ocr_provider = provider
+    app.state.knowledge_base = KeywordKnowledgeBase(kb_entries)
     app.state.service_token = token
 
     @app.get("/healthz")
@@ -31,6 +34,31 @@ def create_app(
     @app.get("/readyz")
     async def readyz():
         return {"status": "ready", "provider": provider.code}
+
+    @app.get("/assistant/healthz")
+    async def assistant_healthz():
+        kb = app.state.knowledge_base
+        return {
+            "status": "ok",
+            "mode": "mock",
+            "kbReady": True,
+            "entries": kb.count,
+        }
+
+    @app.post("/assistant/kb/reindex")
+    async def reindex_assistant_kb(
+        entries: list[dict[str, Any]],
+        x_service_token: Optional[str] = Header(
+            default=None,
+            alias="X-Service-Token",
+        ),
+    ):
+        if x_service_token != token:
+            raise HTTPException(status_code=401, detail="Unauthorized")
+
+        kb_entries = [to_kb_entry(entry) for entry in entries]
+        app.state.knowledge_base.reindex(kb_entries)
+        return {"indexed": len(kb_entries)}
 
     @app.post("/ocr/waybill")
     async def recognize_waybill(
@@ -53,6 +81,20 @@ def create_app(
         return to_response(result, x_request_id, latency_ms)
 
     return app
+
+
+def to_kb_entry(payload: dict[str, Any]) -> KbEntry:
+    return KbEntry(
+        id=str(payload["id"]),
+        tenant_id=payload.get("tenantId") or payload.get("tenant_id"),
+        category=str(payload["category"]),
+        question=str(payload["question"]),
+        answer=str(payload["answer"]),
+        keywords=list(payload.get("keywords") or []),
+        priority=int(payload.get("priority") or 0),
+        enabled=bool(payload.get("enabled", True)),
+        source=str(payload.get("source") or "reindex"),
+    )
 
 
 def create_provider(name: str) -> OcrProvider:
