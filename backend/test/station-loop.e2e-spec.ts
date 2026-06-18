@@ -149,6 +149,83 @@ describe('Station core loop e2e', () => {
     expect(duplicate.body.code).toBe(2005);
   });
 
+  it('并发扫描同一运单只创建一个活跃包裹并返回幂等结果', async () => {
+    const adminLogin = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ username: 'admin', password: 'admin123456' })
+      .expect(201);
+    const phone = `135${Date.now().toString().slice(-8)}`;
+    const open = await request(app.getHttpServer())
+      .post('/api/platform/tenants')
+      .set('Authorization', `Bearer ${adminLogin.body.data.accessToken}`)
+      .send({
+        name: '并发运单驿站',
+        ownerName: '并发店长',
+        ownerPhone: phone,
+        ownerPassword: 'pw123456',
+      })
+      .expect(201);
+    const bossLogin = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ username: phone, password: 'pw123456' })
+      .expect(201);
+
+    const stationId = open.body.data.stationId;
+    const tenantId = open.body.data.tenantId;
+    const bossToken = bossLogin.body.data.accessToken;
+    const shelf = await request(app.getHttpServer())
+      .post(`/api/stations/${stationId}/shelves`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ code: `C${Date.now()}`, name: '并发货架', zone: 'C' })
+      .expect(201);
+    await request(app.getHttpServer())
+      .post(`/api/shelves/${shelf.body.data.id}/slots/batch`)
+      .set('Authorization', `Bearer ${bossToken}`)
+      .send({ rows: 1, levels: 1, cols: 2 })
+      .expect(201);
+
+    const waybillNo = `CON${Date.now()}`;
+    const [first, second] = await Promise.all([
+      request(app.getHttpServer())
+        .post('/api/inbound')
+        .set('Authorization', `Bearer ${bossToken}`)
+        .send({
+          stationId,
+          waybillNo,
+          carrier: 'YTO',
+          receiverPhone: '13800000000',
+        })
+        .expect(201),
+      request(app.getHttpServer())
+        .post('/api/inbound')
+        .set('Authorization', `Bearer ${bossToken}`)
+        .send({
+          stationId,
+          waybillNo,
+          carrier: 'YTO',
+          receiverPhone: '13800000000',
+        })
+        .expect(201),
+    ]);
+
+    expect(second.body.data.parcelId).toBe(first.body.data.parcelId);
+    const count = await prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.parcel.count({
+        where: {
+          tenantId,
+          stationId,
+          waybillNo,
+          deletedAt: null,
+          status: { in: ['PENDING', 'STORED', 'EXCEPTION'] },
+        },
+      });
+    });
+    expect(count).toBe(1);
+  });
+
   async function waitFor<T>(
     probe: () => Promise<T | null>,
     timeoutMs = 5000,

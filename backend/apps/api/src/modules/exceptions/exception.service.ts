@@ -4,6 +4,7 @@ import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { resolveStationFilter } from '../../core/tenant-context/station-scope';
 import { ParcelService } from '../parcel/parcel.service';
+import { ParcelAggregate, ParcelStatus } from '../parcel/parcel.aggregate';
 import { ExceptionAggregate, ExceptionStatus } from './exception.aggregate';
 
 type ExceptionType =
@@ -156,44 +157,145 @@ export class ExceptionService {
   }
 
   async resolve(id: string, input: ResolveExceptionInput) {
-    const before = await this.tenantPrisma.withTenant(async (tx) =>
-      tx.exceptionTicket.findUniqueOrThrow({ where: { id } }),
-    );
-    ExceptionAggregate.assertTransit(
-      before.status as ExceptionStatus,
-      'RESOLVED',
-    );
+    const ctx = this.requireContext();
+    return this.tenantPrisma.withTenant(async (tx) => {
+      const before = await tx.exceptionTicket.findUniqueOrThrow({
+        where: { id },
+      });
+      ExceptionAggregate.assertTransit(
+        before.status as ExceptionStatus,
+        'RESOLVED',
+      );
 
-    if (before.parcelId) {
-      await this.applyParcelResolution(before.parcelId, input);
-    }
+      const resolvedAt = new Date();
+      const claimed = await tx.exceptionTicket.updateMany({
+        where: { id, status: before.status },
+        data: {
+          status: 'RESOLVED',
+          resolution: input.resolution,
+          resolutionNote: input.note,
+          resolvedAt,
+        },
+      });
+      if (claimed.count !== 1) {
+        throw new BizError(ApiCode.ILLEGAL_TRANSITION, '异常工单已被处理');
+      }
 
-    return this.tenantPrisma.withTenant((tx) =>
-      tx.exceptionTicket.update({
+      if (before.parcelId) {
+        await this.applyParcelResolution(tx, before.parcelId, input, ctx.userId);
+      }
+
+      return tx.exceptionTicket.update({
         where: { id },
         data: {
           status: 'RESOLVED',
           resolution: input.resolution,
           resolutionNote: input.note,
-          resolvedAt: new Date(),
+          resolvedAt,
         },
-      }),
-    );
+      });
+    });
   }
 
   private async applyParcelResolution(
+    tx: any,
     parcelId: string,
     input: ResolveExceptionInput,
+    operatorId?: string,
   ) {
+    const before = await tx.parcel.findUniqueOrThrow({ where: { id: parcelId } });
+
     if (input.resolution === 'RESTOCK') {
-      await this.parcels.restock(parcelId, { reason: input.note });
+      ParcelAggregate.assertTransit(before.status as ParcelStatus, 'STORED');
+      await this.optimisticParcelUpdate(tx, {
+        parcelId,
+        status: before.status as ParcelStatus,
+        version: before.version,
+        data: {
+          status: 'STORED',
+          lastOverdueLevel: 0,
+          version: { increment: 1 },
+        },
+      });
+      await tx.parcelEvent.create({
+        data: {
+          tenantId: before.tenantId,
+          parcelId,
+          fromStatus: before.status,
+          toStatus: 'STORED',
+          eventType: 'STORED',
+          operatorId,
+          payload: {
+            reason: input.note,
+            slotId: before.slotId,
+            resetOverdueLevel: true,
+          },
+        },
+      });
       return;
     }
+
     if (input.resolution === 'RETURN' || input.resolution === 'VOID') {
-      await this.parcels.returnParcel(parcelId, {
-        cause: 'EXCEPTION_RETURN',
-        reason: input.note,
+      ParcelAggregate.assertTransit(before.status as ParcelStatus, 'RETURNED');
+      const returnedAt = new Date();
+      await this.optimisticParcelUpdate(tx, {
+        parcelId,
+        status: before.status as ParcelStatus,
+        version: before.version,
+        data: {
+          status: 'RETURNED',
+          overdueReturnedAt: returnedAt,
+          version: { increment: 1 },
+        },
       });
+      if (before.slotId) {
+        await tx.slot.updateMany({
+          where: { id: before.slotId, currentParcelId: parcelId },
+          data: {
+            status: 'FREE',
+            currentParcelId: null,
+            version: { increment: 1 },
+          },
+        });
+      }
+      await tx.parcelEvent.create({
+        data: {
+          tenantId: before.tenantId,
+          parcelId,
+          fromStatus: before.status,
+          toStatus: 'RETURNED',
+          eventType: 'RETURNED',
+          operatorId,
+          payload: {
+            cause: 'EXCEPTION_RETURN',
+            reason: input.note,
+            slotId: before.slotId,
+            returnedAt,
+          },
+        },
+      });
+    }
+  }
+
+  private async optimisticParcelUpdate(
+    tx: any,
+    input: {
+      parcelId: string;
+      status: ParcelStatus;
+      version: number;
+      data: Record<string, unknown>;
+    },
+  ) {
+    const result = await tx.parcel.updateMany({
+      where: {
+        id: input.parcelId,
+        status: input.status,
+        version: input.version,
+      },
+      data: input.data,
+    });
+    if (result.count !== 1) {
+      throw new BizError(ApiCode.ILLEGAL_TRANSITION, '包裹状态已变化');
     }
   }
 

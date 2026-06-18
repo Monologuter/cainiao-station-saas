@@ -12,6 +12,21 @@ describe('RuntimeConfigService', () => {
     }
   });
 
+  function inMemoryCache() {
+    const store = new Map<string, unknown>();
+    return {
+      getOrLoad: jest.fn(async (key: string, _ttl: number, loader: any) => {
+        if (store.has(key)) return store.get(key);
+        const value = await loader();
+        store.set(key, value);
+        return value;
+      }),
+      invalidate: jest.fn(async (key: string) => {
+        store.delete(key);
+      }),
+    };
+  }
+
   it('resolves values by env over db over default and caches reads', async () => {
     const tx = {
       $executeRawUnsafe: jest.fn(),
@@ -25,7 +40,7 @@ describe('RuntimeConfigService', () => {
       },
     };
     const prisma = { $transaction: jest.fn(async (fn: any) => fn(tx)) };
-    const runtime = new RuntimeConfigService(prisma as any);
+    const runtime = new RuntimeConfigService(prisma as any, inMemoryCache() as any);
 
     process.env.CAINIAO_CONFIG_NOTIFY_SMS_DAILY_LIMIT = '7000';
 
@@ -36,6 +51,46 @@ describe('RuntimeConfigService', () => {
     delete process.env.CAINIAO_CONFIG_NOTIFY_SMS_DAILY_LIMIT;
     runtime.invalidate('notify.sms.daily_limit');
     await expect(runtime.get('notify.sms.daily_limit')).resolves.toBe(5000);
+  });
+
+  it('uses shared cache with TTL so another instance observes invalidation', async () => {
+    const tx = {
+      $executeRawUnsafe: jest.fn(),
+      systemConfig: {
+        findUnique: jest
+          .fn()
+          .mockResolvedValueOnce({
+            configKey: 'notify.sms.daily_limit',
+            value: 5000,
+            defaultValue: 1000,
+            valueType: 'NUMBER',
+          })
+          .mockResolvedValueOnce({
+            configKey: 'notify.sms.daily_limit',
+            value: 6000,
+            defaultValue: 1000,
+            valueType: 'NUMBER',
+          }),
+      },
+    };
+    const prisma = { $transaction: jest.fn(async (fn: any) => fn(tx)) };
+    const cache = inMemoryCache();
+    const first = new RuntimeConfigService(prisma as any, cache as any);
+    const second = new RuntimeConfigService(prisma as any, cache as any);
+
+    await expect(first.get('notify.sms.daily_limit')).resolves.toBe(5000);
+    await expect(second.get('notify.sms.daily_limit')).resolves.toBe(5000);
+    await first.invalidate('notify.sms.daily_limit');
+    await expect(second.get('notify.sms.daily_limit')).resolves.toBe(6000);
+
+    expect(cache.getOrLoad).toHaveBeenCalledWith(
+      'runtime-config:notify.sms.daily_limit',
+      expect.any(Number),
+      expect.any(Function),
+    );
+    expect(cache.invalidate).toHaveBeenCalledWith(
+      'runtime-config:notify.sms.daily_limit',
+    );
   });
 });
 

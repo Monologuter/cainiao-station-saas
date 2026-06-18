@@ -13,6 +13,12 @@ export interface InvoiceRunResult {
   skipped: boolean;
   scanned: number;
   generated: number;
+  failed: number;
+  failures: Array<{
+    tenantId: string;
+    subscriptionId: string;
+    message: string;
+  }>;
 }
 
 @Injectable()
@@ -28,7 +34,7 @@ export class InvoiceRunProcessor {
       INVOICE_RUN_JOB_NAME,
       INVOICE_RUN_LOCK_TTL_MS,
       () => this.generateDueInvoices(now),
-      { skipped: true, scanned: 0, generated: 0 },
+      { skipped: true, scanned: 0, generated: 0, failed: 0, failures: [] },
     );
   }
 
@@ -47,25 +53,40 @@ export class InvoiceRunProcessor {
     );
 
     let generated = 0;
+    const failures: InvoiceRunResult['failures'] = [];
     for (const subscription of subscriptions) {
-      await TenantContext.run(
-        {
-          userId: SYSTEM_OPERATOR_ID,
-          tenantId: subscription.tenantId,
-          roles: ['system'],
-          isPlatform: false,
-        },
-        () =>
-          this.invoices.generateInvoice({
+      try {
+        await TenantContext.run(
+          {
+            userId: SYSTEM_OPERATOR_ID,
             tenantId: subscription.tenantId,
-            subscriptionId: subscription.id,
-            now,
-          }),
-      );
-      generated += 1;
+            roles: ['system'],
+            isPlatform: false,
+          },
+          () =>
+            this.invoices.generateInvoice({
+              tenantId: subscription.tenantId,
+              subscriptionId: subscription.id,
+              now,
+            }),
+        );
+        generated += 1;
+      } catch (error) {
+        failures.push({
+          tenantId: subscription.tenantId,
+          subscriptionId: subscription.id,
+          message: error instanceof Error ? error.message : String(error),
+        });
+      }
     }
 
-    return { skipped: false, scanned: subscriptions.length, generated };
+    return {
+      skipped: false,
+      scanned: subscriptions.length,
+      generated,
+      failed: failures.length,
+      failures,
+    };
   }
 
   private async withBypass<T>(fn: (tx: any) => Promise<T>) {

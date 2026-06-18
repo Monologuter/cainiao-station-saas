@@ -27,6 +27,7 @@ describe('AuthService.validate', () => {
           roles: [{ role: { code: '店长' } }],
         }),
       },
+      staffStation: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const prisma = { $transaction: async (fn: any) => fn(tx) } as any;
     const jwt = { signAsync: async () => 'tok' } as any;
@@ -54,7 +55,7 @@ describe('AuthService.validate', () => {
     );
   });
 
-  it('店员登录返回受限门店作用域（allStations=false）', async () => {
+  it('店员登录返回分配表中的受限门店作用域（allStations=false）', async () => {
     const hash = await argon2.hash('pw123456');
     const tx = {
       $executeRawUnsafe: jest.fn(),
@@ -70,6 +71,11 @@ describe('AuthService.validate', () => {
           roles: [{ role: { code: '店员' } }],
         }),
       },
+      staffStation: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ stationId: 's1' }, { stationId: 's2' }]),
+      },
     };
     const prisma = { $transaction: async (fn: any) => fn(tx) } as any;
     const jwt = { signAsync: async () => 'tok' } as any;
@@ -80,7 +86,11 @@ describe('AuthService.validate', () => {
 
     expect(out.user).toMatchObject({ id: 'u2', username: 'clerk' });
     expect(out.user.allStations).toBe(false);
-    expect(out.user.stations).toEqual([]);
+    expect(out.user.stations).toEqual(['s1', 's2']);
+    expect(tx.staffStation.findMany).toHaveBeenCalledWith({
+      where: { userId: 'u2' },
+      select: { stationId: true },
+    });
   });
 
   it('wrong password throws', async () => {
@@ -99,6 +109,7 @@ describe('AuthService.validate', () => {
           roles: [],
         }),
       },
+      staffStation: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const prisma = { $transaction: async (fn: any) => fn(tx) } as any;
     const jwt = { signAsync: async () => 'tok' } as any;

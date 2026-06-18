@@ -22,9 +22,13 @@ export class InboundService {
 
   async inbound(input: InboundInput) {
     const existing = await this.findExisting(input.stationId, input.waybillNo);
-    if (existing) return this.toResult(existing);
+    if (existing) return this.toResult(await this.waitIfPending(input, existing));
 
-    const parcel = await this.parcels.create(input);
+    const parcelResult = await this.createParcelOrReturnExisting(input);
+    if (!parcelResult.created) {
+      return this.toResult(parcelResult.parcel);
+    }
+    const parcel = parcelResult.parcel;
 
     let slot: Awaited<ReturnType<SlotAllocatorService['allocate']>> | null =
       null;
@@ -77,6 +81,46 @@ export class InboundService {
       await this.safeRelease(() => this.abandonPendingParcel(parcel.id));
       throw error;
     }
+  }
+
+  private async createParcelOrReturnExisting(input: InboundInput) {
+    try {
+      return { created: true, parcel: await this.parcels.create(input) };
+    } catch (error) {
+      if (!this.isActiveWaybillConflict(error)) {
+        throw error;
+      }
+      const existing = await this.waitForExisting(input);
+      if (existing) {
+        return { created: false, parcel: existing };
+      }
+      throw error;
+    }
+  }
+
+  private async waitIfPending(input: InboundInput, existing: any) {
+    if (existing.status !== 'PENDING') {
+      return existing;
+    }
+    return (await this.waitForExisting(input)) ?? existing;
+  }
+
+  private async waitForExisting(input: InboundInput) {
+    for (let attempt = 0; attempt < 20; attempt += 1) {
+      const existing: any = await this.findExisting(
+        input.stationId,
+        input.waybillNo,
+      );
+      if (existing && existing.status !== 'PENDING') {
+        return existing;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    }
+    return this.findExisting(input.stationId, input.waybillNo);
+  }
+
+  private isActiveWaybillConflict(error: unknown) {
+    return (error as { code?: string } | null)?.code === 'P2002';
   }
 
   private async abandonPendingParcel(parcelId: string) {

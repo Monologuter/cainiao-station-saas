@@ -128,12 +128,26 @@ describe('ExceptionService', () => {
           status: 'IN_PROGRESS',
           parcelId: 'p1',
         }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn(async ({ data }: any) => ({
           id: 'ex1',
           status: 'RESOLVED',
           ...data,
         })),
       },
+      parcel: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'EXCEPTION',
+          version: 3,
+          slotId: 'slot1',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'p1', status: 'STORED' }),
+      },
+      parcelEvent: { create: jest.fn() },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
     const parcels = { restock: jest.fn(), returnParcel: jest.fn() } as any;
@@ -143,10 +157,23 @@ describe('ExceptionService', () => {
       service.resolve('ex1', { resolution: 'RESTOCK', note: '可重新入库' }),
     );
 
-    expect(parcels.restock).toHaveBeenCalledWith('p1', {
-      reason: '可重新入库',
-    });
+    expect(parcels.restock).not.toHaveBeenCalled();
     expect(parcels.returnParcel).not.toHaveBeenCalled();
+    expect(tx.exceptionTicket.updateMany).toHaveBeenCalledWith({
+      where: { id: 'ex1', status: 'IN_PROGRESS' },
+      data: expect.objectContaining({
+        status: 'RESOLVED',
+        resolution: 'RESTOCK',
+      }),
+    });
+    expect(tx.parcel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'EXCEPTION', version: 3 },
+      data: expect.objectContaining({
+        status: 'STORED',
+        lastOverdueLevel: 0,
+        version: { increment: 1 },
+      }),
+    });
     expect(tx.exceptionTicket.update).toHaveBeenCalledWith({
       where: { id: 'ex1' },
       data: expect.objectContaining({
@@ -166,12 +193,27 @@ describe('ExceptionService', () => {
           status: 'IN_PROGRESS',
           parcelId: 'p1',
         }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn(async ({ data }: any) => ({
           id: 'ex1',
           status: 'RESOLVED',
           ...data,
         })),
       },
+      parcel: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'p1',
+          tenantId: 't1',
+          stationId: 's1',
+          status: 'EXCEPTION',
+          version: 3,
+          slotId: 'slot1',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUnique: jest.fn().mockResolvedValue({ id: 'p1', status: 'RETURNED' }),
+      },
+      slot: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
+      parcelEvent: { create: jest.fn() },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
     const parcels = { restock: jest.fn(), returnParcel: jest.fn() } as any;
@@ -181,10 +223,42 @@ describe('ExceptionService', () => {
       service.resolve('ex1', { resolution: 'RETURN', note: '退回快递员' }),
     );
 
-    expect(parcels.returnParcel).toHaveBeenCalledWith('p1', {
-      cause: 'EXCEPTION_RETURN',
-      reason: '退回快递员',
+    expect(parcels.returnParcel).not.toHaveBeenCalled();
+    expect(tx.parcel.updateMany).toHaveBeenCalledWith({
+      where: { id: 'p1', status: 'EXCEPTION', version: 3 },
+      data: expect.objectContaining({
+        status: 'RETURNED',
+        overdueReturnedAt: expect.any(Date),
+        version: { increment: 1 },
+      }),
     });
+  });
+
+  it('does not compensate twice when concurrent resolve already won', async () => {
+    const tx = {
+      exceptionTicket: {
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          id: 'ex1',
+          status: 'IN_PROGRESS',
+          parcelId: 'p1',
+        }),
+        updateMany: jest.fn().mockResolvedValue({ count: 0 }),
+        update: jest.fn(),
+      },
+      parcel: { updateMany: jest.fn() },
+      parcelEvent: { create: jest.fn() },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const service = new ExceptionService(tenantPrisma, {} as any);
+
+    await expect(
+      runAsTenant(() =>
+        service.resolve('ex1', { resolution: 'RETURN', note: '退回快递员' }),
+      ),
+    ).rejects.toThrow('异常工单已被处理');
+
+    expect(tx.parcel.updateMany).not.toHaveBeenCalled();
+    expect(tx.exceptionTicket.update).not.toHaveBeenCalled();
   });
 
   it('resolves ownerless VOID ticket without touching parcel service', async () => {
@@ -195,6 +269,7 @@ describe('ExceptionService', () => {
           status: 'IN_PROGRESS',
           parcelId: null,
         }),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
         update: jest.fn(async ({ data }: any) => ({
           id: 'ex1',
           status: 'RESOLVED',

@@ -118,6 +118,48 @@ describe('InboundService', () => {
     expect(parcelService.create).not.toHaveBeenCalled();
   });
 
+  it('returns existing active parcel when concurrent create hits waybill unique conflict', async () => {
+    const conflict: any = new Error('Unique constraint failed');
+    conflict.code = 'P2002';
+    const findFirst = jest
+      .fn()
+      .mockResolvedValueOnce(null)
+      .mockResolvedValueOnce({
+        id: 'p1',
+        pickupCode: '1234',
+        status: 'STORED',
+        slot: { code: 'A-01' },
+      });
+    const prisma = makeTenantPrisma(findFirst);
+    const parcelService = {
+      create: jest.fn().mockRejectedValue(conflict),
+      markStored: jest.fn(),
+    };
+    const allocator = { allocate: jest.fn(), release: jest.fn() };
+    const service = new InboundService(
+      prisma as any,
+      parcelService as any,
+      allocator as any,
+      {} as any,
+    );
+
+    await expect(
+      service.inbound({
+        stationId: 's1',
+        waybillNo: 'YT001',
+        receiverPhone: '13800000000',
+      }),
+    ).resolves.toEqual({
+      parcelId: 'p1',
+      pickupCode: '1234',
+      slotCode: 'A-01',
+      slotSource: 'RULE_FALLBACK',
+      slotReasons: [],
+      status: 'STORED',
+    });
+    expect(allocator.allocate).not.toHaveBeenCalled();
+  });
+
   it('compensates by releasing slot and pickup code when markStored fails', async () => {
     const parcelService = {
       create: jest.fn().mockResolvedValue({ id: 'p1' }),

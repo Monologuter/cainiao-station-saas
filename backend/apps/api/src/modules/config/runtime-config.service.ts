@@ -1,18 +1,37 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
+import { MultiLevelCacheService } from '../../core/cache/multi-level-cache.service';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
+const RUNTIME_CONFIG_CACHE_TTL_MS = 30_000;
+
 @Injectable()
 export class RuntimeConfigService {
-  private readonly cache = new Map<string, unknown>();
-
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly cache?: MultiLevelCacheService,
+  ) {}
 
   async get(key: string): Promise<unknown> {
-    if (this.cache.has(key)) {
-      return this.cache.get(key);
+    if (this.cache) {
+      return this.cache.getOrLoad(
+        this.cacheKey(key),
+        RUNTIME_CONFIG_CACHE_TTL_MS,
+        () => this.load(key),
+      );
     }
+    return this.load(key);
+  }
 
+  async invalidate(key: string) {
+    await this.cache?.invalidate(this.cacheKey(key));
+  }
+
+  envKeyFor(key: string) {
+    return `CAINIAO_CONFIG_${key.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+  }
+
+  private async load(key: string) {
     const record = (await this.withBypass((tx) =>
       tx.systemConfig.findUnique({ where: { configKey: key } }),
     )) as any;
@@ -25,16 +44,11 @@ export class RuntimeConfigService {
       envValue !== undefined
         ? parseValue(envValue, record.valueType)
         : (record.value ?? record.defaultValue);
-    this.cache.set(key, value);
     return value;
   }
 
-  invalidate(key: string) {
-    this.cache.delete(key);
-  }
-
-  envKeyFor(key: string) {
-    return `CAINIAO_CONFIG_${key.toUpperCase().replace(/[^A-Z0-9]/g, '_')}`;
+  private cacheKey(key: string) {
+    return `runtime-config:${key}`;
   }
 
   private async withBypass<T>(fn: (tx: any) => Promise<T>): Promise<T> {

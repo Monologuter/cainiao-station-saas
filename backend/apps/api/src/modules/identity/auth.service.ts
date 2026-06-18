@@ -285,15 +285,17 @@ export class AuthService {
     return user;
   }
 
-  /**
-   * 读取店员被分配的可见门店 id 列表。
-   *
-   * 当前数据模型尚无 user↔station 分配表，店员默认无分配门店（返回空数组），
-   * 由门店作用域强制收敛逻辑兜底（无分配门店即不可越权列其它门店数据）。
-   * 后续接入分配表后只需在此返回真实门店 id。
-   */
-  private async assignedStationIds(_userId: string): Promise<string[]> {
-    return [];
+  private async assignedStationIds(userId: string): Promise<string[]> {
+    const rows = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.staffStation.findMany({
+        where: { userId },
+        select: { stationId: true },
+      });
+    });
+    return rows.map((row) => row.stationId);
   }
 
   private signAccessToken(input: {

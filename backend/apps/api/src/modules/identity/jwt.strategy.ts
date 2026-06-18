@@ -16,7 +16,8 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    const { perms, user } = await this.prisma.$transaction(async (tx) => {
+    const { perms, user, assignedStationIds } = await this.prisma.$transaction(
+      async (tx) => {
       await tx.$executeRawUnsafe(
         `SELECT set_config('app.bypass_rls', 'on', true)`,
       );
@@ -33,11 +34,17 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
         where: { id: payload.sub },
         select: { username: true, status: true, tokenVersion: true },
       });
+      const assignments = await tx.staffStation.findMany({
+        where: { userId: payload.sub },
+        select: { stationId: true },
+      });
       return {
         perms: [...new Set(rows.map((item) => item.permission.code))],
         user: found,
+        assignedStationIds: assignments.map((item) => item.stationId),
       };
-    });
+      },
+    );
     if (
       !user ||
       user.status !== 'active' ||
@@ -46,20 +53,12 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       throw new BizError(ApiCode.UNAUTHORIZED, 'access token 已失效');
     }
 
-    // 优先信任 JWT 内已计算的门店作用域；旧 token 缺失时基于角色/权限回退推导，
-    // 保证店长（含 station:manage）仍享全门店可见性，店员仍受 stations 限制。
-    const scope =
-      payload.allStations === undefined && payload.stations === undefined
-        ? computeStationScope({
-            isPlatform: payload.isPlatform,
-            roles: payload.roles ?? [],
-            perms,
-            assignedStationIds: [],
-          })
-        : {
-            allStations: !!payload.allStations,
-            stations: payload.stations ?? [],
-          };
+    const scope = computeStationScope({
+      isPlatform: payload.isPlatform,
+      roles: payload.roles ?? [],
+      perms,
+      assignedStationIds,
+    });
 
     return {
       id: payload.sub,

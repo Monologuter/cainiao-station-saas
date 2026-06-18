@@ -838,12 +838,12 @@ model ScheduledLock {
 }
 
 model Tenant {
-  id                   String                @id @default(uuid()) @db.Uuid
+  id                   String                         @id @default(uuid()) @db.Uuid
   name                 String
   ownerName            String
   contactPhone         String
-  status               TenantStatus          @default(ACTIVE)
-  createdAt            DateTime              @default(now())
+  status               TenantStatus                   @default(ACTIVE)
+  createdAt            DateTime                       @default(now())
   users                User[]
   stations             Station[]
   shelves              Shelf[]
@@ -876,28 +876,30 @@ model Tenant {
   aiMessages           AiMessage[]
   slotHeatDailies      SlotHeatDaily[]
   wechatSubscribeAuths WechatSubscribeAuthorization[]
+  staffStations        StaffStation[]
 }
 
 model Station {
-  id              String            @id @default(uuid()) @db.Uuid
-  tenantId        String            @map("tenant_id") @db.Uuid
-  name            String
-  code            String
-  createdAt       DateTime          @default(now())
-  tenant          Tenant            @relation(fields: [tenantId], references: [id])
-  shelves         Shelf[]
-  slots           Slot[]
-  parcels         Parcel[]
-  shipOrders      ShipOrder[]
-  exceptions      ExceptionTicket[]
-  reviews         Review[]
-  complaints      Complaint[]
-  metrics         MetricDaily[]
-  volumeForecasts VolumeForecast[]
-  reportJobs      ReportJob[]
-  subscriptions   Subscription[]
-  ocrRecognitions OcrRecognition[]
-  slotHeatDailies SlotHeatDaily[]
+  id               String            @id @default(uuid()) @db.Uuid
+  tenantId         String            @map("tenant_id") @db.Uuid
+  name             String
+  code             String
+  createdAt        DateTime          @default(now())
+  tenant           Tenant            @relation(fields: [tenantId], references: [id])
+  shelves          Shelf[]
+  slots            Slot[]
+  parcels          Parcel[]
+  shipOrders       ShipOrder[]
+  exceptions       ExceptionTicket[]
+  reviews          Review[]
+  complaints       Complaint[]
+  metrics          MetricDaily[]
+  volumeForecasts  VolumeForecast[]
+  reportJobs       ReportJob[]
+  subscriptions    Subscription[]
+  ocrRecognitions  OcrRecognition[]
+  slotHeatDailies  SlotHeatDaily[]
+  staffAssignments StaffStation[]
 
   @@index([tenantId])
 }
@@ -924,24 +926,24 @@ model Shelf {
 }
 
 model Slot {
-  id              String     @id @default(uuid()) @db.Uuid
-  tenantId        String     @map("tenant_id") @db.Uuid
-  stationId       String     @map("station_id") @db.Uuid
-  shelfId         String     @map("shelf_id") @db.Uuid
+  id              String          @id @default(uuid()) @db.Uuid
+  tenantId        String          @map("tenant_id") @db.Uuid
+  stationId       String          @map("station_id") @db.Uuid
+  shelfId         String          @map("shelf_id") @db.Uuid
   code            String
-  rowNo           Int?       @map("row_no")
-  levelNo         Int?       @map("level_no")
-  colNo           Int?       @map("col_no")
-  status          SlotStatus @default(FREE)
-  currentParcelId String?    @map("current_parcel_id") @db.Uuid
-  version         Int        @default(0)
-  createdAt       DateTime   @default(now()) @map("created_at")
-  updatedAt       DateTime   @updatedAt @map("updated_at")
-  deletedAt       DateTime?  @map("deleted_at")
-  createdBy       String?    @map("created_by") @db.Uuid
-  tenant          Tenant     @relation(fields: [tenantId], references: [id])
-  station         Station    @relation(fields: [stationId], references: [id])
-  shelf           Shelf      @relation(fields: [shelfId], references: [id])
+  rowNo           Int?            @map("row_no")
+  levelNo         Int?            @map("level_no")
+  colNo           Int?            @map("col_no")
+  status          SlotStatus      @default(FREE)
+  currentParcelId String?         @map("current_parcel_id") @db.Uuid
+  version         Int             @default(0)
+  createdAt       DateTime        @default(now()) @map("created_at")
+  updatedAt       DateTime        @updatedAt @map("updated_at")
+  deletedAt       DateTime?       @map("deleted_at")
+  createdBy       String?         @map("created_by") @db.Uuid
+  tenant          Tenant          @relation(fields: [tenantId], references: [id])
+  station         Station         @relation(fields: [stationId], references: [id])
+  shelf           Shelf           @relation(fields: [shelfId], references: [id])
   parcels         Parcel[]
   heatDailies     SlotHeatDaily[]
 
@@ -1330,20 +1332,37 @@ model LogisticsTrack {
 }
 
 model User {
-  id           String     @id @default(uuid()) @db.Uuid
-  tenantId     String?    @map("tenant_id") @db.Uuid
-  type         UserType
-  username     String
-  passwordHash String
-  phone        String?
-  status       String     @default("active")
-  tokenVersion Int        @default(0) @map("token_version")
-  createdAt    DateTime   @default(now())
-  tenant       Tenant?    @relation(fields: [tenantId], references: [id])
-  roles        UserRole[]
-  auditLogs    AuditLog[]
+  id            String         @id @default(uuid()) @db.Uuid
+  tenantId      String?        @map("tenant_id") @db.Uuid
+  type          UserType
+  username      String
+  passwordHash  String
+  phone         String?
+  status        String         @default("active")
+  tokenVersion  Int            @default(0) @map("token_version")
+  createdAt     DateTime       @default(now())
+  tenant        Tenant?        @relation(fields: [tenantId], references: [id])
+  roles         UserRole[]
+  auditLogs     AuditLog[]
+  staffStations StaffStation[]
 
   @@unique([tenantId, username])
+}
+
+model StaffStation {
+  id        String   @id @default(uuid()) @db.Uuid
+  tenantId  String   @map("tenant_id") @db.Uuid
+  userId    String   @map("user_id") @db.Uuid
+  stationId String   @map("station_id") @db.Uuid
+  createdAt DateTime @default(now()) @map("created_at")
+  tenant    Tenant   @relation(fields: [tenantId], references: [id])
+  user      User     @relation(fields: [userId], references: [id])
+  station   Station  @relation(fields: [stationId], references: [id])
+
+  @@unique([userId, stationId])
+  @@index([tenantId, stationId])
+  @@index([tenantId, userId])
+  @@map("staff_stations")
 }
 
 model Role {

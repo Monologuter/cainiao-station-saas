@@ -45,7 +45,7 @@ export class SystemConfigService {
       });
     });
 
-    this.runtime.invalidate(key);
+    await this.runtime.invalidate(key);
     return this.present(updated);
   }
 
