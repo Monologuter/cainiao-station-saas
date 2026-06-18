@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
@@ -17,12 +18,18 @@ interface RequestUser {
   roles?: string[];
   isPlatform?: boolean;
 }
+const ADAPTER_BREAKER_OPTIONS = {
+  failureThreshold: 3,
+  coolDownMs: 30_000,
+  timeoutMs: 3000,
+};
 
 @Injectable()
 export class LogisticsService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     @Inject(LOGISTICS_PROVIDER) private readonly provider: LogisticsProvider,
+    @Optional() private readonly breaker?: CircuitBreakerService,
   ) {}
 
   async collectShipOrder(orderId: string, user?: RequestUser) {
@@ -55,13 +62,17 @@ export class LogisticsService {
         'COLLECTED',
       );
 
-      const waybill = await this.provider.createWaybill({
-        shipOrderId: before.id,
-        courierCode: before.courierCode,
-        sender: before.senderJson,
-        receiver: before.receiverJson,
-        weightGram: before.weightGram,
-      });
+      const waybill = await this.withBreaker(
+        `logistics.${this.provider.code}.create-waybill`,
+        () =>
+          this.provider.createWaybill({
+            shipOrderId: before.id,
+            courierCode: before.courierCode,
+            sender: before.senderJson,
+            receiver: before.receiverJson,
+            weightGram: before.weightGram,
+          }),
+      );
       const collectedAt = new Date();
       const order = await tx.shipOrder.update({
         where: { id: before.id },
@@ -121,7 +132,11 @@ export class LogisticsService {
         order.waybillNo &&
         (order.status === 'COLLECTED' || order.status === 'IN_TRANSIT')
       ) {
-        const visibleNodes = await this.provider.pollTracks(order.waybillNo);
+        const visibleNodes = await this.withBreaker(
+          `logistics.${this.provider.code}.poll-tracks`,
+          () => this.provider.pollTracks(order.waybillNo),
+          () => [],
+        );
         const materializedNodes = Math.max(tracks.length - 1, 0);
         const missing = visibleNodes.slice(materializedNodes);
         let nextSeq = tracks.length + 1;
@@ -213,5 +228,19 @@ export class LogisticsService {
       });
       order.status = 'IN_TRANSIT';
     }
+  }
+
+  private withBreaker<T>(
+    name: string,
+    action: () => Promise<T>,
+    fallback?: () => Promise<T> | T,
+  ) {
+    if (!this.breaker) return action();
+    return this.breaker.execute(
+      name,
+      ADAPTER_BREAKER_OPTIONS,
+      action,
+      fallback,
+    );
   }
 }

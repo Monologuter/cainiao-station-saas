@@ -1,4 +1,5 @@
-import { Inject, Injectable } from '@nestjs/common';
+import { Inject, Injectable, Optional } from '@nestjs/common';
+import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
 import { EventBus } from '../../core/event-bus/event-bus';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
@@ -15,6 +16,11 @@ interface RequestUser {
   roles?: string[];
   isPlatform?: boolean;
 }
+const ADAPTER_BREAKER_OPTIONS = {
+  failureThreshold: 3,
+  coolDownMs: 30_000,
+  timeoutMs: 3000,
+};
 
 @Injectable()
 export class PayService {
@@ -22,6 +28,7 @@ export class PayService {
     private readonly tenantPrisma: TenantPrismaService,
     @Inject(PAY_CHANNEL) private readonly channel: PayChannel,
     private readonly eventBus: EventBus,
+    @Optional() private readonly breaker?: CircuitBreakerService,
   ) {}
 
   async payShipOrder(
@@ -74,13 +81,15 @@ export class PayService {
         'PAID',
       );
 
-      const result = await this.channel.pay({
-        bizType: 'SHIP_ORDER',
-        bizId: before.id,
-        amount: before.quoteAmount,
-        idempotencyKey,
-        subject: `寄件订单 ${before.orderNo}`,
-      });
+      const result = await this.withBreaker(`pay.${this.channel.code}`, () =>
+        this.channel.pay({
+          bizType: 'SHIP_ORDER',
+          bizId: before.id,
+          amount: before.quoteAmount,
+          idempotencyKey,
+          subject: `寄件订单 ${before.orderNo}`,
+        }),
+      );
       const paidAt = result.paidAt ?? new Date();
       const payment = await tx.payment.create({
         data: {
@@ -144,5 +153,14 @@ export class PayService {
       throw new BizError(ApiCode.UNAUTHORIZED, '缺少租户上下文');
     }
     return ctx;
+  }
+
+  private withBreaker(name: string, action: () => Promise<any>) {
+    if (!this.breaker) return action();
+    return this.breaker.execute(name, ADAPTER_BREAKER_OPTIONS, action, () => ({
+      status: 'FAILED',
+      outTradeNo: `CIRCUIT_OPEN_${Date.now()}`,
+      raw: { circuitBreaker: 'open', adapter: name },
+    }));
   }
 }

@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { EventBus } from '../../core/event-bus/event-bus';
+import { CircuitBreakerService } from '../../core/circuit-breaker/circuit-breaker.service';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { ChannelResolver } from '../config/channel-resolver';
 import { NotifyChannelType } from './notify-channel';
@@ -47,6 +48,11 @@ const OVERDUE_TEMPLATE_BY_LEVEL: Record<1 | 2 | 3, string> = {
   2: 'OVERDUE_URGE',
   3: 'OVERDUE_FINAL',
 };
+const ADAPTER_BREAKER_OPTIONS = {
+  failureThreshold: 3,
+  coolDownMs: 30_000,
+  timeoutMs: 3000,
+};
 
 @Injectable()
 export class NotifyService {
@@ -55,6 +61,7 @@ export class NotifyService {
     private readonly renderer: TemplateRenderer,
     private readonly eventBus: EventBus,
     private readonly channelResolver: ChannelResolver,
+    @Optional() private readonly breaker?: CircuitBreakerService,
   ) {}
 
   async notifyParcelStored(payload: ParcelStoredNotification) {
@@ -202,8 +209,26 @@ export class NotifyService {
 
   private async ensureChannelReady(channel: NotifyChannelType) {
     if (channel === 'SMS') {
-      await this.channelResolver.resolve('sms');
+      await this.withBreaker(
+        'notify.sms',
+        () => this.channelResolver.resolve('sms'),
+        async () => undefined,
+      );
     }
+  }
+
+  private withBreaker<T>(
+    name: string,
+    action: () => Promise<T>,
+    fallback: () => Promise<T> | T,
+  ) {
+    if (!this.breaker) return action();
+    return this.breaker.execute(
+      name,
+      ADAPTER_BREAKER_OPTIONS,
+      action,
+      fallback,
+    );
   }
 
   private async publishSmsSent(
