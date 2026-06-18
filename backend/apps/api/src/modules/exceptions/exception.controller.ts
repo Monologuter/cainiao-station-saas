@@ -9,7 +9,10 @@ export class ExceptionController {
 
   @RequirePermission('exception:create')
   @Post('parcels/:id/exception')
-  createForParcel(@Param('id') parcelId: string, @Body() body: CreateExceptionDto) {
+  createForParcel(
+    @Param('id') parcelId: string,
+    @Body() body: CreateExceptionDto,
+  ) {
     return this.exceptions.createException({
       parcelId,
       stationId: body.stationId,

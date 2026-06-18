@@ -1,11 +1,11 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
 import {
   AlertTriangle,
   Banknote,
   Clock3,
   CreditCard,
-  FileText,
   PlayCircle,
   RotateCcw,
   WalletCards,
@@ -60,17 +60,32 @@ async function load() {
     subscriptions.value = subRes;
     invoices.value = invoiceRes;
     usage.value = usageRes;
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载订阅与账单失败"));
   } finally {
     loading.value = false;
   }
 }
 
 async function runInvoice(subscription: Subscription) {
-  await runBillingInvoiceApi({
-    tenantId: subscription.tenantId,
-    subscriptionId: subscription.id,
-  });
-  await load();
+  try {
+    await runBillingInvoiceApi({
+      tenantId: subscription.tenantId,
+      subscriptionId: subscription.id,
+    });
+    ElMessage.success("已发起出账");
+    await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "手动出账失败"));
+  }
+}
+
+function errorText(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 function money(value: number) {
@@ -207,7 +222,7 @@ function statusClass(status: string) {
             </span>
           </td>
           <td>
-            <span class="op" @click="runInvoice(item)">手动出账</span>
+            <button type="button" class="op" @click="runInvoice(item)">手动出账</button>
           </td>
         </tr>
       </tbody>
@@ -268,17 +283,15 @@ function statusClass(status: string) {
       </tbody>
     </table>
 
-    <div
+    <el-empty
       v-if="
-        (tab === 'subscriptions' && subscriptions.length === 0) ||
-        (tab === 'invoices' && invoices.length === 0) ||
-        (tab === 'usage' && usage.length === 0)
+        !loading &&
+        ((tab === 'subscriptions' && subscriptions.length === 0) ||
+          (tab === 'invoices' && invoices.length === 0) ||
+          (tab === 'usage' && usage.length === 0))
       "
-      class="empty"
-    >
-      <FileText />
-      <p>暂无数据</p>
-    </div>
+      description="暂无数据"
+    />
   </section>
 
   <section v-if="overdueInvoices.length > 0" class="note overdue-note">

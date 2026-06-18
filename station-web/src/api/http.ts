@@ -1,5 +1,5 @@
 import axios, { AxiosError, type InternalAxiosRequestConfig } from 'axios';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
 
 export const TOKEN_STORAGE_KEY = 'cn_token';
 export const REFRESH_TOKEN_STORAGE_KEY = 'cn_refresh_token';

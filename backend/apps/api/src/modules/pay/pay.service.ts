@@ -283,7 +283,10 @@ export class PayService {
         return order;
       }
       if (order.status !== 'PAID' || order.collectedAt) {
-        throw new BizError(ApiCode.SHIPPING_ILLEGAL_TRANSITION, '当前订单不可退款');
+        throw new BizError(
+          ApiCode.SHIPPING_ILLEGAL_TRANSITION,
+          '当前订单不可退款',
+        );
       }
       const payment = await tx.payment.findFirst({
         where: {

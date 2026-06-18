@@ -199,7 +199,10 @@ describe('ReviewService', () => {
         },
         review: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn(async ({ data }: any) => ({ id: 'review-1', ...data })),
+          create: jest.fn(async ({ data }: any) => ({
+            id: 'review-1',
+            ...data,
+          })),
         },
       };
       const service = buildService(tx);
@@ -239,7 +242,10 @@ describe('ReviewService', () => {
         },
         review: {
           findFirst: jest.fn().mockResolvedValue(null),
-          create: jest.fn(async ({ data }: any) => ({ id: 'review-1', ...data })),
+          create: jest.fn(async ({ data }: any) => ({
+            id: 'review-1',
+            ...data,
+          })),
         },
       };
       const service = buildService(tx);

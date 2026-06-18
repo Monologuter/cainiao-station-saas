@@ -5,9 +5,10 @@ services:
     image: postgres:16
     container_name: cainiao-station-postgres
     environment:
-      POSTGRES_USER: postgres
-      POSTGRES_PASSWORD: postgres
-      POSTGRES_DB: postgres
+      # SEC-13：本机 dev 默认 postgres/postgres，仅用于本地。生产请勿复用此 compose。
+      POSTGRES_USER: ${POSTGRES_USER:-postgres}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-postgres}
+      POSTGRES_DB: ${POSTGRES_DB:-postgres}
     ports:
       - "15432:5432"
     volumes:
@@ -27,8 +28,9 @@ services:
     container_name: cainiao-station-minio
     command: server /data --console-address ":9001"
     environment:
+      # SEC-13：dev 默认弱口令，生产请用 .env 覆盖 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD。
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cainiao}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cainiao-secret}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-CHANGE_ME_MINIO_PASSWORD}
     ports:
       - "19000:9000"   # S3 API
       - "19001:9001"   # 控制台

@@ -83,6 +83,24 @@
       "style": {
         "navigationBarTitleText": "投诉进度"
       }
+    },
+    {
+      "path": "pages/messages/index",
+      "style": {
+        "navigationBarTitleText": "消息通知"
+      }
+    },
+    {
+      "path": "pages/authorize/index",
+      "style": {
+        "navigationBarTitleText": "代取授权"
+      }
+    },
+    {
+      "path": "pages/profile/index",
+      "style": {
+        "navigationBarTitleText": "个人中心"
+      }
     }
   ],
   "globalStyle": {

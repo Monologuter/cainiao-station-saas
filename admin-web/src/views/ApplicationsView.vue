@@ -54,9 +54,19 @@ async function load() {
     applications.value = list.items;
     total.value = list.total;
     plans.value = planRows.filter((plan) => plan.status === "ACTIVE");
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载入驻申请失败"));
   } finally {
     loading.value = false;
   }
+}
+
+function errorText(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 async function openReview(row: TenantApplication) {
@@ -81,6 +91,8 @@ async function approve() {
     ElMessage.success(`已开通租户，店长账号 ${result.ownerUsername}`);
     closeReview();
     await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "开通租户失败"));
   } finally {
     reviewLoading.value = false;
   }
@@ -98,6 +110,8 @@ async function reject() {
     ElMessage.success("已驳回申请");
     closeReview();
     await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "驳回申请失败"));
   } finally {
     reviewLoading.value = false;
   }
@@ -195,14 +209,14 @@ function dateText(value: string) {
             </span>
           </td>
           <td style="text-align: right">
-            <span class="op" @click="openReview(item)">
+            <button type="button" class="op" @click="openReview(item)">
               {{ item.status === "PENDING" ? "审核" : "详情" }}
-            </span>
+            </button>
           </td>
         </tr>
       </tbody>
     </table>
-    <div v-if="applications.length === 0" class="empty">暂无入驻申请</div>
+    <el-empty v-if="!loading && applications.length === 0" description="暂无入驻申请" />
   </section>
 
   <div v-if="selected" class="mask" @click.self="closeReview">

@@ -181,7 +181,10 @@ export class SlotAllocatorService {
 
   private async loadRecentHeat(tx: any, stationId: string, candidates: any[]) {
     if (candidates.length === 0 || !tx.slotHeatDaily?.findMany) {
-      return new Map<string, { pickCount7d: number; hourHistogram: number[] }>();
+      return new Map<
+        string,
+        { pickCount7d: number; hourHistogram: number[] }
+      >();
     }
     const since = new Date();
     since.setUTCDate(since.getUTCDate() - 7);
@@ -192,7 +195,10 @@ export class SlotAllocatorService {
         statDate: { gte: since },
       },
     });
-    const bySlot = new Map<string, { pickCount7d: number; hourHistogram: number[] }>();
+    const bySlot = new Map<
+      string,
+      { pickCount7d: number; hourHistogram: number[] }
+    >();
     for (const row of rows) {
       const heat = bySlot.get(row.slotId) ?? this.emptyHeat();
       heat.pickCount7d += Number(row.pickCount ?? 0);

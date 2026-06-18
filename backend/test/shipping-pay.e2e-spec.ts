@@ -1,31 +1,18 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
+import type { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestApp, getTestPrisma, closeTestApp } from './setup';
 
 describe('Shipping pay e2e', () => {
   let app: INestApplication;
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
-    prisma = app.get(PrismaService);
+    app = await getTestApp();
+    prisma = getTestPrisma();
   });
 
-  afterAll(() => app.close());
+  afterAll(() => closeTestApp());
 
   it('pays a shipping order and treats repeated idempotency key as same payment', async () => {
     const { token, stationId, tenantId } = await openTenantAndLogin();

@@ -7,20 +7,24 @@ describe('RateLimitService', () => {
     service.useClock(() => now);
 
     expect(
-      (await service.check({
-        key: 'pickup:tenant-1',
-        strategy: 'token-bucket',
-        limit: 2,
-        windowMs: 1000,
-      })).allowed,
+      (
+        await service.check({
+          key: 'pickup:tenant-1',
+          strategy: 'token-bucket',
+          limit: 2,
+          windowMs: 1000,
+        })
+      ).allowed,
     ).toBe(true);
     expect(
-      (await service.check({
-        key: 'pickup:tenant-1',
-        strategy: 'token-bucket',
-        limit: 2,
-        windowMs: 1000,
-      })).allowed,
+      (
+        await service.check({
+          key: 'pickup:tenant-1',
+          strategy: 'token-bucket',
+          limit: 2,
+          windowMs: 1000,
+        })
+      ).allowed,
     ).toBe(true);
     const denied = await service.check({
       key: 'pickup:tenant-1',
@@ -32,12 +36,14 @@ describe('RateLimitService', () => {
 
     now = 500;
     expect(
-      (await service.check({
-        key: 'pickup:tenant-1',
-        strategy: 'token-bucket',
-        limit: 2,
-        windowMs: 1000,
-      })).allowed,
+      (
+        await service.check({
+          key: 'pickup:tenant-1',
+          strategy: 'token-bucket',
+          limit: 2,
+          windowMs: 1000,
+        })
+      ).allowed,
     ).toBe(true);
   });
 

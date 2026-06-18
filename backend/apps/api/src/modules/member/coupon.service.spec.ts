@@ -130,7 +130,9 @@ describe('CouponService', () => {
       const tx = {
         $executeRawUnsafe: jest.fn(),
         couponTemplate: {
-          findMany: jest.fn().mockResolvedValue([{ id: 'ct1', tenantId: 't1' }]),
+          findMany: jest
+            .fn()
+            .mockResolvedValue([{ id: 'ct1', tenantId: 't1' }]),
         },
       };
       const prisma = { $transaction: (fn: any) => fn(tx) } as any;

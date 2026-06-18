@@ -1,0 +1,18 @@
+# 构建上下文裁剪：不把本地依赖/产物/密钥/测试塞进镜像
+node_modules
+dist
+coverage
+.git
+.gitignore
+.env
+.env.*
+!.env.example
+*.log
+.DS_Store
+test
+**/*.spec.ts
+.vscode
+.idea
+Dockerfile
+.dockerignore
+README.md

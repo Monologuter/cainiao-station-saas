@@ -1,10 +1,9 @@
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Member platform tables e2e', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
 
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
+  afterAll(() => closeTestApp());
 
   it('creates consumer, member and point records without tenant RLS context', async () => {
     const phone = `135${Date.now().toString().slice(-8)}`;

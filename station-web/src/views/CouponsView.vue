@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
+import { ElEmpty } from 'element-plus/es/components/empty/index';
 import { Gift, Plus, RotateCcw } from 'lucide-vue-next';
 import {
   couponSceneMeta,
@@ -89,7 +90,8 @@ async function issue(template: CouponTemplate) {
         <h2>券模板</h2>
         <span class="muted">共 {{ total }} 条</span>
       </div>
-      <table>
+      <el-empty v-if="!loading && rows.length === 0" description="暂无券模板" />
+      <table v-else>
         <thead>
           <tr>
             <th>名称</th>

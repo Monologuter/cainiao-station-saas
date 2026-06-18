@@ -1,16 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Slot heat model e2e', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
+
+  afterAll(() => closeTestApp());
   const migration = join(
     __dirname,
     '../prisma/migrations/20260618230000_slot_heat_daily/migration.sql',
   );
-
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
 
   it('declares slot_heat_daily with RLS and FORCE', () => {
     expect(existsSync(migration)).toBe(true);

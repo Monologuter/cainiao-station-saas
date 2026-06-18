@@ -69,7 +69,9 @@ export type NotifyJobData =
   | TenantApprovedNotifyJobData
   | ApplicationRejectedNotifyJobData;
 
-export function notifyJobId(...parts: Array<string | number | null | undefined>) {
+export function notifyJobId(
+  ...parts: Array<string | number | null | undefined>
+) {
   return parts
     .filter((part) => part !== null && part !== undefined && part !== '')
     .map((part) => String(part).replace(/:/g, '_'))

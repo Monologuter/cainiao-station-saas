@@ -1,10 +1,9 @@
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Analytics RLS e2e', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
 
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
+  afterAll(() => closeTestApp());
 
   it('isolates metric daily and report jobs by tenant', async () => {
     const tenantAId = await prisma.$transaction(async (tx) => {

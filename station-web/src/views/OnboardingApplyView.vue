@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "element-plus/es/components/message/index";
 import {
   BadgeCheck,
   Building2,
@@ -61,7 +61,7 @@ function hasFile(type: string) {
   return form.qualifications.some((file) => file.type === type);
 }
 
-async function mockUpload(type: string, label: string) {
+async function uploadQualification(type: string, label: string) {
   const upload = await uploadQualificationUrlApi({
     fileType: type,
     contentType: "image/jpeg",
@@ -236,7 +236,7 @@ function statusMeta(status?: string) {
               :key="file.type"
               class="upload-tile"
               type="button"
-              @click="mockUpload(file.type, file.label)"
+              @click="uploadQualification(file.type, file.label)"
             >
               <UploadCloud />
               <b>{{ file.label }}</b>

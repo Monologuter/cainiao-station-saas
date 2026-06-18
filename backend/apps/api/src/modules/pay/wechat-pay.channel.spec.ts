@@ -62,7 +62,10 @@ describe('WechatPayChannel', () => {
         mchId: 'mch-1',
         apiV3Key,
         notifyUrl: 'https://example.com/pay/callback',
-        platformPublicKey: publicKey.export({ type: 'spki', format: 'pem' }) as string,
+        platformPublicKey: publicKey.export({
+          type: 'spki',
+          format: 'pem',
+        }) as string,
         platformCertificateSerialNo: 'serial-1',
       },
     );

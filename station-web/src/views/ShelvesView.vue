@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { CalendarDays, Flame, Grid3X3, Plus, RotateCcw, Warehouse } from 'lucide-vue-next';
 import {
   batchCreateSlotsApi,
@@ -139,7 +139,7 @@ function slotHeatStyle(slot: SlotItem) {
   const intensity = heat ? slotHeatIntensity(heat, maxPickCount.value) : 0;
   return {
     '--slot-heat': `${intensity}%`,
-    '--slot-heat-alpha': String(Math.min(0.76, intensity / 130)),
+    '--slot-heat-alpha': `${Math.min(0.76, intensity / 130) * 100}%`,
   };
 }
 </script>
@@ -382,7 +382,11 @@ function slotHeatStyle(slot: SlotItem) {
   inset: auto 0 0 0;
   z-index: -1;
   height: var(--slot-heat, 0%);
-  background: linear-gradient(180deg, rgba(217, 119, 6, 0.2), rgba(220, 38, 38, var(--slot-heat-alpha, 0)));
+  background: linear-gradient(
+    180deg,
+    color-mix(in srgb, var(--warn) 20%, transparent),
+    color-mix(in srgb, var(--danger) var(--slot-heat-alpha, 0%), transparent)
+  );
   transition: height 180ms cubic-bezier(0.2, 0, 0, 1);
 }
 

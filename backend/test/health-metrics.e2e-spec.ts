@@ -1,30 +1,15 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { applyHttpSecurity } from '../apps/api/src/core/http/security';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
+import { getTestApp, closeTestApp } from './setup';
 
 describe('Health and metrics e2e', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    applyHttpSecurity(app);
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    app = await getTestApp();
   });
 
-  afterAll(() => app.close());
+  afterAll(() => closeTestApp());
 
   it('exposes live and ready health checks with request id propagation', async () => {
     const live = await request(app.getHttpServer())

@@ -94,8 +94,7 @@ export class OcrClient {
         this.options?.baseUrl ??
         process.env.AI_SERVICE_URL ??
         'http://localhost:8000',
-      serviceToken:
-        this.options?.serviceToken ?? requireAiServiceToken(),
+      serviceToken: this.options?.serviceToken ?? requireAiServiceToken(),
       timeoutMs:
         this.options?.timeoutMs ?? Number(process.env.OCR_TIMEOUT_MS ?? 5000),
     };

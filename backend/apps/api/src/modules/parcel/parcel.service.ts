@@ -153,7 +153,9 @@ export class ParcelService {
           const parcel = await tx.parcel.findUniqueOrThrow({
             where: { id: parcelId },
           });
-          const slot = await tx.slot.findUnique({ where: { id: input.slotId } });
+          const slot = await tx.slot.findUnique({
+            where: { id: input.slotId },
+          });
           await tx.parcelEvent.create({
             data: {
               tenantId: parcel.tenantId,

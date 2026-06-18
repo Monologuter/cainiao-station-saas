@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { BadgeCheck, RotateCcw, ScanLine } from 'lucide-vue-next';
 import { listParcelsApi, parcelStatusMeta, type ParcelItem } from '@/api/parcel';
 import { canSubmitPickup, pickupApi, pickupResultText, type PickupResult } from '@/api/pickup';

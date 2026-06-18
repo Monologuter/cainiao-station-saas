@@ -31,9 +31,9 @@ async function submit() {
   <view class="mobile-page">
     <view class="mobile-card form-card">
       <text class="section-title">提交投诉</text>
-      <input v-model="form.tenantId" class="mobile-input" placeholder="租户 ID" />
-      <input v-model="form.stationId" class="mobile-input" placeholder="门店 ID" />
-      <input v-model="form.content" class="mobile-input" placeholder="投诉内容" />
+      <input v-model="form.tenantId" class="mobile-input" placeholder="租户 ID" aria-label="租户 ID" />
+      <input v-model="form.stationId" class="mobile-input" placeholder="门店 ID" aria-label="门店 ID" />
+      <input v-model="form.content" class="mobile-input" placeholder="投诉内容" aria-label="投诉内容" />
       <button class="primary-btn" type="button" @click="submit">提交投诉</button>
     </view>
 

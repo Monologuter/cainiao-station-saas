@@ -1,10 +1,6 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
+import { INestApplication } from '@nestjs/common';
 import { IntegrationConfigService } from '../apps/api/src/modules/config/integration-config.service';
 import { KuaiDi100Provider } from '../apps/api/src/modules/logistics/kuaidi100.provider';
 import { LogisticsProviderFactory } from '../apps/api/src/modules/logistics/logistics-provider.factory';
@@ -18,6 +14,7 @@ import { WechatSubscribeChannelFactory } from '../apps/api/src/modules/notify/we
 import { MockPayChannel } from '../apps/api/src/modules/pay/mock-pay.channel';
 import { PayChannelFactory } from '../apps/api/src/modules/pay/pay-channel.factory';
 import { WechatPayChannel } from '../apps/api/src/modules/pay/wechat-pay.channel';
+import { getTestApp, closeTestApp } from './setup';
 
 describe('Real integrations switchboard e2e', () => {
   let app: INestApplication;
@@ -28,20 +25,10 @@ describe('Real integrations switchboard e2e', () => {
   const envExample = join(__dirname, '../.env.example');
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    app = await getTestApp();
   });
 
-  afterAll(() => app.close());
+  afterAll(() => closeTestApp());
 
   it('keeps every real integration safely on mock by default in dev/test', async () => {
     const integrations = app.get(IntegrationConfigService);

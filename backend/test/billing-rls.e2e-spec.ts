@@ -1,10 +1,9 @@
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Billing RLS e2e', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
 
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
+  afterAll(() => closeTestApp());
 
   it('isolates subscriptions, invoices, usage records and usage dedup by tenant', async () => {
     const { tenantAId, subscriptionAId } = await prisma.$transaction(
@@ -19,10 +18,18 @@ describe('Billing RLS e2e', () => {
           data: { name: 'Billing B', ownerName: 'b', contactPhone: '2' },
         });
         const stationA = await tx.station.create({
-          data: { tenantId: tenantA.id, name: 'A 店', code: `BLA${Date.now()}` },
+          data: {
+            tenantId: tenantA.id,
+            name: 'A 店',
+            code: `BLA${Date.now()}`,
+          },
         });
         const stationB = await tx.station.create({
-          data: { tenantId: tenantB.id, name: 'B 店', code: `BLB${Date.now()}` },
+          data: {
+            tenantId: tenantB.id,
+            name: 'B 店',
+            code: `BLB${Date.now()}`,
+          },
         });
         const plan = await tx.billingPlan.create({
           data: {
@@ -108,7 +115,10 @@ describe('Billing RLS e2e', () => {
     expect(rows.dedup).toHaveLength(1);
     expect(rows.dedup[0].eventId).toBe('evt-a');
     expect(rows.invoices).toHaveLength(1);
-    expect(rows.invoices[0]).toMatchObject({ tenantId: tenantAId, code: 'INV-A' });
+    expect(rows.invoices[0]).toMatchObject({
+      tenantId: tenantAId,
+      code: 'INV-A',
+    });
   });
 
   it('keeps billing plans platform scoped and enforces one active subscription per station', async () => {
@@ -151,7 +161,11 @@ describe('Billing RLS e2e', () => {
     expect(activePlans.length).toBeGreaterThan(0);
   });
 
-  function subscriptionData(tenantId: string, stationId: string, planId: string) {
+  function subscriptionData(
+    tenantId: string,
+    stationId: string,
+    planId: string,
+  ) {
     return {
       tenantId,
       stationId,

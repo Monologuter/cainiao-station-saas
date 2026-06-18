@@ -38,10 +38,10 @@ async function login() {
     </view>
 
     <view class="mobile-card form-card">
-      <input v-model="form.phone" class="mobile-input" placeholder="手机号" type="number" />
+      <input v-model="form.phone" class="mobile-input" placeholder="手机号" type="number" aria-label="手机号" />
       <view class="code-row">
-        <input v-model="form.code" class="mobile-input" placeholder="验证码" type="number" />
-        <button class="mini-btn" type="button" @click="sendCode">发码</button>
+        <input v-model="form.code" class="mobile-input" placeholder="验证码" type="number" aria-label="短信验证码" />
+        <button class="mini-btn" type="button" aria-label="获取短信验证码" @click="sendCode">发码</button>
       </view>
       <button class="primary-btn" type="button" :disabled="loading" @click="login">
         {{ loading ? '登录中' : '登录查件' }}

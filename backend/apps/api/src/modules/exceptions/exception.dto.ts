@@ -1,10 +1,4 @@
-import {
-  IsArray,
-  IsEnum,
-  IsOptional,
-  IsString,
-  IsUUID,
-} from 'class-validator';
+import { IsArray, IsEnum, IsOptional, IsString, IsUUID } from 'class-validator';
 
 export enum ExceptionTypeDto {
   DAMAGED = 'DAMAGED',

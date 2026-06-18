@@ -1,10 +1,9 @@
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Admin console foundation e2e', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
 
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
+  afterAll(() => closeTestApp());
 
   it('creates audit logs as tenant-aware append-only records with RLS forced', async () => {
     const columns = await prisma.$queryRawUnsafe<any[]>(

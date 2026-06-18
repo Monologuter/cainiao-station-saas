@@ -130,7 +130,13 @@ describe('PickupService', () => {
 
   it('rejects empty pickup request before touching the parcel store (no zero-verification dispatch)', async () => {
     const findMany = jest.fn(async () => [
-      { id: 'p1', stationId: 's1', pickupCode: '1234', status: 'STORED', version: 1 },
+      {
+        id: 'p1',
+        stationId: 's1',
+        pickupCode: '1234',
+        status: 'STORED',
+        version: 1,
+      },
     ]);
     const markPickedUp = jest.fn();
     const withLock = jest.fn();
@@ -157,7 +163,13 @@ describe('PickupService', () => {
     // Even with exactly one STORED parcel at the station, an identifier-less
     // request must be refused rather than silently picked up.
     const findMany = jest.fn(async () => [
-      { id: 'only', stationId: 's1', pickupCode: '9999', status: 'STORED', version: 1 },
+      {
+        id: 'only',
+        stationId: 's1',
+        pickupCode: '9999',
+        status: 'STORED',
+        version: 1,
+      },
     ]);
     const markPickedUp = jest.fn();
     const service = new PickupService(
@@ -168,7 +180,12 @@ describe('PickupService', () => {
     );
 
     await expect(
-      service.pickup({ stationId: 's1', pickupCode: '  ', phoneTail: '', parcelId: undefined }),
+      service.pickup({
+        stationId: 's1',
+        pickupCode: '  ',
+        phoneTail: '',
+        parcelId: undefined,
+      }),
     ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
     expect(findMany).not.toHaveBeenCalled();
     expect(markPickedUp).not.toHaveBeenCalled();

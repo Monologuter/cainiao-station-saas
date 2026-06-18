@@ -22,7 +22,8 @@ export class InboundService {
 
   async inbound(input: InboundInput) {
     const existing = await this.findExisting(input.stationId, input.waybillNo);
-    if (existing) return this.toResult(await this.waitIfPending(input, existing));
+    if (existing)
+      return this.toResult(await this.waitIfPending(input, existing));
 
     const parcelResult = await this.createParcelOrReturnExisting(input);
     if (!parcelResult.created) {

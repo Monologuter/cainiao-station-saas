@@ -1,31 +1,18 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
 import { TemplateRenderer } from '../apps/api/src/modules/notify/template-renderer';
+import { getTestApp, closeTestApp } from './setup';
 
 describe('Notify template config API e2e', () => {
   let app: INestApplication;
   let renderer: TemplateRenderer;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    app = await getTestApp();
     renderer = app.get(TemplateRenderer);
   });
 
-  afterAll(() => app.close());
+  afterAll(() => closeTestApp());
 
   it('manages templates with notify scene validation and renderer hot reads', async () => {
     const adminToken = await login('admin', 'admin123456');

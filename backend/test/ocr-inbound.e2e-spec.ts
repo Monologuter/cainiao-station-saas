@@ -9,7 +9,7 @@ import { OcrClient } from '../apps/api/src/modules/ai/ocr.client';
 
 describe('OCR inbound e2e', () => {
   let app: INestApplication;
-  const prisma = new PrismaService();
+  let prisma: PrismaService;
   const ocr = {
     recognizeWaybill: jest.fn().mockResolvedValue({
       provider: 'mock',
@@ -39,12 +39,11 @@ describe('OCR inbound e2e', () => {
     app.useGlobalInterceptors(new ResponseInterceptor());
     app.useGlobalFilters(new AllExceptionsFilter());
     await app.init();
-    await prisma.$connect();
+    prisma = app.get(PrismaService);
   });
 
   afterAll(async () => {
     await app.close();
-    await prisma.$disconnect();
   });
 
   it('recognizes a waybill image and confirms it through the normal inbound flow', async () => {

@@ -40,7 +40,10 @@ describe('RuntimeConfigService', () => {
       },
     };
     const prisma = { $transaction: jest.fn(async (fn: any) => fn(tx)) };
-    const runtime = new RuntimeConfigService(prisma as any, inMemoryCache() as any);
+    const runtime = new RuntimeConfigService(
+      prisma as any,
+      inMemoryCache() as any,
+    );
 
     process.env.CAINIAO_CONFIG_NOTIFY_SMS_DAILY_LIMIT = '7000';
 

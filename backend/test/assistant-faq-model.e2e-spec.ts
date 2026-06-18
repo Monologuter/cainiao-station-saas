@@ -1,16 +1,15 @@
 import { existsSync, readFileSync } from 'node:fs';
 import { join } from 'node:path';
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Assistant FAQ knowledge base model', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
+
+  afterAll(() => closeTestApp());
   const migration = join(
     __dirname,
     '../prisma/migrations/20260618220000_assistant_faq_entries/migration.sql',
   );
-
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
 
   it('declares faq_entries with platform or tenant scope and RLS', () => {
     expect(existsSync(migration)).toBe(true);

@@ -1,4 +1,12 @@
-import { Body, Controller, Delete, Get, Param, Patch, Post } from '@nestjs/common';
+import {
+  Body,
+  Controller,
+  Delete,
+  Get,
+  Param,
+  Patch,
+  Post,
+} from '@nestjs/common';
 import { IsArray, IsOptional, IsString, MinLength } from 'class-validator';
 import { RequirePermission } from './decorators';
 import { PlatformUserService } from './platform-user.service';

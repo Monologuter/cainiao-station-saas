@@ -1,6 +1,6 @@
 import { describe, expect, it, vi } from "vitest";
 import { http } from "./http";
-import { tenantsApi, updateTenantStatusApi } from "./tenants";
+import { createTenantApi, tenantsApi, updateTenantStatusApi } from "./tenants";
 
 describe("admin tenants api", () => {
   it("maps tenant list and status endpoints", async () => {
@@ -15,6 +15,24 @@ describe("admin tenants api", () => {
     });
     expect(patch).toHaveBeenCalledWith("/platform/tenants/tenant-1/status", {
       status: "SUSPENDED",
+    });
+  });
+
+  it("posts new tenant payload", async () => {
+    const post = vi.spyOn(http, "post").mockResolvedValue({});
+
+    await createTenantApi({
+      name: "新驿站",
+      ownerName: "张三",
+      ownerPhone: "13800138000",
+      ownerPassword: "pw123456",
+    });
+
+    expect(post).toHaveBeenCalledWith("/platform/tenants", {
+      name: "新驿站",
+      ownerName: "张三",
+      ownerPhone: "13800138000",
+      ownerPassword: "pw123456",
     });
   });
 });

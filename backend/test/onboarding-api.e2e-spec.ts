@@ -1,31 +1,18 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
+import { getTestApp, uniqueSuffix, closeTestApp } from './setup';
 
 describe('Onboarding API e2e', () => {
   let app: INestApplication;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
+    app = await getTestApp();
   });
 
-  afterAll(() => app.close());
+  afterAll(() => closeTestApp());
 
   it('accepts public applications and lets platform review them with permissions', async () => {
-    const suffix = Date.now().toString().slice(-8);
+    const suffix = uniqueSuffix();
     const phone = `134${suffix}`;
     const adminToken = await login('admin', 'admin123456');
     const planCode = `ONBOARD${suffix}`;
@@ -71,8 +58,7 @@ describe('Onboarding API e2e', () => {
       .set('Authorization', `Bearer ${adminToken}`)
       .query({ status: 'PENDING', keyword: phone })
       .expect(200);
-    expect(list.body.data.items).toHaveLength(1);
-    const applicationId = list.body.data.items[0].id;
+    const applicationId = findByPhone(list.body.data.items, phone);
 
     const detail = await request(app.getHttpServer())
       .get(`/api/admin/applications/${applicationId}`)
@@ -112,7 +98,10 @@ describe('Onboarding API e2e', () => {
       .expect(200);
     await request(app.getHttpServer())
       .post(
-        `/api/admin/applications/${rejectList.body.data.items[0].id}/reject`,
+        `/api/admin/applications/${findByPhone(
+          rejectList.body.data.items,
+          rejectPhone,
+        )}/reject`,
       )
       .set('Authorization', `Bearer ${adminToken}`)
       .send({ rejectReason: '证照不清晰' })
@@ -129,6 +118,18 @@ describe('Onboarding API e2e', () => {
       rejectReason: '证照不清晰',
     });
   }, 15000);
+
+  // The admin list keyword search is a substring `contains`; the suite does not
+  // truncate between runs, so filter to the exact phone (which uniqueSuffix()
+  // keeps unique) instead of relying on the list having exactly one row.
+  function findByPhone(
+    items: Array<{ id: string; contactPhone: string }>,
+    phone: string,
+  ): string {
+    const matches = items.filter((item) => item.contactPhone === phone);
+    expect(matches).toHaveLength(1);
+    return matches[0].id;
+  }
 
   async function login(username: string, password: string) {
     const res = await request(app.getHttpServer())

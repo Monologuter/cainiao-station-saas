@@ -1,18 +1,10 @@
 import type { Component } from "vue";
-import ExceptionsView from "@/views/ExceptionsView.vue";
-import ComplaintsView from "@/views/ComplaintsView.vue";
-import CouponsView from "@/views/CouponsView.vue";
-import BillingSettingsView from "@/views/BillingSettingsView.vue";
-import InboundView from "@/views/InboundView.vue";
-import ParcelsView from "@/views/ParcelsView.vue";
-import PickupView from "@/views/PickupView.vue";
-import ReviewsView from "@/views/ReviewsView.vue";
-import ShelvesView from "@/views/ShelvesView.vue";
-import SettingsView from "@/views/SettingsView.vue";
-import ShippingView from "@/views/ShippingView.vue";
-import StaffRolesView from "@/views/StaffRolesView.vue";
-import StatisticsView from "@/views/StatisticsView.vue";
-import WorkbenchView from "@/views/WorkbenchView.vue";
+
+/**
+ * 路由组件统一使用动态 import 实现懒加载（代码分割）。
+ * vue-router 接受 `() => import(...)` 形式的异步组件加载器作为 component。
+ */
+export type RouteComponentLoader = () => Promise<{ default: Component }>;
 
 export interface StationRouteDef {
   code: string;
@@ -20,7 +12,7 @@ export interface StationRouteDef {
   path: string;
   title: string;
   perm?: string | string[];
-  component: Component;
+  component: RouteComponentLoader;
 }
 
 export const stationRouteDefs: StationRouteDef[] = [
@@ -29,7 +21,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     name: "Workbench",
     path: "workbench",
     title: "工作台",
-    component: WorkbenchView,
+    component: () => import("@/views/WorkbenchView.vue"),
   },
   {
     code: "inbound",
@@ -37,7 +29,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "inbound",
     title: "扫码入库",
     perm: "parcel:inbound",
-    component: InboundView,
+    component: () => import("@/views/InboundView.vue"),
   },
   {
     code: "parcels",
@@ -45,7 +37,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "parcels",
     title: "在库包裹",
     perm: "parcel:read",
-    component: ParcelsView,
+    component: () => import("@/views/ParcelsView.vue"),
   },
   {
     code: "pickup",
@@ -53,7 +45,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "pickup",
     title: "取件核销",
     perm: "parcel:pickup",
-    component: PickupView,
+    component: () => import("@/views/PickupView.vue"),
   },
   {
     code: "exceptions",
@@ -61,7 +53,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "exceptions",
     title: "异常件",
     perm: "exception:read",
-    component: ExceptionsView,
+    component: () => import("@/views/ExceptionsView.vue"),
   },
   {
     code: "reviews",
@@ -69,7 +61,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "reviews",
     title: "评价管理",
     perm: "review:read",
-    component: ReviewsView,
+    component: () => import("@/views/ReviewsView.vue"),
   },
   {
     code: "complaints",
@@ -77,7 +69,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "complaints",
     title: "投诉处理",
     perm: "complaint:read",
-    component: ComplaintsView,
+    component: () => import("@/views/ComplaintsView.vue"),
   },
   {
     code: "shelves",
@@ -85,7 +77,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "shelves",
     title: "货架库位",
     perm: "station:manage",
-    component: ShelvesView,
+    component: () => import("@/views/ShelvesView.vue"),
   },
   {
     code: "staff-roles",
@@ -93,7 +85,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "staff-roles",
     title: "员工权限",
     perm: "station:manage",
-    component: StaffRolesView,
+    component: () => import("@/views/StaffRolesView.vue"),
   },
   {
     code: "settings",
@@ -101,7 +93,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "settings",
     title: "门店设置",
     perm: "station:manage",
-    component: SettingsView,
+    component: () => import("@/views/SettingsView.vue"),
   },
   {
     code: "billing-settings",
@@ -109,7 +101,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "billing",
     title: "订阅账单",
     perm: ["subscription:read", "invoice:read"],
-    component: BillingSettingsView,
+    component: () => import("@/views/BillingSettingsView.vue"),
   },
   {
     code: "shipping",
@@ -117,7 +109,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "shipping",
     title: "寄件管理",
     perm: "shipping:read",
-    component: ShippingView,
+    component: () => import("@/views/ShippingView.vue"),
   },
   {
     code: "coupons",
@@ -125,7 +117,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "coupons",
     title: "优惠券",
     perm: "coupon:manage",
-    component: CouponsView,
+    component: () => import("@/views/CouponsView.vue"),
   },
   {
     code: "statistics",
@@ -133,7 +125,7 @@ export const stationRouteDefs: StationRouteDef[] = [
     path: "statistics",
     title: "经营统计",
     perm: "analytics:read",
-    component: StatisticsView,
+    component: () => import("@/views/StatisticsView.vue"),
   },
 ];
 

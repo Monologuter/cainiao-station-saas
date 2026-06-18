@@ -2,7 +2,7 @@
 import { computed, reactive, ref } from 'vue';
 import { useRoute, useRouter } from 'vue-router';
 import { LogIn, Store } from 'lucide-vue-next';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { ApiError } from '@/api/http';
 import { useAuthStore } from '@/stores/auth';
 

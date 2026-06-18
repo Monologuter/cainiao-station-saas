@@ -57,10 +57,7 @@ export class OnboardingSubscriber implements OnModuleInit {
   async onApplicationRejected(event: DomainEvent<ApplicationRejectedPayload>) {
     await this.queue.add(APPLICATION_REJECTED_NOTIFY_JOB, event.payload, {
       ...NOTIFY_JOB_OPTIONS,
-      jobId: notifyJobId(
-        'application-rejected',
-        event.payload.applicationId,
-      ),
+      jobId: notifyJobId('application-rejected', event.payload.applicationId),
     });
   }
 }

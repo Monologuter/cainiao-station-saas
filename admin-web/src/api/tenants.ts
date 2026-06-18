@@ -17,10 +17,21 @@ export interface TenantListResult {
   total: number;
 }
 
+export interface CreateTenantInput {
+  name: string;
+  ownerName: string;
+  ownerPhone: string;
+  ownerPassword: string;
+}
+
 export function tenantsApi(query: { status?: string } = {}) {
   return http.get<never, TenantListResult>("/platform/tenants", {
     params: toAdminAnalyticsQueryParams(query),
   });
+}
+
+export function createTenantApi(input: CreateTenantInput) {
+  return http.post<never, TenantRow>("/platform/tenants", input);
 }
 
 export function updateTenantStatusApi(

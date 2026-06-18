@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from "vue";
-import { RotateCcw, Search, ShieldCheck, X, XCircle } from "lucide-vue-next";
+import { ElMessage } from "element-plus";
+import { RotateCcw, Search, ShieldCheck, X } from "lucide-vue-next";
 import {
   auditActionsApi,
   auditLogDetailApi,
@@ -33,13 +34,27 @@ async function load() {
     logs.value = list.items;
     total.value = list.total;
     actions.value = actionRows;
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载审计日志失败"));
   } finally {
     loading.value = false;
   }
 }
 
 async function openDetail(row: AuditLog) {
-  selected.value = await auditLogDetailApi(row.id);
+  try {
+    selected.value = await auditLogDetailApi(row.id);
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载审计详情失败"));
+  }
+}
+
+function errorText(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 function closeDetail() {
@@ -149,12 +164,12 @@ function stringifyValue(value: unknown) {
           </td>
           <td>{{ item.summary || "-" }}</td>
           <td style="text-align: right">
-            <span class="op" @click="openDetail(item)">详情</span>
+            <button type="button" class="op" @click="openDetail(item)">详情</button>
           </td>
         </tr>
       </tbody>
     </table>
-    <div v-if="logs.length === 0" class="empty">暂无审计记录</div>
+    <el-empty v-if="!loading && logs.length === 0" description="暂无审计记录" />
   </section>
 
   <div v-if="selected" class="mask" @click.self="closeDetail">
@@ -200,7 +215,7 @@ function stringifyValue(value: unknown) {
               </tr>
             </tbody>
           </table>
-          <div v-if="diffRows(selected).length === 0" class="empty">暂无字段差异</div>
+          <el-empty v-if="diffRows(selected).length === 0" description="暂无字段差异" />
         </section>
       </div>
       <div class="ft">

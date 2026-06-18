@@ -1,10 +1,9 @@
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestPrisma, closeTestApp } from './setup';
 
 describe('Onboarding application model e2e', () => {
-  const prisma = new PrismaService();
+  const prisma = getTestPrisma();
 
-  beforeAll(() => prisma.$connect());
-  afterAll(() => prisma.$disconnect());
+  afterAll(() => closeTestApp());
 
   it('keeps tenant applications platform scoped with an explicit RLS exception', async () => {
     const applicationNo = `APP${Date.now()}-SCOPE`;

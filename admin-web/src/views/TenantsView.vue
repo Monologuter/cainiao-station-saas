@@ -1,12 +1,26 @@
 <script setup lang="ts">
-import { onMounted, ref } from "vue";
+import { onMounted, reactive, ref } from "vue";
 import { ElMessage } from "element-plus";
-import { Plus, RotateCcw } from "lucide-vue-next";
-import { tenantsApi, updateTenantStatusApi, type TenantRow } from "@/api/tenants";
+import { Building2, Plus, RotateCcw } from "lucide-vue-next";
+import {
+  createTenantApi,
+  tenantsApi,
+  updateTenantStatusApi,
+  type TenantRow,
+} from "@/api/tenants";
 
 const loading = ref(false);
 const status = ref("");
 const rows = ref<TenantRow[]>([]);
+
+const modalOpen = ref(false);
+const saving = ref(false);
+const form = reactive({
+  name: "",
+  ownerName: "",
+  ownerPhone: "",
+  ownerPassword: "",
+});
 
 onMounted(load);
 
@@ -15,15 +29,66 @@ async function load() {
   try {
     const data = await tenantsApi({ status: status.value });
     rows.value = data.list;
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载租户列表失败"));
   } finally {
     loading.value = false;
   }
 }
 
 async function setStatus(row: TenantRow, next: TenantRow["status"]) {
-  await updateTenantStatusApi(row.id, next);
-  ElMessage.success("租户状态已更新");
-  await load();
+  try {
+    await updateTenantStatusApi(row.id, next);
+    ElMessage.success("租户状态已更新");
+    await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "更新租户状态失败"));
+  }
+}
+
+function openCreate() {
+  Object.assign(form, {
+    name: "",
+    ownerName: "",
+    ownerPhone: "",
+    ownerPassword: "",
+  });
+  modalOpen.value = true;
+}
+
+async function submit() {
+  if (!form.name.trim() || !form.ownerName.trim() || !form.ownerPhone.trim()) {
+    ElMessage.error("请填写租户名称、负责人与手机号");
+    return;
+  }
+  if (form.ownerPassword.length < 6) {
+    ElMessage.error("初始密码至少 6 位");
+    return;
+  }
+  saving.value = true;
+  try {
+    await createTenantApi({
+      name: form.name.trim(),
+      ownerName: form.ownerName.trim(),
+      ownerPhone: form.ownerPhone.trim(),
+      ownerPassword: form.ownerPassword,
+    });
+    ElMessage.success("租户已创建");
+    modalOpen.value = false;
+    await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "创建租户失败"));
+  } finally {
+    saving.value = false;
+  }
+}
+
+function errorText(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 </script>
 
@@ -43,7 +108,7 @@ async function setStatus(row: TenantRow, next: TenantRow["status"]) {
         <RotateCcw />
         刷新
       </button>
-      <button class="btn btn-primary" type="button" disabled>
+      <button class="btn btn-primary" type="button" @click="openCreate">
         <Plus />
         新建租户
       </button>
@@ -78,31 +143,46 @@ async function setStatus(row: TenantRow, next: TenantRow["status"]) {
           </tr>
         </tbody>
       </table>
+      <el-empty v-if="!loading && rows.length === 0" description="暂无租户" />
+    </div>
+
+    <div v-if="modalOpen" class="mask" @click.self="modalOpen = false">
+      <section class="modal">
+        <div class="hd">
+          <h3>新建租户</h3>
+          <button class="btn btn-ghost" type="button" @click="modalOpen = false">关闭</button>
+        </div>
+        <div class="bd form-grid">
+          <div class="field" style="grid-column: 1 / -1">
+            <label>租户名称</label>
+            <input v-model.trim="form.name" class="input" placeholder="例如：星海驿站" />
+          </div>
+          <div class="field">
+            <label>负责人</label>
+            <input v-model.trim="form.ownerName" class="input" placeholder="店长姓名" />
+          </div>
+          <div class="field">
+            <label>负责人手机号</label>
+            <input v-model.trim="form.ownerPhone" class="input" placeholder="11 位手机号" />
+          </div>
+          <div class="field" style="grid-column: 1 / -1">
+            <label>初始密码</label>
+            <input v-model="form.ownerPassword" class="input" type="password" placeholder="至少 6 位" />
+          </div>
+        </div>
+        <div class="ft">
+          <button class="btn" type="button" @click="modalOpen = false">取消</button>
+          <button class="btn btn-primary" type="button" :disabled="saving" @click="submit">
+            <Building2 />
+            创建租户
+          </button>
+        </div>
+      </section>
     </div>
   </section>
 </template>
 
 <style scoped>
-.empty {
-  display: flex;
-  flex-direction: column;
-  align-items: center;
-  gap: 10px;
-  padding: 56px 28px;
-  text-align: center;
-}
-
-.empty :deep(svg) {
-  width: 40px;
-  height: 40px;
-  color: var(--muted);
-  opacity: 0.6;
-}
-
-.empty b {
-  font-size: 15px;
-}
-
 .btn[disabled] {
   cursor: not-allowed;
   opacity: 0.6;

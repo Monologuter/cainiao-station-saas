@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, reactive, ref } from "vue";
+import { ElMessage } from "element-plus";
 import {
   Archive,
   Check,
@@ -48,9 +49,19 @@ async function load() {
   loading.value = true;
   try {
     plans.value = await billingPlansApi();
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载套餐失败"));
   } finally {
     loading.value = false;
   }
+}
+
+function errorText(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 function openCreate() {
@@ -90,18 +101,28 @@ async function submit() {
     overagePrices: normalizeNumbers(form.overagePrices),
     sort: Number(form.sort ?? 0),
   };
-  if (editingId.value) {
-    await updateBillingPlanApi(editingId.value, payload);
-  } else {
-    await createBillingPlanApi(payload);
+  try {
+    if (editingId.value) {
+      await updateBillingPlanApi(editingId.value, payload);
+    } else {
+      await createBillingPlanApi(payload);
+    }
+    ElMessage.success(editingId.value ? "套餐已更新" : "套餐已创建");
+    modalOpen.value = false;
+    await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "保存套餐失败"));
   }
-  modalOpen.value = false;
-  await load();
 }
 
 async function archivePlan(plan: BillingPlan) {
-  await archiveBillingPlanApi(plan.id);
-  await load();
+  try {
+    await archiveBillingPlanApi(plan.id);
+    ElMessage.success("套餐已归档");
+    await load();
+  } catch (error) {
+    ElMessage.error(errorText(error, "归档套餐失败"));
+  }
 }
 
 function normalizeNumbers(record: Record<string, number>) {
@@ -232,12 +253,20 @@ function planIcon(index: number) {
             </span>
           </td>
           <td>
-            <span class="op" @click="openEdit(plan)">编辑</span>
-            <span v-if="plan.status === 'ACTIVE'" class="op danger" @click="archivePlan(plan)">归档</span>
+            <button type="button" class="op" @click="openEdit(plan)">编辑</button>
+            <button
+              v-if="plan.status === 'ACTIVE'"
+              type="button"
+              class="op danger"
+              @click="archivePlan(plan)"
+            >
+              归档
+            </button>
           </td>
         </tr>
       </tbody>
     </table>
+    <el-empty v-if="!loading && sortedPlans.length === 0" description="暂无套餐" />
   </section>
 
   <div v-if="modalOpen" class="mask">

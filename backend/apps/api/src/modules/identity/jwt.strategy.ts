@@ -18,36 +18,36 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   async validate(payload: any) {
     const { perms, user, assignedStationIds } = await this.prisma.$transaction(
       async (tx) => {
-      await tx.$executeRawUnsafe(
-        `SELECT set_config('app.bypass_rls', 'on', true)`,
-      );
-      const rows = await tx.rolePermission.findMany({
-        where: {
-          role: {
-            code: { in: payload.roles ?? [] },
-            tenantId: payload.isPlatform ? null : payload.tenantId,
+        await tx.$executeRawUnsafe(
+          `SELECT set_config('app.bypass_rls', 'on', true)`,
+        );
+        const rows = await tx.rolePermission.findMany({
+          where: {
+            role: {
+              code: { in: payload.roles ?? [] },
+              tenantId: payload.isPlatform ? null : payload.tenantId,
+            },
           },
-        },
-        include: { permission: true },
-      });
-      const found = await tx.user.findUnique({
-        where: { id: payload.sub },
-        select: {
-          username: true,
-          status: true,
-          tokenVersion: true,
-          tenant: { select: { status: true } },
-        },
-      });
-      const assignments = await tx.staffStation.findMany({
-        where: { userId: payload.sub },
-        select: { stationId: true },
-      });
-      return {
-        perms: [...new Set(rows.map((item) => item.permission.code))],
-        user: found,
-        assignedStationIds: assignments.map((item) => item.stationId),
-      };
+          include: { permission: true },
+        });
+        const found = await tx.user.findUnique({
+          where: { id: payload.sub },
+          select: {
+            username: true,
+            status: true,
+            tokenVersion: true,
+            tenant: { select: { status: true } },
+          },
+        });
+        const assignments = await tx.staffStation.findMany({
+          where: { userId: payload.sub },
+          select: { stationId: true },
+        });
+        return {
+          perms: [...new Set(rows.map((item) => item.permission.code))],
+          user: found,
+          assignedStationIds: assignments.map((item) => item.stationId),
+        };
       },
     );
     if (

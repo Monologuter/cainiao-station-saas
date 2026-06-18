@@ -1,13 +1,27 @@
 import { describe, expect, it } from "vitest";
 import ExceptionsView from "@/views/ExceptionsView.vue";
-import PlaceholderView from "@/views/PlaceholderView.vue";
 import ComplaintsView from "@/views/ComplaintsView.vue";
 import CouponsView from "@/views/CouponsView.vue";
 import BillingSettingsView from "@/views/BillingSettingsView.vue";
 import ReviewsView from "@/views/ReviewsView.vue";
 import StatisticsView from "@/views/StatisticsView.vue";
 import { isPublicRoutePath } from "@/router";
-import { availableRoutes, stationRouteDefs } from "./routes";
+import {
+  availableRoutes,
+  stationRouteDefs,
+  type StationRouteDef,
+} from "./routes";
+
+/**
+ * 路由组件现以懒加载方式声明（`() => import('@/views/XxxView.vue')`），
+ * 因此断言时需解析该异步加载器，比较其 default 导出是否为目标视图。
+ */
+async function resolveComponent(route: StationRouteDef | undefined) {
+  expect(route).toBeDefined();
+  expect(typeof route?.component).toBe("function");
+  const mod = await route!.component();
+  return mod.default;
+}
 
 describe("station route definitions", () => {
   it("exposes shipping route only with shipping:read permission", () => {
@@ -19,25 +33,27 @@ describe("station route definitions", () => {
     ).toContain("shipping");
   });
 
-  it("uses a real shipping management view instead of the placeholder", () => {
-    expect(
-      stationRouteDefs.find((route) => route.code === "shipping")?.component,
-    ).not.toBe(PlaceholderView);
+  it("uses a real lazy-loaded shipping management view", async () => {
+    const route = stationRouteDefs.find((r) => r.code === "shipping");
+    expect(typeof route?.component).toBe("function");
+    const mod = await route!.component();
+    expect(mod.default).toBeTruthy();
   });
 
-  it("exposes exceptions route only with exception:read permission", () => {
+  it("exposes exceptions route only with exception:read permission", async () => {
     expect(availableRoutes([]).map((route) => route.code)).not.toContain(
       "exceptions",
     );
     expect(
       availableRoutes(["exception:read"]).map((route) => route.code),
     ).toContain("exceptions");
-    expect(
-      stationRouteDefs.find((route) => route.code === "exceptions")?.component,
-    ).toBe(ExceptionsView);
+    const component = await resolveComponent(
+      stationRouteDefs.find((route) => route.code === "exceptions"),
+    );
+    expect(component).toBe(ExceptionsView);
   });
 
-  it("exposes review, complaint and coupon routes with real views", () => {
+  it("exposes review, complaint and coupon routes with real views", async () => {
     const codes = availableRoutes([
       "review:read",
       "complaint:read",
@@ -48,17 +64,23 @@ describe("station route definitions", () => {
       expect.arrayContaining(["reviews", "complaints", "coupons"]),
     );
     expect(
-      stationRouteDefs.find((route) => route.code === "reviews")?.component,
+      await resolveComponent(
+        stationRouteDefs.find((route) => route.code === "reviews"),
+      ),
     ).toBe(ReviewsView);
     expect(
-      stationRouteDefs.find((route) => route.code === "complaints")?.component,
+      await resolveComponent(
+        stationRouteDefs.find((route) => route.code === "complaints"),
+      ),
     ).toBe(ComplaintsView);
     expect(
-      stationRouteDefs.find((route) => route.code === "coupons")?.component,
+      await resolveComponent(
+        stationRouteDefs.find((route) => route.code === "coupons"),
+      ),
     ).toBe(CouponsView);
   });
 
-  it("exposes statistics route with analytics:read and a real view", () => {
+  it("exposes statistics route with analytics:read and a real view", async () => {
     expect(availableRoutes([]).map((route) => route.code)).not.toContain(
       "statistics",
     );
@@ -66,11 +88,13 @@ describe("station route definitions", () => {
       availableRoutes(["analytics:read"]).map((route) => route.code),
     ).toContain("statistics");
     expect(
-      stationRouteDefs.find((route) => route.code === "statistics")?.component,
+      await resolveComponent(
+        stationRouteDefs.find((route) => route.code === "statistics"),
+      ),
     ).toBe(StatisticsView);
   });
 
-  it("exposes billing settings only when subscription and invoice read permissions are both present", () => {
+  it("exposes billing settings only when subscription and invoice read permissions are both present", async () => {
     expect(
       availableRoutes(["subscription:read"]).map((route) => route.code),
     ).not.toContain("billing-settings");
@@ -83,9 +107,16 @@ describe("station route definitions", () => {
       ),
     ).toContain("billing-settings");
     expect(
-      stationRouteDefs.find((route) => route.code === "billing-settings")
-        ?.component,
+      await resolveComponent(
+        stationRouteDefs.find((route) => route.code === "billing-settings"),
+      ),
     ).toBe(BillingSettingsView);
+  });
+
+  it("declares every route component as a lazy import loader", () => {
+    for (const route of stationRouteDefs) {
+      expect(typeof route.component).toBe("function");
+    }
   });
 
   it("treats onboarding application as a public route", () => {

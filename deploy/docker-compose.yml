@@ -56,8 +56,10 @@ services:
     container_name: cainiao-station-minio
     command: server /data --console-address ":9001"
     environment:
+      # SEC-13：生产必改。本机 dev 默认 cainiao/cainiao-secret，
+      # 通过 .env 覆盖 MINIO_ROOT_USER / MINIO_ROOT_PASSWORD。
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cainiao}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cainiao-secret}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-CHANGE_ME_MINIO_PASSWORD}
     ports:
       - "19000:9000"   # S3 API
       - "19001:9001"   # 控制台
@@ -83,8 +85,17 @@ services:
       REDIS_URL: ${REDIS_URL:-redis://redis:6379}
       MINIO_ENDPOINT: ${MINIO_ENDPOINT:-minio:9000}
       MINIO_ROOT_USER: ${MINIO_ROOT_USER:-cainiao}
-      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-cainiao-secret}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-CHANGE_ME_MINIO_PASSWORD}
       MINIO_BUCKET: ${MINIO_BUCKET:-cainiao-files}
+      MINIO_USE_SSL: ${MINIO_USE_SSL:-false}
+      # SEC-13：JWT 密钥与 AI 共享令牌必须在 .env 显式提供，缺失即拒绝启动。
+      JWT_SECRET: ${JWT_SECRET:?required}
+      JWT_EXPIRES_IN: ${JWT_EXPIRES_IN:-2h}
+      AI_SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?required}
+      # 容器内走 service 名访问 ai-service（与 ai-service SERVICE_TOKEN 对齐）。
+      AI_SERVICE_URL: ${AI_SERVICE_URL:-http://ai-service:8000}
+      CORS_ORIGINS: ${CORS_ORIGINS:-http://localhost:18080}
+      OVERDUE_SCAN_CRON: ${OVERDUE_SCAN_CRON:-0 2 * * *}
       PORT: "3100"
     ports:
       - "13100:3100"
@@ -95,6 +106,13 @@ services:
         condition: service_healthy
       minio:
         condition: service_healthy
+    healthcheck:
+      # /api 全局前缀；ready 探针校验 postgres + redis 连通性。
+      test: ["CMD-SHELL", "node -e \"require('http').get('http://127.0.0.1:3100/api/health/ready',r=>process.exit(r.statusCode===200?0:1)).on('error',()=>process.exit(1))\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 40s
     networks:
       - cainiao-net
 
@@ -106,8 +124,21 @@ services:
     profiles: ["app"]
     environment:
       PORT: "8000"
+      # 与 api 的 AI_SERVICE_TOKEN 共享同一值，做服务间鉴权（X-Service-Token）。
+      SERVICE_TOKEN: ${AI_SERVICE_TOKEN:?required}
+      OCR_PROVIDER: ${OCR_PROVIDER:-mock}
+      AI_ASSISTANT_MODE: ${AI_ASSISTANT_MODE:-mock}
+      AI_LLM_MODEL: ${AI_LLM_MODEL:-claude-opus-4-8}
+      # 仅当 AI_ASSISTANT_MODE=real 时需要，mock 模式可留空。
+      ANTHROPIC_API_KEY: ${ANTHROPIC_API_KEY:-}
     ports:
       - "18000:8000"
+    healthcheck:
+      test: ["CMD-SHELL", "python -c \"import urllib.request,sys; sys.exit(0 if urllib.request.urlopen('http://127.0.0.1:8000/readyz').status==200 else 1)\""]
+      interval: 10s
+      timeout: 5s
+      retries: 5
+      start_period: 20s
     networks:
       - cainiao-net
 
@@ -120,8 +151,10 @@ services:
     ports:
       - "18080:80"
     depends_on:
-      - api
-      - ai-service
+      api:
+        condition: service_healthy
+      ai-service:
+        condition: service_healthy
     networks:
       - cainiao-net
 

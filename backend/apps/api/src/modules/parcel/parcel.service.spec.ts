@@ -567,7 +567,9 @@ describe('ParcelService.list 门店数据范围', () => {
       },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
-    const service = new ParcelService(tenantPrisma, { publish: jest.fn() } as any);
+    const service = new ParcelService(tenantPrisma, {
+      publish: jest.fn(),
+    } as any);
     return { service, lastWhere };
   }
 

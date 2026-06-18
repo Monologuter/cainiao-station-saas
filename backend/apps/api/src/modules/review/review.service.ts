@@ -43,7 +43,11 @@ export class ReviewService {
     private readonly prisma?: PrismaService,
   ) {}
 
-  async submit(memberId: string, verifiedPhone: string, input: SubmitReviewInput) {
+  async submit(
+    memberId: string,
+    verifiedPhone: string,
+    input: SubmitReviewInput,
+  ) {
     this.assertRating(input.rating);
     const ref = await this.resolveOwnedRef(
       input.refType,

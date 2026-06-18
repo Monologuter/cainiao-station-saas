@@ -11,11 +11,15 @@ const tabs: Array<{ label: string; status: ShipOrderStatus | '' }> = [
   { label: '运输中', status: 'IN_TRANSIT' },
 ];
 
-onMounted(() => shipping.load({ status: active.value, page: 1, size: 20 }));
+onMounted(() => refresh(active.value));
+
+function refresh(status: ShipOrderStatus | '') {
+  shipping.load({ status, page: 1, size: 20 }).catch(() => undefined);
+}
 
 function switchTab(status: ShipOrderStatus | '') {
   active.value = status;
-  shipping.load({ status, page: 1, size: 20 });
+  refresh(status);
 }
 
 function openTracking(id: string) {
@@ -44,8 +48,19 @@ function goShip() {
 
     <button class="primary-btn home-action" type="button" @click="goShip">新建寄件</button>
 
-    <view v-if="shipping.list.length === 0" class="mobile-card empty-mobile">暂无寄件单</view>
+    <view v-if="shipping.loading && shipping.list.length === 0" class="parcel-skeleton">
+      <view v-for="n in 3" :key="n" class="mobile-card skeleton-card" aria-hidden="true">
+        <view class="skeleton-line lg" />
+        <view class="skeleton-line md" />
+        <view class="skeleton-line sm" />
+      </view>
+    </view>
+    <view v-else-if="shipping.error" class="mobile-card empty-mobile" role="alert">
+      {{ shipping.error }}，<text class="retry-link" @click="refresh(active)">点击重试</text>
+    </view>
+    <view v-else-if="shipping.list.length === 0" class="mobile-card empty-mobile">暂无寄件单</view>
     <view
+      v-else
       v-for="item in shipping.list"
       :key="item.id"
       class="mobile-card parcel-card ship-order-card"

@@ -5,7 +5,6 @@ import { availableRoutes } from '@/constants/routes';
 import { useAuthStore } from '@/stores/auth';
 import LoginView from '@/views/LoginView.vue';
 import OnboardingApplyView from '@/views/OnboardingApplyView.vue';
-import WorkbenchView from '@/views/WorkbenchView.vue';
 
 const dynamicRouteNames = new Set<string>();
 const publicRoutePaths = new Set(['/login', '/onboarding/apply']);
@@ -37,7 +36,7 @@ export const router = createRouter({
         {
           path: 'workbench',
           name: 'Workbench',
-          component: WorkbenchView,
+          component: () => import('@/views/WorkbenchView.vue'),
           meta: { title: '工作台' },
         },
       ],

@@ -91,7 +91,10 @@ export class LogisticsService {
         if (current?.status === 'COLLECTED' && current.waybillNo) {
           return current;
         }
-        throw new BizError(ApiCode.IDEMPOTENCY_CONFLICT, '寄件订单状态已被并发推进');
+        throw new BizError(
+          ApiCode.IDEMPOTENCY_CONFLICT,
+          '寄件订单状态已被并发推进',
+        );
       }
       const order = await tx.shipOrder.findFirst({
         where: { id: before.id, tenantId: ctx.tenantId, deletedAt: null },

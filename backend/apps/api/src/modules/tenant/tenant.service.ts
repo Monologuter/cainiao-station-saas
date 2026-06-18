@@ -87,7 +87,10 @@ export class TenantService {
       const list = await tx.tenant.findMany({
         where,
         orderBy: { createdAt: 'desc' },
-        include: { stations: { select: { id: true } }, users: { select: { id: true } } },
+        include: {
+          stations: { select: { id: true } },
+          users: { select: { id: true } },
+        },
       });
       return {
         list: list.map((tenant) => ({

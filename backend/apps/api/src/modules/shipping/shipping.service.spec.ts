@@ -147,7 +147,9 @@ describe('ShippingService', () => {
         $transaction: jest.fn((fn) =>
           fn({
             $executeRawUnsafe: jest.fn(),
-            member: { findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'm1' }) },
+            member: {
+              findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'm1' }),
+            },
           }),
         ),
       } as any,

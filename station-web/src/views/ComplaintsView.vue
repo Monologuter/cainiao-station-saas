@@ -1,6 +1,7 @@
 <script setup lang="ts">
 import { onMounted, ref } from 'vue';
-import { ElMessage } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
+import { ElEmpty } from 'element-plus/es/components/empty/index';
 import { CircleCheck, RotateCcw, Wrench } from 'lucide-vue-next';
 import {
   complaintStatusMeta,
@@ -51,7 +52,8 @@ async function transit(row: ComplaintItem, status: ComplaintStatus, note: string
       <h2>投诉工单</h2>
       <span class="muted">共 {{ total }} 条</span>
     </div>
-    <table>
+    <el-empty v-if="!loading && rows.length === 0" description="暂无投诉工单" />
+    <table v-else>
       <thead>
         <tr>
           <th>手机号</th>

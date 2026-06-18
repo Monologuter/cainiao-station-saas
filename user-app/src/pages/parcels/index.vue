@@ -12,11 +12,16 @@ const tabs: Array<{ label: string; status: ConsumerParcelStatus | '' }> = [
 ];
 const emptyText = computed(() => (active.value === 'STORED' ? '暂无待取包裹' : '暂无包裹'));
 
-onMounted(() => parcel.load(active.value));
+onMounted(() => refresh(active.value));
+
+function refresh(status: ConsumerParcelStatus | '') {
+  // 错误已在 store 内统一 toast，这里吞掉避免未处理拒绝
+  parcel.load(status).catch(() => undefined);
+}
 
 function switchTab(status: ConsumerParcelStatus | '') {
   active.value = status;
-  parcel.load(status);
+  refresh(status);
 }
 
 function openCode(id: string) {
@@ -39,8 +44,22 @@ function openCode(id: string) {
       </button>
     </view>
 
-    <view v-if="parcel.list.length === 0" class="mobile-card empty-mobile">{{ emptyText }}</view>
-    <view v-for="item in parcel.list" :key="item.id" class="mobile-card parcel-card" @click="openCode(item.id)">
+    <view v-if="parcel.loading && parcel.list.length === 0" class="parcel-skeleton">
+      <view v-for="n in 3" :key="n" class="mobile-card skeleton-card" aria-hidden="true">
+        <view class="skeleton-line lg" />
+        <view class="skeleton-line md" />
+        <view class="skeleton-line sm" />
+      </view>
+    </view>
+    <view
+      v-else-if="parcel.error"
+      class="mobile-card empty-mobile"
+      role="alert"
+    >
+      {{ parcel.error }}，<text class="retry-link" @click="refresh(active)">点击重试</text>
+    </view>
+    <view v-else-if="parcel.list.length === 0" class="mobile-card empty-mobile">{{ emptyText }}</view>
+    <view v-else v-for="item in parcel.list" :key="item.id" class="mobile-card parcel-card" @click="openCode(item.id)">
       <text class="parcel-code">{{ item.pickupCode ?? item.waybillNo }}</text>
       <text class="parcel-meta">{{ item.station?.name ?? '驿站' }} · {{ item.slot?.code ?? '未分配' }}</text>
       <text class="parcel-status">{{ statusLabel(item.status) }}</text>

@@ -28,11 +28,9 @@ export class ScheduledJobWorker implements OnModuleInit, OnModuleDestroy {
   ) {}
 
   onModuleInit() {
-    this.worker = new Worker(
-      this.queue.name,
-      (job) => this.process(job),
-      { connection: queueRedisConnectionOptions() },
-    );
+    this.worker = new Worker(this.queue.name, (job) => this.process(job), {
+      connection: queueRedisConnectionOptions(),
+    });
   }
 
   async onModuleDestroy() {

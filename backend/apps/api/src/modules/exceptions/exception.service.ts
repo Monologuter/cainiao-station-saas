@@ -182,7 +182,12 @@ export class ExceptionService {
       }
 
       if (before.parcelId) {
-        await this.applyParcelResolution(tx, before.parcelId, input, ctx.userId);
+        await this.applyParcelResolution(
+          tx,
+          before.parcelId,
+          input,
+          ctx.userId,
+        );
       }
 
       return tx.exceptionTicket.update({
@@ -203,7 +208,9 @@ export class ExceptionService {
     input: ResolveExceptionInput,
     operatorId?: string,
   ) {
-    const before = await tx.parcel.findUniqueOrThrow({ where: { id: parcelId } });
+    const before = await tx.parcel.findUniqueOrThrow({
+      where: { id: parcelId },
+    });
 
     if (input.resolution === 'RESTOCK') {
       ParcelAggregate.assertTransit(before.status as ParcelStatus, 'STORED');

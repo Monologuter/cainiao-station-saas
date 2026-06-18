@@ -1,6 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, onUnmounted, reactive, ref } from "vue";
-import { ElMessage } from "element-plus";
+import { ElMessage } from "element-plus/es/components/message/index";
 import {
   BarChart3,
   Boxes,
@@ -397,7 +397,7 @@ function offsetDate(date: string, days: number) {
           v-for="item in hourBars"
           :key="item.hour"
           class="hour-cell"
-          :style="{ '--hour-alpha': String(Math.min(0.85, item.value / maxHour)) }"
+          :style="{ '--hour-alpha': `${Math.min(0.85, item.value / maxHour) * 100}%` }"
         >
           <i></i>
           <b>{{ item.hour }}</b>
@@ -642,7 +642,7 @@ function offsetDate(date: string, days: number) {
   width: 100%;
   max-width: 38px;
   background: var(--primary-soft);
-  border: 1px solid rgba(59, 110, 246, 0.2);
+  border: 1px solid color-mix(in srgb, var(--primary) 20%, transparent);
 }
 
 .forecast-bar .predicted {
@@ -678,9 +678,9 @@ function offsetDate(date: string, days: number) {
 .hour-cell i {
   width: 100%;
   height: 34px;
-  border: 1px solid rgba(217, 119, 6, 0.18);
+  border: 1px solid color-mix(in srgb, var(--warn) 18%, transparent);
   border-radius: 8px;
-  background: rgba(217, 119, 6, var(--hour-alpha));
+  background: color-mix(in srgb, var(--warn) var(--hour-alpha), transparent);
 }
 
 .hour-cell b {

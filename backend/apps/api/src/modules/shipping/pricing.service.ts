@@ -94,7 +94,10 @@ export class PricingService {
 
   private assertPositiveFinite(value: number, label: string): void {
     if (!Number.isFinite(value) || value <= 0) {
-      throw new BizError(ApiCode.BAD_REQUEST, `定价参数非法：${label}必须为正数`);
+      throw new BizError(
+        ApiCode.BAD_REQUEST,
+        `定价参数非法：${label}必须为正数`,
+      );
     }
   }
 

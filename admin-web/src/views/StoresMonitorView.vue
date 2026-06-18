@@ -1,5 +1,6 @@
 <script setup lang="ts">
 import { computed, onMounted, ref } from "vue";
+import { ElMessage } from "element-plus";
 import {
   Activity,
   AlertTriangle,
@@ -33,13 +34,27 @@ async function load() {
     const result = await monitorStoresApi({ page: 1, pageSize: 50 });
     stores.value = result.items;
     total.value = result.total;
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载门店监控失败"));
   } finally {
     loading.value = false;
   }
 }
 
 async function openDetail(row: StoreMonitorRow) {
-  selected.value = await monitorStoreDetailApi(row.stationId);
+  try {
+    selected.value = await monitorStoreDetailApi(row.stationId);
+  } catch (error) {
+    ElMessage.error(errorText(error, "加载门店详情失败"));
+  }
+}
+
+function errorText(error: unknown, fallback: string) {
+  if (error && typeof error === "object" && "message" in error) {
+    const message = (error as { message?: unknown }).message;
+    if (typeof message === "string" && message) return message;
+  }
+  return fallback;
 }
 
 function closeDetail() {
@@ -145,11 +160,11 @@ function subscriptionClass(status?: string) {
           <td class="tnum">{{ item.metrics.inStockParcels }}</td>
           <td class="tnum">{{ item.metrics.exceptionCount }}</td>
           <td class="tnum">{{ money(item.metrics.gmv) }}</td>
-          <td style="text-align: right"><span class="op" @click="openDetail(item)">详情</span></td>
+          <td style="text-align: right"><button type="button" class="op" @click="openDetail(item)">详情</button></td>
         </tr>
       </tbody>
     </table>
-    <div v-if="stores.length === 0" class="empty">暂无门店数据</div>
+    <el-empty v-if="!loading && stores.length === 0" description="暂无门店数据" />
   </section>
 
   <div v-if="selected" class="mask" @click.self="closeDetail">

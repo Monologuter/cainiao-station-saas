@@ -128,33 +128,33 @@ function goOrders() {
     </view>
 
     <view class="mobile-card form-card">
-      <input v-model="form.stationId" class="mobile-input" placeholder="寄件门店 ID" />
+      <input v-model="form.stationId" class="mobile-input" placeholder="寄件门店 ID" aria-label="寄件门店 ID" />
       <view class="section-title">寄件人</view>
-      <input v-model="form.sender.name" class="mobile-input" placeholder="姓名" />
-      <input v-model="form.sender.phone" class="mobile-input" placeholder="手机号" type="number" />
+      <input v-model="form.sender.name" class="mobile-input" placeholder="姓名" aria-label="寄件人姓名" />
+      <input v-model="form.sender.phone" class="mobile-input" placeholder="手机号" type="number" aria-label="寄件人手机号" />
       <view class="triple-row">
-        <input v-model="form.sender.province" class="mobile-input" placeholder="省" />
-        <input v-model="form.sender.city" class="mobile-input" placeholder="市" />
-        <input v-model="form.sender.district" class="mobile-input" placeholder="区" />
+        <input v-model="form.sender.province" class="mobile-input" placeholder="省" aria-label="寄件人省份" />
+        <input v-model="form.sender.city" class="mobile-input" placeholder="市" aria-label="寄件人城市" />
+        <input v-model="form.sender.district" class="mobile-input" placeholder="区" aria-label="寄件人区县" />
       </view>
-      <input v-model="form.sender.address" class="mobile-input" placeholder="详细地址" />
+      <input v-model="form.sender.address" class="mobile-input" placeholder="详细地址" aria-label="寄件人详细地址" />
 
       <view class="section-title">收件人</view>
-      <input v-model="form.receiver.name" class="mobile-input" placeholder="姓名" />
-      <input v-model="form.receiver.phone" class="mobile-input" placeholder="手机号" type="number" />
+      <input v-model="form.receiver.name" class="mobile-input" placeholder="姓名" aria-label="收件人姓名" />
+      <input v-model="form.receiver.phone" class="mobile-input" placeholder="手机号" type="number" aria-label="收件人手机号" />
       <view class="triple-row">
-        <input v-model="form.receiver.province" class="mobile-input" placeholder="省" />
-        <input v-model="form.receiver.city" class="mobile-input" placeholder="市" />
-        <input v-model="form.receiver.district" class="mobile-input" placeholder="区" />
+        <input v-model="form.receiver.province" class="mobile-input" placeholder="省" aria-label="收件人省份" />
+        <input v-model="form.receiver.city" class="mobile-input" placeholder="市" aria-label="收件人城市" />
+        <input v-model="form.receiver.district" class="mobile-input" placeholder="区" aria-label="收件人区县" />
       </view>
-      <input v-model="form.receiver.address" class="mobile-input" placeholder="详细地址" />
+      <input v-model="form.receiver.address" class="mobile-input" placeholder="详细地址" aria-label="收件人详细地址" />
 
       <view class="section-title">物品信息</view>
       <view class="dual-row">
-        <input v-model="form.itemType" class="mobile-input" placeholder="物品类型" />
-        <input v-model.number="form.weightGram" class="mobile-input" placeholder="重量克数" type="number" />
+        <input v-model="form.itemType" class="mobile-input" placeholder="物品类型" aria-label="物品类型" />
+        <input v-model.number="form.weightGram" class="mobile-input" placeholder="重量克数" type="number" aria-label="物品重量（克）" />
       </view>
-      <input v-model.number="form.declaredValue" class="mobile-input" placeholder="声明价值，可选" type="number" />
+      <input v-model.number="form.declaredValue" class="mobile-input" placeholder="声明价值，可选" type="number" aria-label="声明价值（元，可选）" />
 
       <button class="primary-btn" type="button" :disabled="loading" @click="quote">
         {{ loading ? '比价中' : '获取报价' }}

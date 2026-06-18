@@ -1,6 +1,8 @@
 <script setup lang="ts">
 import { onMounted, reactive, ref } from 'vue';
-import { ElMessage, ElMessageBox } from 'element-plus';
+import { ElMessage } from 'element-plus/es/components/message/index';
+import { ElMessageBox } from 'element-plus/es/components/message-box/index';
+import { ElEmpty } from 'element-plus/es/components/empty/index';
 import { MessageSquareReply, RotateCcw, Star } from 'lucide-vue-next';
 import {
   listReviewsApi,
@@ -94,7 +96,8 @@ async function reply(row: ReviewItem) {
       <h2>评价列表</h2>
       <span class="muted">共 {{ total }} 条</span>
     </div>
-    <table>
+    <el-empty v-if="!loading && rows.length === 0" description="暂无评价" />
+    <table v-else>
       <thead>
         <tr>
           <th>评分</th>

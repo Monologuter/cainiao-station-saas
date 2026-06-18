@@ -11,7 +11,7 @@ describe('CircuitBreakerService', () => {
   };
 
   it('opens after the failure threshold and short-circuits to fallback', async () => {
-    let now = 0;
+    const now = 0;
     const breaker = new CircuitBreakerService();
     breaker.useClock(() => now);
 

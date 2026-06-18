@@ -1,0 +1,195 @@
+name: CI
+
+# OPS-3: continuous integration for the 菜鸟驿站 SaaS monorepo.
+# Four independent jobs run in parallel:
+#   - backend     : NestJS + Prisma (unit + e2e against real PG/Redis)
+#   - ai-service  : FastAPI (pytest, mock providers)
+#   - frontends   : admin-web / station-web / user-app builds (matrix)
+#   - compose     : deploy/docker-compose.yml syntax validation
+
+on:
+  push:
+    branches: [main, master]
+  pull_request:
+    branches: [main, master]
+
+# Cancel superseded runs on the same ref to save CI minutes.
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # ---------------------------------------------------------------------------
+  # Backend: NestJS + Prisma. Boots real Postgres 16 + Redis 7 service
+  # containers, applies migrations, seeds the platform admin (e2e specs log in
+  # as admin/admin123456), then runs lint + unit tests + the serial e2e suite.
+  # ---------------------------------------------------------------------------
+  backend:
+    name: backend (nest + prisma)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: backend
+
+    services:
+      postgres:
+        image: postgres:16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: postgres
+        ports:
+          - 5432:5432
+        # Wait until PG accepts connections before steps run.
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+      redis:
+        image: redis:7
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 10s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      # The app role is the non-superuser `cainiao` (created below). RLS policies
+      # use FORCE ROW LEVEL SECURITY, so they apply even to the table owner —
+      # exactly the isolation the *-rls.e2e-spec.ts files assert.
+      DATABASE_URL: postgresql://cainiao:cainiao@localhost:5432/cainiao?schema=public
+      REDIS_URL: redis://localhost:6379
+      JWT_SECRET: ci-test-jwt-secret-not-for-production
+      JWT_EXPIRES_IN: 2h
+      AI_SERVICE_TOKEN: ci-test-ai-service-token
+      # Keep all external integrations on mock in CI (no sandbox credentials).
+      NOTIFY_SMS_PROVIDER: mock
+      NOTIFY_WECHAT_PROVIDER: mock
+      LOGISTICS_PROVIDER: mock
+      PAY_PROVIDER: mock
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: backend/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Provision app database role
+        # Mirrors backend/docker/postgres/init/001-create-app-db.sql, which the
+        # service container does not auto-run. Creates the cainiao role/db that
+        # DATABASE_URL points at. PGPASSWORD avoids an interactive prompt.
+        env:
+          PGPASSWORD: postgres
+        run: |
+          psql -h localhost -p 5432 -U postgres -d postgres \
+            -c "CREATE USER cainiao WITH PASSWORD 'cainiao' CREATEDB;" \
+            -c "CREATE DATABASE cainiao OWNER cainiao;"
+
+      - name: Apply database migrations
+        run: npx prisma migrate deploy
+
+      - name: Seed platform admin
+        run: npx prisma db seed
+
+      - name: Lint
+        # Reported but non-blocking for now: the repo has pre-existing lint debt
+        # (unused vars in several service/spec files) unrelated to test/CI work.
+        # Flip continue-on-error off once that backlog is cleared.
+        continue-on-error: true
+        run: npm run lint
+
+      - name: Unit tests
+        run: npm test
+
+      - name: E2E tests (serial)
+        # test:e2e runs with --runInBand so the whole suite shares a single Nest
+        # app + connection pool (avoids "too many clients" exhaustion).
+        run: npm run test:e2e
+
+  # ---------------------------------------------------------------------------
+  # AI service: FastAPI. Pure pytest with mock providers, no external deps.
+  # ---------------------------------------------------------------------------
+  ai-service:
+    name: ai-service (fastapi)
+    runs-on: ubuntu-latest
+    defaults:
+      run:
+        working-directory: ai-service
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+          cache: pip
+          cache-dependency-path: ai-service/requirements.txt
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Pytest
+        run: pytest
+
+  # ---------------------------------------------------------------------------
+  # Frontends: build each app. admin-web / station-web are Vue 3 + vue-tsc; the
+  # user-app is a uni-app (build via build:h5). Matrix so one failure is isolated.
+  # ---------------------------------------------------------------------------
+  frontends:
+    name: build ${{ matrix.app }}
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - app: admin-web
+            build: build
+          - app: station-web
+            build: build
+          - app: user-app
+            build: build:h5
+    defaults:
+      run:
+        working-directory: ${{ matrix.app }}
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 20
+          cache: npm
+          cache-dependency-path: ${{ matrix.app }}/package-lock.json
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Build
+        run: npm run ${{ matrix.build }}
+
+  # ---------------------------------------------------------------------------
+  # Compose: validate the production/single-host orchestration file parses.
+  # ---------------------------------------------------------------------------
+  compose:
+    name: docker-compose config check
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Validate deploy compose syntax
+        # The compose file marks JWT_SECRET / AI_SERVICE_TOKEN as required (:?),
+        # so interpolation needs them set even for a `config` syntax check.
+        # Dummy values — nothing is started here, only parsed.
+        env:
+          JWT_SECRET: ci-compose-check
+          AI_SERVICE_TOKEN: ci-compose-check
+        run: docker compose -f deploy/docker-compose.yml config -q

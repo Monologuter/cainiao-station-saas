@@ -1,37 +1,21 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
 import { ExpiryCheckProcessor } from '../apps/api/src/modules/billing/jobs/expiry-check.processor';
+import { getTestApp, getTestPrisma, closeTestApp } from './setup';
+import type { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
 
 describe('Billing full flow e2e', () => {
   let app: INestApplication;
   let expiryCheck: ExpiryCheckProcessor;
-  const prisma = new PrismaService();
+  let prisma: PrismaService;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
-    await prisma.$connect();
+    app = await getTestApp();
+    prisma = getTestPrisma();
     expiryCheck = app.get(ExpiryCheckProcessor);
   });
 
-  afterAll(async () => {
-    await app.close();
-    await prisma.$disconnect();
-  });
+  afterAll(() => closeTestApp());
 
   it('runs subscription, SMS usage, invoice, overdue suspension and payment recovery', async () => {
     const adminToken = await login('admin', 'admin123456');

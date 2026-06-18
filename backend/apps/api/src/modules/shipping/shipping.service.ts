@@ -247,7 +247,10 @@ export class ShippingService {
         return this.toOrderDto(order);
       }
       if (order.status !== 'CREATED') {
-        throw new BizError(ApiCode.SHIPPING_ILLEGAL_TRANSITION, '当前订单不可取消');
+        throw new BizError(
+          ApiCode.SHIPPING_ILLEGAL_TRANSITION,
+          '当前订单不可取消',
+        );
       }
       const updated = await tx.shipOrder.update({
         where: { id },
@@ -338,11 +341,15 @@ export class ShippingService {
         where: { consumerId: order.consumerId },
       });
     });
-    const coupon: any = await this.coupons.verifyForMember(member.id, couponId, {
-      usedRefType: 'ship_order',
-      usedRefId: order.id,
-      idempotencyKey: `ship-coupon:${order.id}:${couponId}`,
-    });
+    const coupon: any = await this.coupons.verifyForMember(
+      member.id,
+      couponId,
+      {
+        usedRefType: 'ship_order',
+        usedRefId: order.id,
+        idempotencyKey: `ship-coupon:${order.id}:${couponId}`,
+      },
+    );
     const template = coupon.template;
     if (!['SHIP', 'ALL'].includes(template.scene)) {
       throw new BizError(ApiCode.BAD_REQUEST, '优惠券不适用于寄件');

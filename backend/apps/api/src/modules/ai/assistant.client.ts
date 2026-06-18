@@ -22,7 +22,10 @@ const BREAKER_OPTIONS = {
 export class AssistantServiceUnavailableError extends Error {
   readonly code = 'AI_SERVICE_UNAVAILABLE';
 
-  constructor(message: string, readonly cause?: unknown) {
+  constructor(
+    message: string,
+    readonly cause?: unknown,
+  ) {
     super(message);
     this.name = 'AssistantServiceUnavailableError';
   }
@@ -84,7 +87,10 @@ export class AssistantClient {
 
   private async callAiService(path: string, payload: Record<string, unknown>) {
     const controller = new AbortController();
-    const timeout = setTimeout(() => controller.abort(), this.resolveTimeoutMs());
+    const timeout = setTimeout(
+      () => controller.abort(),
+      this.resolveTimeoutMs(),
+    );
     try {
       const response = await fetch(`${this.baseUrl}${path}`, {
         method: 'POST',

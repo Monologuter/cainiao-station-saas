@@ -1,7 +1,4 @@
-import {
-  computeStationScope,
-  resolveStationFilter,
-} from './station-scope';
+import { computeStationScope, resolveStationFilter } from './station-scope';
 
 describe('computeStationScope', () => {
   it('平台用户不受门店限制', () => {

@@ -210,7 +210,9 @@ describe('ExceptionService', () => {
           slotId: 'slot1',
         }),
         updateMany: jest.fn().mockResolvedValue({ count: 1 }),
-        findUnique: jest.fn().mockResolvedValue({ id: 'p1', status: 'RETURNED' }),
+        findUnique: jest
+          .fn()
+          .mockResolvedValue({ id: 'p1', status: 'RETURNED' }),
       },
       slot: { updateMany: jest.fn().mockResolvedValue({ count: 1 }) },
       parcelEvent: { create: jest.fn() },

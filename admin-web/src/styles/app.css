@@ -20,8 +20,12 @@
   --ok: #16a34a;
   --ok-soft: #ecfdf3;
   --warn: #d97706;
+  --warn-soft: #fef3c7;
   --danger: #dc2626;
   --danger-soft: #fef2f2;
+  --gray-soft: #f1f5f9;
+  --purple: #7c5cfc;
+  --purple-soft: #efebff;
   --radius: 12px;
   --radius-sm: 9px;
   --shadow: 0 1px 3px rgba(16, 24, 40, 0.06), 0 1px 2px rgba(16, 24, 40, 0.04);
@@ -396,19 +400,19 @@ th {
 }
 
 .tag.amber {
-  background: #fef3c7;
+  background: var(--warn-soft);
   color: var(--warn);
 }
 
 .tag.gray {
-  background: #f1f5f9;
+  background: var(--gray-soft);
   color: var(--muted);
 }
 
 .tag.purple,
 .tag.method {
-  background: #efebff;
-  color: #7c5cfc;
+  background: var(--purple-soft);
+  color: var(--purple);
 }
 
 .tag .d {
@@ -430,10 +434,20 @@ th {
 }
 
 .op {
+  padding: 0;
+  border: 0;
+  background: transparent;
   color: var(--primary);
   cursor: pointer;
+  font: inherit;
   font-size: 12.5px;
   font-weight: 600;
+}
+
+.op:focus-visible {
+  outline: 2px solid var(--primary);
+  outline-offset: 2px;
+  border-radius: 4px;
 }
 
 .op + .op {
@@ -627,13 +641,13 @@ th {
 }
 
 .kpi .lab i.amber {
-  background: #fef3c7;
+  background: var(--warn-soft);
   color: var(--warn);
 }
 
 .kpi .lab i.purple {
-  background: #efebff;
-  color: #7c5cfc;
+  background: var(--purple-soft);
+  color: var(--purple);
 }
 
 .delta.warn {

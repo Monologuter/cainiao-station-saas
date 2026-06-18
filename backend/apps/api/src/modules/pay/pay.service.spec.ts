@@ -329,7 +329,8 @@ function makeTx(state: any) {
       }),
       findFirst: jest.fn(async ({ where }) =>
         state.payments.find((payment: any) => {
-          if (where.tenantId && payment.tenantId !== where.tenantId) return false;
+          if (where.tenantId && payment.tenantId !== where.tenantId)
+            return false;
           if (where.outTradeNo && payment.outTradeNo !== where.outTradeNo) {
             return false;
           }

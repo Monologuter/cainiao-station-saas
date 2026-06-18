@@ -103,9 +103,7 @@ export class MemberCenterController {
   }
 
   @Get('points/rank')
-  async pointRank(
-    @Headers('authorization') authorization: string | undefined,
-  ) {
+  async pointRank(@Headers('authorization') authorization: string | undefined) {
     const { member } = await this.member.requireMember(authorization);
     return this.points.getRankForMember(member.id);
   }

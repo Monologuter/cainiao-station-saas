@@ -752,6 +752,55 @@ page {
   text-align: center;
 }
 
+.retry-link {
+  color: var(--primary);
+  font-weight: 800;
+}
+
+/* ---------- 列表加载骨架 ---------- */
+.parcel-skeleton {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.skeleton-card {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 16px;
+}
+
+.skeleton-line {
+  height: 14px;
+  border-radius: var(--radius-pill);
+  background: var(--neutral-soft);
+  animation: skeleton-pulse 1.2s ease-in-out infinite;
+}
+
+.skeleton-line.lg {
+  width: 60%;
+  height: 22px;
+}
+
+.skeleton-line.md {
+  width: 80%;
+}
+
+.skeleton-line.sm {
+  width: 40%;
+}
+
+@keyframes skeleton-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.45;
+  }
+}
+
 .tracking-head {
   display: flex;
   flex-direction: column;

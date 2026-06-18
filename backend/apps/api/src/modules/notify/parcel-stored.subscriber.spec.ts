@@ -22,7 +22,9 @@ describe('ParcelStoredSubscriber', () => {
   }
 
   it('subscribes to ParcelStored', () => {
-    const eventBus = { subscribe: jest.fn() } as unknown as jest.Mocked<EventBus>;
+    const eventBus = {
+      subscribe: jest.fn(),
+    } as unknown as jest.Mocked<EventBus>;
     const queue = { add: jest.fn() } as unknown as Queue;
 
     new ParcelStoredSubscriber(eventBus, queue).onModuleInit();
@@ -35,7 +37,9 @@ describe('ParcelStoredSubscriber', () => {
 
   it('enqueues a notify job with retry + exponential backoff instead of sending inline', async () => {
     const eventBus = { subscribe: jest.fn() } as any;
-    const queue = { add: jest.fn().mockResolvedValue(undefined) } as unknown as Queue;
+    const queue = {
+      add: jest.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
     const subscriber = new ParcelStoredSubscriber(eventBus, queue);
 
     await subscriber.onParcelStored(buildEvent());
@@ -60,7 +64,9 @@ describe('ParcelStoredSubscriber', () => {
 
   it('uses a stable parcel-scoped jobId so redelivered events do not double-enqueue', async () => {
     const eventBus = { subscribe: jest.fn() } as any;
-    const queue = { add: jest.fn().mockResolvedValue(undefined) } as unknown as Queue;
+    const queue = {
+      add: jest.fn().mockResolvedValue(undefined),
+    } as unknown as Queue;
     const subscriber = new ParcelStoredSubscriber(eventBus, queue);
 
     await subscriber.onParcelStored(buildEvent());

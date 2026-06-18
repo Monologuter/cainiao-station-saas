@@ -1,31 +1,18 @@
-import { INestApplication, ValidationPipe } from '@nestjs/common';
-import { Test } from '@nestjs/testing';
+import { INestApplication } from '@nestjs/common';
 import * as request from 'supertest';
-import { AppModule } from '../apps/api/src/app.module';
-import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
-import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
-import { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import type { PrismaService } from '../apps/api/src/core/prisma/prisma.service';
+import { getTestApp, getTestPrisma, closeTestApp } from './setup';
 
 describe('Platform monitor API e2e', () => {
   let app: INestApplication;
   let prisma: PrismaService;
 
   beforeAll(async () => {
-    const mod = await Test.createTestingModule({
-      imports: [AppModule],
-    }).compile();
-    app = mod.createNestApplication();
-    app.setGlobalPrefix('api');
-    app.useGlobalPipes(
-      new ValidationPipe({ whitelist: true, transform: true }),
-    );
-    app.useGlobalInterceptors(new ResponseInterceptor());
-    app.useGlobalFilters(new AllExceptionsFilter());
-    await app.init();
-    prisma = app.get(PrismaService);
+    app = await getTestApp();
+    prisma = getTestPrisma();
   });
 
-  afterAll(() => app.close());
+  afterAll(() => closeTestApp());
 
   it('returns platform overview, store health list, and store drilldown', async () => {
     const adminToken = await login('admin', 'admin123456');
