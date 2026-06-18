@@ -1,8 +1,10 @@
 import { Injectable } from '@nestjs/common';
 import { JwtService } from '@nestjs/jwt';
+import { randomUUID } from 'node:crypto';
 import * as argon2 from 'argon2';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { PrismaService } from '../../core/prisma/prisma.service';
+import { RedisService } from '../../core/redis/redis.service';
 
 export interface MenuItem {
   code: string;
@@ -18,6 +20,7 @@ export interface MenuGroup {
   group: string;
   items: MenuItem[];
 }
+const REFRESH_TTL_SECONDS = 7 * 24 * 60 * 60;
 
 const MENU_GROUPS: MenuGroup[] = [
   {
@@ -126,6 +129,7 @@ export class AuthService {
   constructor(
     private readonly prisma: PrismaService,
     private readonly jwt: JwtService,
+    private readonly redis: RedisService,
   ) {}
 
   async login(username: string, password: string) {
@@ -145,15 +149,17 @@ export class AuthService {
 
     const roles = user.roles.map((item) => item.role.code);
     const isPlatform = user.type === 'PLATFORM';
-    const accessToken = await this.jwt.signAsync({
-      sub: user.id,
-      tenantId: user.tenantId,
+    const accessToken = await this.signAccessToken(
+      user.id,
+      user.tenantId,
       roles,
       isPlatform,
-    });
+    );
+    const refreshToken = await this.issueRefreshToken(user.id);
 
     return {
       accessToken,
+      refreshToken,
       user: {
         id: user.id,
         username: user.username,
@@ -164,11 +170,152 @@ export class AuthService {
     };
   }
 
+  async refresh(refreshToken: string) {
+    const payload = await this.verifyRefresh(refreshToken);
+    const client = this.redis.getClient();
+    const sessionKey = this.refreshKey(payload.jti);
+    const session = await client.get(sessionKey);
+    if (!session) {
+      await this.revokeUserSessions(payload.sub);
+      throw new BizError(ApiCode.UNAUTHORIZED, 'refresh token 已失效');
+    }
+
+    await client.del(sessionKey);
+    await client.srem(this.userSessionsKey(payload.sub), payload.jti);
+
+    const user = await this.loadUserById(payload.sub);
+    const roles = user.roles.map((item) => item.role.code);
+    const isPlatform = user.type === 'PLATFORM';
+    return {
+      accessToken: await this.signAccessToken(
+        user.id,
+        user.tenantId,
+        roles,
+        isPlatform,
+      ),
+      refreshToken: await this.issueRefreshToken(user.id),
+      user: {
+        id: user.id,
+        username: user.username,
+        tenantId: user.tenantId,
+        roles,
+        isPlatform,
+      },
+    };
+  }
+
+  async logout(refreshToken: string) {
+    const payload = await this.verifyRefresh(refreshToken);
+    const client = this.redis.getClient();
+    await client.del(this.refreshKey(payload.jti));
+    await client.srem(this.userSessionsKey(payload.sub), payload.jti);
+    return { loggedOut: true };
+  }
+
+  async changePassword(
+    userId: string,
+    oldPassword: string,
+    newPassword: string,
+  ) {
+    const user = await this.loadUserById(userId);
+    if (!(await argon2.verify(user.passwordHash, oldPassword))) {
+      throw new BizError(ApiCode.UNAUTHORIZED, '原密码错误');
+    }
+
+    const passwordHash = await argon2.hash(newPassword);
+    await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      await tx.user.update({ where: { id: userId }, data: { passwordHash } });
+    });
+    await this.revokeUserSessions(userId);
+    return { changed: true };
+  }
+
   menusFor(perms: string[]): MenuGroup[] {
     const owned = new Set(perms);
     return MENU_GROUPS.map((group) => ({
       ...group,
       items: group.items.filter((item) => !item.perm || owned.has(item.perm)),
     })).filter((group) => group.items.length > 0);
+  }
+
+  private async loadUserById(id: string) {
+    const user = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.user.findUnique({
+        where: { id },
+        include: { roles: { include: { role: true } } },
+      });
+    });
+    if (!user) {
+      throw new BizError(ApiCode.UNAUTHORIZED, '用户不存在');
+    }
+    return user;
+  }
+
+  private signAccessToken(
+    userId: string,
+    tenantId: string | null,
+    roles: string[],
+    isPlatform: boolean,
+  ) {
+    return this.jwt.signAsync({
+      sub: userId,
+      tenantId,
+      roles,
+      isPlatform,
+    });
+  }
+
+  private async issueRefreshToken(userId: string) {
+    const jti = randomUUID();
+    const token = await this.jwt.signAsync(
+      { sub: userId, jti, typ: 'refresh' },
+      { expiresIn: `${REFRESH_TTL_SECONDS}s` },
+    );
+    const client = this.redis.getClient();
+    await client.set(
+      this.refreshKey(jti),
+      JSON.stringify({ userId, issuedAt: new Date().toISOString() }),
+      'EX',
+      REFRESH_TTL_SECONDS,
+    );
+    await client.sadd(this.userSessionsKey(userId), jti);
+    await client.expire(this.userSessionsKey(userId), REFRESH_TTL_SECONDS);
+    return token;
+  }
+
+  private async verifyRefresh(refreshToken: string) {
+    try {
+      const payload = await this.jwt.verifyAsync(refreshToken);
+      if (payload?.typ !== 'refresh' || !payload.sub || !payload.jti) {
+        throw new Error('invalid refresh token');
+      }
+      return payload as { sub: string; jti: string; typ: 'refresh' };
+    } catch {
+      throw new BizError(ApiCode.UNAUTHORIZED, 'refresh token 无效');
+    }
+  }
+
+  private async revokeUserSessions(userId: string) {
+    const client = this.redis.getClient();
+    const setKey = this.userSessionsKey(userId);
+    const sessionIds = await client.smembers(setKey);
+    if (sessionIds.length > 0) {
+      await client.del(...sessionIds.map((jti) => this.refreshKey(jti)));
+    }
+    await client.del(setKey);
+  }
+
+  private refreshKey(jti: string) {
+    return `auth:refresh:${jti}`;
+  }
+
+  private userSessionsKey(userId: string) {
+    return `auth:user-sessions:${userId}`;
   }
 }

@@ -13,6 +13,20 @@ class LoginDto {
   password: string;
 }
 
+class RefreshDto {
+  @IsString()
+  refreshToken: string;
+}
+
+class ChangePasswordDto {
+  @IsString()
+  oldPassword: string;
+
+  @IsString()
+  @MinLength(6)
+  newPassword: string;
+}
+
 @Controller('auth')
 export class AuthController {
   constructor(private readonly auth: AuthService) {}
@@ -28,6 +42,27 @@ export class AuthController {
   @Post('login')
   login(@Body() dto: LoginDto) {
     return this.auth.login(dto.username, dto.password);
+  }
+
+  @Public()
+  @Post('refresh')
+  refresh(@Body() dto: RefreshDto) {
+    return this.auth.refresh(dto.refreshToken);
+  }
+
+  @Public()
+  @Post('logout')
+  logout(@Body() dto: RefreshDto) {
+    return this.auth.logout(dto.refreshToken);
+  }
+
+  @Post('change-password')
+  changePassword(@CurrentUser() user: any, @Body() dto: ChangePasswordDto) {
+    return this.auth.changePassword(
+      user.userId,
+      dto.oldPassword,
+      dto.newPassword,
+    );
   }
 
   @Get('me')
