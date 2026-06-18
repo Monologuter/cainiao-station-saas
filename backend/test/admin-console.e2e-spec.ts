@@ -4,7 +4,6 @@ import * as request from 'supertest';
 import { AppModule } from '../apps/api/src/app.module';
 import { AllExceptionsFilter } from '../apps/api/src/core/http/all-exceptions.filter';
 import { ResponseInterceptor } from '../apps/api/src/core/http/response.interceptor';
-import { ApiCode } from '../apps/api/src/core/http/api-code';
 import { ChannelResolver } from '../apps/api/src/modules/config/channel-resolver';
 
 describe('Admin console smoke e2e', () => {
@@ -32,33 +31,36 @@ describe('Admin console smoke e2e', () => {
     const adminToken = await login('admin', 'admin123456');
     const boss = await openTenant(adminToken);
 
-    await request(app.getHttpServer())
-      .patch('/api/admin/config/channels/sms')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ provider: 'tencent', enabled: true, fallbackProvider: 'mock' })
-      .expect(200);
+    try {
+      await request(app.getHttpServer())
+        .patch('/api/admin/config/channels/sms')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ provider: 'tencent', enabled: true, fallbackProvider: 'mock' })
+        .expect(200);
 
-    await expect(channelResolver.resolve('sms')).rejects.toMatchObject({
-      code: ApiCode.NOT_IMPLEMENTED,
-    });
+      await expect(channelResolver.resolve('sms')).resolves.toMatchObject({
+        channel: 'sms',
+        provider: 'tencent',
+      });
 
-    await waitForAudit();
-    const audits = await request(app.getHttpServer())
-      .get('/api/admin/audit-logs')
-      .query({
-        action: 'config.channel.update',
-        resourceType: 'channel_config',
-        result: 'SUCCESS',
-      })
-      .set('Authorization', `Bearer ${adminToken}`)
-      .expect(200);
-    expect(audits.body.data.items.length).toBeGreaterThan(0);
-
-    await request(app.getHttpServer())
-      .patch('/api/admin/config/channels/sms')
-      .set('Authorization', `Bearer ${adminToken}`)
-      .send({ provider: 'mock', enabled: true, fallbackProvider: 'mock' })
-      .expect(200);
+      await waitForAudit();
+      const audits = await request(app.getHttpServer())
+        .get('/api/admin/audit-logs')
+        .query({
+          action: 'config.channel.update',
+          resourceType: 'channel_config',
+          result: 'SUCCESS',
+        })
+        .set('Authorization', `Bearer ${adminToken}`)
+        .expect(200);
+      expect(audits.body.data.items.length).toBeGreaterThan(0);
+    } finally {
+      await request(app.getHttpServer())
+        .patch('/api/admin/config/channels/sms')
+        .set('Authorization', `Bearer ${adminToken}`)
+        .send({ provider: 'mock', enabled: true, fallbackProvider: 'mock' })
+        .expect(200);
+    }
     await expect(channelResolver.resolve('sms')).resolves.toMatchObject({
       channel: 'sms',
       provider: 'mock',

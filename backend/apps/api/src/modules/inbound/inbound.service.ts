@@ -62,6 +62,8 @@ export class InboundService {
       parcelId: parcel.id,
       pickupCode: parcel.pickupCode,
       slotCode: parcel.slot?.code ?? null,
+      slotSource: 'RULE_FALLBACK',
+      slotReasons: [],
       status: parcel.status,
     };
   }

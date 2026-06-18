@@ -94,6 +94,8 @@ describe('InboundService', () => {
       parcelId: 'p1',
       pickupCode: '1234',
       slotCode: 'A-01',
+      slotSource: 'RULE_FALLBACK',
+      slotReasons: [],
       status: 'STORED',
     });
     expect(parcelService.create).not.toHaveBeenCalled();

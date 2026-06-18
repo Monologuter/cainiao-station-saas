@@ -90,7 +90,9 @@ export class InboundOcrService {
   async recognizeBatch(input: RecognizeBatchInput) {
     const items = [];
     for (const image of input.images) {
-      items.push(await this.recognize({ stationId: input.stationId, ...image }));
+      items.push(
+        await this.recognize({ stationId: input.stationId, ...image }),
+      );
     }
     return { items };
   }
@@ -111,6 +113,8 @@ export class InboundOcrService {
         parcelId: recognition.parcel.id,
         pickupCode: recognition.parcel.pickupCode,
         slotCode: recognition.parcel.slot?.code ?? null,
+        slotSource: 'RULE_FALLBACK',
+        slotReasons: [],
         status: recognition.parcel.status,
       };
     }
