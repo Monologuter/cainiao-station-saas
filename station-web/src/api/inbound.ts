@@ -30,10 +30,14 @@ export interface InboundOcrRecognition {
     phoneTail?: InboundOcrField;
   };
   confidence: number;
-  status: 'SUCCEEDED' | 'NEED_REVIEW' | 'FAILED';
+  status: 'RECOGNIZED' | 'LOW_CONFIDENCE' | 'FAILED';
   needReview: boolean;
   reviewFields: string[];
   warnings: string[];
+}
+
+export interface InboundOcrBatchRecognition {
+  items: InboundOcrRecognition[];
 }
 
 export interface ConfirmInboundOcrPayload {
@@ -53,6 +57,18 @@ export function recognizeInboundOcrApi(file: File, stationId: string) {
   formData.append('stationId', stationId);
 
   return http.post<never, InboundOcrRecognition>('/inbound/ocr/recognize', formData, {
+    headers: { 'Content-Type': 'multipart/form-data' },
+  });
+}
+
+export function recognizeInboundOcrBatchApi(files: File[], stationId: string) {
+  const formData = new FormData();
+  for (const file of files) {
+    formData.append('images', file);
+  }
+  formData.append('stationId', stationId);
+
+  return http.post<never, InboundOcrBatchRecognition>('/inbound/ocr/recognize-batch', formData, {
     headers: { 'Content-Type': 'multipart/form-data' },
   });
 }

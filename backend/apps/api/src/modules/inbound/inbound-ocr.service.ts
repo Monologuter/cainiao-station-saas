@@ -15,6 +15,11 @@ interface RecognizeInput {
   contentType: string;
 }
 
+interface RecognizeBatchInput {
+  stationId: string;
+  images: Array<Omit<RecognizeInput, 'stationId'>>;
+}
+
 interface ConfirmInput {
   recognitionId: string;
   waybillNo: string;
@@ -80,6 +85,14 @@ export class InboundOcrService {
       reviewFields: mapped.reviewFields,
       warnings: mapped.warnings,
     };
+  }
+
+  async recognizeBatch(input: RecognizeBatchInput) {
+    const items = [];
+    for (const image of input.images) {
+      items.push(await this.recognize({ stationId: input.stationId, ...image }));
+    }
+    return { items };
   }
 
   async confirm(input: ConfirmInput) {

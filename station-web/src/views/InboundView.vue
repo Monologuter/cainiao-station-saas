@@ -14,6 +14,7 @@ import {
   confirmInboundOcrApi,
   inboundApi,
   recognizeInboundOcrApi,
+  recognizeInboundOcrBatchApi,
   type InboundOcrRecognition,
   type InboundResult,
 } from '@/api/inbound';
@@ -29,6 +30,7 @@ const loading = ref(false);
 const ocrLoading = ref(false);
 const ocrResult = ref<InboundOcrRecognition | null>(null);
 const selectedFileName = ref('');
+const ocrBatchItems = ref<Array<{ filename: string; result: InboundOcrRecognition }>>([]);
 const fileInput = ref<HTMLInputElement | null>(null);
 const recent = ref<InboundResult[]>([]);
 const lastResult = ref<InboundResult | null>(null);
@@ -61,12 +63,31 @@ function confidencePct(confidence?: number) {
   return `${Math.round(confidence * 100)}%`;
 }
 
-function resetOcr() {
+function resetOcr(options: { clearBatch?: boolean } = {}) {
   ocrResult.value = null;
   selectedFileName.value = '';
+  if (options.clearBatch !== false) {
+    ocrBatchItems.value = [];
+  }
   if (fileInput.value) {
     fileInput.value.value = '';
   }
+}
+
+function applyOcrResult(result: InboundOcrRecognition, filename: string) {
+  ocrResult.value = result;
+  selectedFileName.value = filename;
+  const { fields } = result;
+  if (fields.waybillNo?.value) {
+    form.waybillNo = fields.waybillNo.value;
+  }
+  if (fields.courierCode?.value && knownCarriers.has(fields.courierCode.value)) {
+    form.carrier = fields.courierCode.value;
+  }
+}
+
+function selectBatchItem(item: { filename: string; result: InboundOcrRecognition }) {
+  applyOcrResult(item.result, item.filename);
 }
 
 function chooseOcrImage() {
@@ -79,38 +100,53 @@ function chooseOcrImage() {
 
 async function recognizeOcr(event: Event) {
   const input = event.target as HTMLInputElement;
-  const file = input.files?.[0];
-  if (!file) {
+  const files = Array.from(input.files ?? []);
+  if (files.length === 0) {
     return;
   }
-  if (!file.type.startsWith('image/')) {
+  if (files.some((file) => !file.type.startsWith('image/'))) {
     ElMessage.error('请上传面单图片');
     input.value = '';
     return;
   }
-  if (file.size > 8 * 1024 * 1024) {
+  if (files.some((file) => file.size > 8 * 1024 * 1024)) {
     ElMessage.error('面单图片不能超过 8MB');
     input.value = '';
     return;
   }
 
   ocrLoading.value = true;
-  selectedFileName.value = file.name;
+  selectedFileName.value = files.length === 1 ? (files[0]?.name ?? '面单图片') : `${files.length} 张面单`;
   try {
     localStorage.setItem('cn_station_id', form.stationId);
-    const result = await recognizeInboundOcrApi(file, form.stationId);
-    ocrResult.value = result;
-    const { fields } = result;
-    if (fields.waybillNo?.value) {
-      form.waybillNo = fields.waybillNo.value;
+    const result =
+      files.length === 1
+        ? await recognizeInboundOcrApi(files[0], form.stationId)
+        : await recognizeInboundOcrBatchApi(files, form.stationId);
+    const isBatchResult = 'items' in result;
+    const firstResult = isBatchResult ? result.items[0] : result;
+    ocrBatchItems.value = isBatchResult
+      ? result.items.map((item, index) => ({
+          filename: files[index]?.name ?? `面单 ${index + 1}`,
+          result: item,
+        }))
+      : [];
+    if (!firstResult) {
+      ElMessage.warning('未识别到面单，请手动录入');
+      resetOcr();
+      return;
     }
-    if (fields.courierCode?.value && knownCarriers.has(fields.courierCode.value)) {
-      form.carrier = fields.courierCode.value;
-    }
-    if (result.status === 'FAILED') {
+    const firstFilename =
+      files.length === 1
+        ? (files[0]?.name ?? '面单图片')
+        : (ocrBatchItems.value[0]?.filename ?? selectedFileName.value);
+    applyOcrResult(firstResult, firstFilename);
+    if (firstResult.status === 'FAILED') {
       ElMessage.warning('识别失败，请手动录入后入库');
-    } else if (result.needReview) {
+    } else if (firstResult.needReview || ocrBatchItems.value.some((item) => item.result.needReview)) {
       ElMessage.warning('已识别，请复核低置信字段');
+    } else if (ocrBatchItems.value.length > 0) {
+      ElMessage.success(`已识别 ${ocrBatchItems.value.length} 张面单`);
     } else {
       ElMessage.success('面单识别完成');
     }
@@ -130,6 +166,7 @@ async function submit() {
   try {
     localStorage.setItem('cn_station_id', form.stationId);
     const isOcrInbound = Boolean(ocrResult.value);
+    const confirmedRecognitionId = ocrResult.value?.recognitionId;
     const result = ocrResult.value
       ? await confirmInboundOcrApi({
           recognitionId: ocrResult.value.recognitionId,
@@ -147,7 +184,19 @@ async function submit() {
     recent.value = [result, ...recent.value].slice(0, 8);
     form.waybillNo = '';
     form.receiverPhone = '';
-    resetOcr();
+    if (confirmedRecognitionId && ocrBatchItems.value.length > 0) {
+      ocrBatchItems.value = ocrBatchItems.value.filter(
+        (item) => item.result.recognitionId !== confirmedRecognitionId,
+      );
+      const next = ocrBatchItems.value[0];
+      if (next) {
+        applyOcrResult(next.result, next.filename);
+      } else {
+        resetOcr();
+      }
+    } else {
+      resetOcr();
+    }
     ElMessage.success(isOcrInbound ? 'OCR 入库成功' : '入库成功');
   } finally {
     loading.value = false;
@@ -184,6 +233,7 @@ async function submit() {
             class="visually-hidden"
             type="file"
             accept="image/*"
+            multiple
             @change="recognizeOcr"
           />
         </div>
@@ -199,7 +249,7 @@ async function submit() {
             </div>
             <div class="ocr-review-actions">
               <span :class="['tag', ocrStatusMeta.tag]"><span class="d"></span>{{ ocrStatusMeta.label }}</span>
-              <button class="icon-btn" type="button" title="清除识别结果" @click="resetOcr">
+              <button class="icon-btn" type="button" title="清除识别结果" @click="() => resetOcr()">
                 <RotateCcw />
               </button>
             </div>
@@ -225,6 +275,30 @@ async function submit() {
             <AlertTriangle />
             <span>{{ ocrResult.warnings.join(' / ') }}</span>
           </div>
+        </div>
+
+        <div v-if="ocrBatchItems.length" class="ocr-batch-panel">
+          <div class="ocr-batch-head">
+            <b>批量复核</b>
+            <span>{{ ocrBatchItems.length }} 张待确认</span>
+          </div>
+          <button
+            v-for="item in ocrBatchItems"
+            :key="item.result.recognitionId"
+            class="ocr-batch-item"
+            :class="{ on: item.result.recognitionId === ocrResult?.recognitionId }"
+            type="button"
+            @click="selectBatchItem(item)"
+          >
+            <FileText />
+            <span>
+              <b>{{ item.filename }}</b>
+              <small class="tnum">{{ item.result.fields.waybillNo?.value || '待补运单号' }}</small>
+            </span>
+            <i :class="['tag', item.result.needReview ? 'amber' : 'green']">
+              <span class="d"></span>{{ item.result.needReview ? '待复核' : '可确认' }}
+            </i>
+          </button>
         </div>
 
         <form class="form-grid inbound-form" @submit.prevent="submit">

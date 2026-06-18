@@ -1009,6 +1009,80 @@
   flex-shrink: 0;
 }
 
+.ocr-batch-panel {
+  display: grid;
+  gap: 8px;
+  margin: -4px 0 18px;
+}
+
+.ocr-batch-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.ocr-batch-head b {
+  font-size: 13px;
+}
+
+.ocr-batch-head span {
+  color: var(--muted);
+  font-size: 12px;
+}
+
+.ocr-batch-item {
+  display: grid;
+  grid-template-columns: 20px minmax(0, 1fr) auto;
+  gap: 10px;
+  align-items: center;
+  width: 100%;
+  min-height: 54px;
+  border: 1px solid var(--border);
+  border-radius: var(--radius-sm);
+  padding: 9px 11px;
+  color: var(--text);
+  background: var(--surface);
+  font-family: var(--font);
+  text-align: left;
+  cursor: pointer;
+  transition: 0.18s;
+}
+
+.ocr-batch-item:hover,
+.ocr-batch-item.on {
+  border-color: var(--primary);
+  background: var(--primary-soft);
+}
+
+.ocr-batch-item > svg {
+  width: 18px;
+  height: 18px;
+  color: var(--primary);
+}
+
+.ocr-batch-item span {
+  min-width: 0;
+}
+
+.ocr-batch-item b,
+.ocr-batch-item small {
+  display: block;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.ocr-batch-item b {
+  font-size: 12.5px;
+}
+
+.ocr-batch-item small {
+  margin-top: 3px;
+  color: var(--muted);
+  font-size: 11.5px;
+}
+
 .inbound-form {
   align-items: end;
 }

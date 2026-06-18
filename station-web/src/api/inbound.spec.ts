@@ -1,6 +1,10 @@
 import { describe, expect, it, vi } from 'vitest';
 import { http } from './http';
-import { confirmInboundOcrApi, recognizeInboundOcrApi } from './inbound';
+import {
+  confirmInboundOcrApi,
+  recognizeInboundOcrApi,
+  recognizeInboundOcrBatchApi,
+} from './inbound';
 
 describe('inbound api helpers', () => {
   it('posts OCR recognition as multipart form data', async () => {
@@ -33,5 +37,22 @@ describe('inbound api helpers', () => {
       courierCode: 'YTO',
       phone: '13800000000',
     });
+  });
+
+  it('posts OCR batch recognition as multipart form data', async () => {
+    const post = vi.spyOn(http, 'post').mockResolvedValue({});
+    const files = [
+      new File(['waybill-1'], 'waybill-1.jpg', { type: 'image/jpeg' }),
+      new File(['waybill-2'], 'waybill-2.jpg', { type: 'image/jpeg' }),
+    ];
+
+    await recognizeInboundOcrBatchApi(files, 'station-1');
+
+    expect(post).toHaveBeenCalledWith('/inbound/ocr/recognize-batch', expect.any(FormData), {
+      headers: { 'Content-Type': 'multipart/form-data' },
+    });
+    const formData = post.mock.calls[0]?.[1] as FormData;
+    expect(formData.getAll('images')).toEqual(files);
+    expect(formData.get('stationId')).toBe('station-1');
   });
 });

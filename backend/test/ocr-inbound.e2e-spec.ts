@@ -134,6 +134,48 @@ describe('OCR inbound e2e', () => {
     expect(record.parcelId).toBe(confirmed.body.data.parcelId);
   });
 
+  it('recognizes waybill images in a batch for review cards', async () => {
+    const adminToken = await login('admin', 'admin123456');
+    const phone = `132${Date.now().toString().slice(-8)}`;
+    const open = await request(app.getHttpServer())
+      .post('/api/platform/tenants')
+      .set('Authorization', `Bearer ${adminToken}`)
+      .send({
+        name: `OCR批量驿站${phone}`,
+        ownerName: 'OCR店长',
+        ownerPhone: phone,
+        ownerPassword: 'pw123456',
+      })
+      .expect(201);
+    const stationId = open.body.data.stationId;
+    const bossToken = await login(phone, 'pw123456');
+
+    const recognized = await request(app.getHttpServer())
+      .post('/api/inbound/ocr/recognize-batch')
+      .set('Authorization', `Bearer ${bossToken}`)
+      .field('stationId', stationId)
+      .attach('images', Buffer.from('fake image 1'), {
+        filename: 'label-1.jpg',
+        contentType: 'image/jpeg',
+      })
+      .attach('images', Buffer.from('fake image 2'), {
+        filename: 'label-2.jpg',
+        contentType: 'image/jpeg',
+      })
+      .expect(201);
+
+    expect(recognized.body.data.items).toHaveLength(2);
+    expect(recognized.body.data.items[0]).toMatchObject({
+      fields: {
+        waybillNo: 'SF1234567890123',
+        phoneTail: '8765',
+        courierCode: 'SF',
+      },
+      status: 'RECOGNIZED',
+      needReview: false,
+    });
+  });
+
   async function login(username: string, password: string) {
     const res = await request(app.getHttpServer())
       .post('/api/auth/login')
