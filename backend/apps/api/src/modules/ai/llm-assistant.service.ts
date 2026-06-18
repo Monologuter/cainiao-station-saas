@@ -17,4 +17,12 @@ export class LlmAssistantService {
       return this.fallback.ask(question, ctx);
     }
   }
+
+  async continueWithToolResult(
+    turnId: string,
+    toolName: string,
+    result: Record<string, unknown>,
+  ): Promise<AssistantAnswer> {
+    return this.client.continueWithToolResult(turnId, toolName, result);
+  }
 }

@@ -43,6 +43,7 @@ export class QueryMyParcelsTool implements AssistantTool {
         storedAt: parcel.storedAt,
         stationName: parcel.station?.name,
         slotCode: parcel.slot?.code,
+        slotLabel: parcel.slot?.code,
       })),
     };
   }

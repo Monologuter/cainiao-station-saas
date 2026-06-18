@@ -115,6 +115,10 @@ export class AssistantService {
     };
     const answer = await this.llm.ask(input.message, ctx);
     const events: AssistantEvent[] = [];
+    const textParts = [answer.text].filter(Boolean);
+    const citations = [...answer.citations];
+    let degraded = answer.degraded;
+    let mode = answer.mode;
 
     for (const toolCall of answer.toolCalls) {
       const toolResult = await this.executeTool(toolCall, ctx);
@@ -132,15 +136,29 @@ export class AssistantService {
           result: toolResult.data,
         },
       });
+      if (toolResult.turnId) {
+        const continued = await this.llm.continueWithToolResult(
+          toolResult.turnId,
+          toolResult.name,
+          toolResult.data,
+        );
+        if (continued.text) {
+          textParts.push(continued.text);
+        }
+        citations.push(...continued.citations);
+        degraded = degraded || continued.degraded;
+        mode = continued.mode;
+      }
     }
 
-    if (answer.text) {
+    const finalText = textParts.join('');
+    if (finalText) {
       events.push({
         event: 'delta',
-        data: { text: answer.text },
+        data: { text: finalText },
       });
     }
-    for (const citation of answer.citations) {
+    for (const citation of citations) {
       events.push({
         event: 'citation',
         data: citation as unknown as Record<string, unknown>,
@@ -150,9 +168,9 @@ export class AssistantService {
     const assistantMessage = await this.conversations.appendMessage({
       conversationId,
       role: 'ASSISTANT',
-      content: answer.text,
-      citations: answer.citations,
-      degraded: answer.degraded,
+      content: finalText,
+      citations,
+      degraded,
       latencyMs: Date.now() - startedAt,
     });
     events.push({
@@ -160,8 +178,8 @@ export class AssistantService {
       data: {
         conversationId,
         messageId: assistantMessage.id,
-        degraded: answer.degraded,
-        mode: answer.mode,
+        degraded,
+        mode,
         latencyMs: assistantMessage.latencyMs,
       },
     });
@@ -179,6 +197,8 @@ export class AssistantService {
         ? (toolCall.args as Record<string, unknown>)
         : {};
     const data = await this.tools.execute(name as AssistantToolName, args, ctx);
-    return { name, data };
+    const turnId =
+      typeof toolCall.turnId === 'string' ? toolCall.turnId : undefined;
+    return { name, data, turnId };
   }
 }

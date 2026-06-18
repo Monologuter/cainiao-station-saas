@@ -12,6 +12,7 @@ describe('Assistant API e2e', () => {
   let prisma: PrismaService;
   const assistantClient = {
     ask: jest.fn(),
+    continueWithToolResult: jest.fn(),
   };
 
   beforeAll(async () => {
@@ -36,6 +37,7 @@ describe('Assistant API e2e', () => {
 
   beforeEach(() => {
     assistantClient.ask.mockReset();
+    assistantClient.continueWithToolResult.mockReset();
   });
 
   it('streams assistant deltas, citations and done events', async () => {
@@ -138,6 +140,70 @@ describe('Assistant API e2e', () => {
     expect(res.text).toContain('event: citation');
   });
 
+  it('executes parcel tool calls and stores only masked tool payload', async () => {
+    const session = await createConsumerSession('assistant-tool');
+    await prepareSlots(session);
+    const inboundResult = await inbound(session, session.phone);
+    assistantClient.ask.mockResolvedValue({
+      text: '',
+      citations: [],
+      toolCalls: [
+        {
+          turnId: 'turn-parcel',
+          name: 'query_my_parcels',
+          args: {
+            status: 'STORED',
+            phone: '13999999999',
+            tenantId: 'evil-tenant',
+          },
+        },
+      ],
+      degraded: false,
+      mode: 'MOCK',
+    });
+    assistantClient.continueWithToolResult.mockImplementation(
+      async (_turnId: string, _toolName: string, result: any) => ({
+        text: `您有 ${result.items.length} 件包裹待取，取件码 ${result.items[0].pickupCode}。`,
+        citations: [],
+        toolCalls: [],
+        degraded: true,
+        mode: 'MOCK',
+      }),
+    );
+
+    const chat = await request(app.getHttpServer())
+      .post('/api/assistant/chat')
+      .set('Authorization', `Bearer ${session.token}`)
+      .set('Accept', 'text/event-stream')
+      .send({ tenantId: session.tenantId, message: '我的包裹到了吗？' })
+      .expect(201);
+    const done = parseSse(chat.text, 'done')[0];
+
+    expect(chat.text).toContain('event: tool');
+    expect(chat.text).toContain(inboundResult.pickupCode);
+    expect(assistantClient.continueWithToolResult).toHaveBeenCalledWith(
+      'turn-parcel',
+      'query_my_parcels',
+      expect.objectContaining({
+        items: [
+          expect.objectContaining({
+            pickupCode: inboundResult.pickupCode,
+            receiverPhoneMasked: `${session.phone.slice(0, 3)}****${session.phone.slice(-4)}`,
+          }),
+        ],
+      }),
+    );
+
+    const messages = await request(app.getHttpServer())
+      .get(`/api/assistant/conversations/${done.conversationId}/messages`)
+      .query({ tenantId: session.tenantId })
+      .set('Authorization', `Bearer ${session.token}`)
+      .expect(200);
+    const tool = messages.body.data.find((item: any) => item.role === 'TOOL');
+    expect(tool.content).toContain(inboundResult.pickupCode);
+    expect(tool.content).not.toContain(session.phone);
+  });
+
   async function createConsumerSession(label: string) {
     const adminLogin = await request(app.getHttpServer())
       .post('/api/auth/login')
@@ -147,6 +213,9 @@ describe('Assistant API e2e', () => {
     const phone = `136${Math.floor(Math.random() * 100000000)
       .toString()
       .padStart(8, '0')}`;
+    const ownerPhone = `133${Math.floor(Math.random() * 100000000)
+      .toString()
+      .padStart(8, '0')}`;
 
     const open = await request(app.getHttpServer())
       .post('/api/platform/tenants')
@@ -154,11 +223,14 @@ describe('Assistant API e2e', () => {
       .send({
         name: `${label}-${Date.now()}`,
         ownerName: '助手店长',
-        ownerPhone: `133${Math.floor(Math.random() * 100000000)
-          .toString()
-          .padStart(8, '0')}`,
+        ownerPhone,
         ownerPassword: 'pw123456',
       })
+      .expect(201);
+
+    const ownerLogin = await request(app.getHttpServer())
+      .post('/api/auth/login')
+      .send({ username: ownerPhone, password: 'pw123456' })
       .expect(201);
 
     await request(app.getHttpServer())
@@ -172,8 +244,45 @@ describe('Assistant API e2e', () => {
 
     return {
       tenantId: open.body.data.tenantId as string,
+      stationId: open.body.data.stationId as string,
+      ownerToken: ownerLogin.body.data.accessToken as string,
       token: verify.body.data.pickToken as string,
+      phone,
     };
+  }
+
+  async function prepareSlots(session: {
+    stationId: string;
+    ownerToken: string;
+  }) {
+    const shelf = await request(app.getHttpServer())
+      .post(`/api/stations/${session.stationId}/shelves`)
+      .set('Authorization', `Bearer ${session.ownerToken}`)
+      .send({ code: 'A', name: '助手货架', zone: 'A' })
+      .expect(201);
+
+    await request(app.getHttpServer())
+      .post(`/api/shelves/${shelf.body.data.id}/slots/batch`)
+      .set('Authorization', `Bearer ${session.ownerToken}`)
+      .send({ rows: 1, levels: 1, cols: 2 })
+      .expect(201);
+  }
+
+  async function inbound(
+    session: { stationId: string; ownerToken: string },
+    phone: string,
+  ) {
+    const res = await request(app.getHttpServer())
+      .post('/api/inbound')
+      .set('Authorization', `Bearer ${session.ownerToken}`)
+      .send({
+        stationId: session.stationId,
+        waybillNo: `AT${Date.now()}${Math.floor(Math.random() * 1000)}`,
+        carrier: 'YTO',
+        receiverPhone: phone,
+      })
+      .expect(201);
+    return res.body.data;
   }
 
   async function seedFaq() {

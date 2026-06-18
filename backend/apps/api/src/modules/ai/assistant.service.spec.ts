@@ -85,6 +85,32 @@ describe('Assistant services', () => {
     expect(answer).toMatchObject({ text: '基础 FAQ 答案', degraded: true });
   });
 
+  it('continues with tool result through the LLM assistant client', async () => {
+    const client = {
+      continueWithToolResult: jest.fn().mockResolvedValue({
+        text: '您有 1 件包裹待取，取件码 A123。',
+        citations: [],
+        toolCalls: [],
+        degraded: true,
+        mode: 'MOCK',
+      }),
+    };
+    const service = new LlmAssistantService(client as any, {} as any);
+
+    const answer = await service.continueWithToolResult(
+      'turn-1',
+      'query_my_parcels',
+      { items: [{ pickupCode: 'A123' }] },
+    );
+
+    expect(client.continueWithToolResult).toHaveBeenCalledWith(
+      'turn-1',
+      'query_my_parcels',
+      { items: [{ pickupCode: 'A123' }] },
+    );
+    expect(answer.text).toContain('A123');
+  });
+
   function runAsTenant<T>(fn: () => T) {
     return TenantContext.run(
       {
