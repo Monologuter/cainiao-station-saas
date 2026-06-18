@@ -28,4 +28,6 @@ export interface LogisticsProvider {
   readonly code: string;
   createWaybill(req: CreateWaybillRequest): Promise<CreateWaybillResult>;
   pollTracks(waybillNo: string): Promise<TrackNode[]>;
+  verifyCallback?(input: { payload: string; sign: string }): boolean;
+  parseCallbackTracks?(payload: string): TrackNode[];
 }

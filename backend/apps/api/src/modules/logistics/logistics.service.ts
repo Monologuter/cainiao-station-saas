@@ -139,22 +139,7 @@ export class LogisticsService {
         );
         const materializedNodes = Math.max(tracks.length - 1, 0);
         const missing = visibleNodes.slice(materializedNodes);
-        let nextSeq = tracks.length + 1;
-        for (const node of missing) {
-          await tx.logisticsTrack.create({
-            data: {
-              tenantId: ctx.tenantId,
-              shipOrderId: order.id,
-              waybillNo: order.waybillNo,
-              seq: nextSeq++,
-              nodeStatus: node.nodeStatus,
-              location: node.location,
-              description: node.description,
-              happenedAt: node.happenedAt,
-              source: 'MOCK',
-            },
-          });
-        }
+        await this.materializeTrackNodes(tx, order, tracks, missing);
 
         tracks = await tx.logisticsTrack.findMany({
           where: { tenantId: ctx.tenantId, shipOrderId: order.id },
@@ -165,6 +150,54 @@ export class LogisticsService {
 
       return tracks;
     });
+  }
+
+  async handleProviderCallback(
+    tenantId: string,
+    waybillNo: string,
+    input: { payload: string; sign: string },
+  ) {
+    if (!this.provider.verifyCallback?.(input)) {
+      throw new BizError(ApiCode.BAD_REQUEST, '物流回调验签失败');
+    }
+    const nodes = this.provider.parseCallbackTracks?.(input.payload) ?? [];
+
+    return TenantContext.run(
+      {
+        userId: 'logistics-callback',
+        tenantId,
+        roles: [],
+        isPlatform: false,
+      },
+      () =>
+        this.tenantPrisma.withTenant(async (tx) => {
+          const order = await tx.shipOrder.findFirst({
+            where: { tenantId, waybillNo, deletedAt: null },
+          });
+          if (!order) {
+            throw new BizError(ApiCode.NOT_FOUND, '寄件订单不存在');
+          }
+
+          const tracks = await tx.logisticsTrack.findMany({
+            where: { tenantId, shipOrderId: order.id },
+            orderBy: { seq: 'asc' },
+          });
+          await this.materializeTrackNodes(
+            tx,
+            order,
+            tracks,
+            nodes,
+            'PROVIDER',
+          );
+
+          const updatedTracks = await tx.logisticsTrack.findMany({
+            where: { tenantId, shipOrderId: order.id },
+            orderBy: { seq: 'asc' },
+          });
+          await this.syncOrderStatus(tx, order, updatedTracks);
+          return order;
+        }),
+    );
   }
 
   private requireContext(user?: RequestUser) {
@@ -228,6 +261,49 @@ export class LogisticsService {
       });
       order.status = 'IN_TRANSIT';
     }
+  }
+
+  private async materializeTrackNodes(
+    tx: any,
+    order: any,
+    existingTracks: any[],
+    nodes: any[],
+    source: 'MOCK' | 'PROVIDER' = this.provider.code === 'mock'
+      ? 'MOCK'
+      : 'PROVIDER',
+  ) {
+    const seen = new Set(
+      existingTracks.map((track) => this.trackFingerprint(track)),
+    );
+    let nextSeq = existingTracks.length + 1;
+    for (const node of nodes) {
+      const fingerprint = this.trackFingerprint(node);
+      if (seen.has(fingerprint)) {
+        continue;
+      }
+      seen.add(fingerprint);
+      await tx.logisticsTrack.create({
+        data: {
+          tenantId: order.tenantId,
+          shipOrderId: order.id,
+          waybillNo: order.waybillNo,
+          seq: nextSeq++,
+          nodeStatus: node.nodeStatus,
+          location: node.location,
+          description: node.description,
+          happenedAt: node.happenedAt,
+          source,
+        },
+      });
+    }
+  }
+
+  private trackFingerprint(track: any) {
+    const happenedAt =
+      track.happenedAt instanceof Date
+        ? track.happenedAt.toISOString()
+        : String(track.happenedAt ?? '');
+    return `${happenedAt}|${track.description ?? ''}`;
   }
 
   private withBreaker<T>(

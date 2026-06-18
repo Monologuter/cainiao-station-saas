@@ -139,13 +139,107 @@ describe('LogisticsService', () => {
     expect(state.order.status).toBe('DELIVERED');
     expect(state.order.deliveredAt).toEqual(new Date('2026-06-18T18:00:00Z'));
   });
+
+  it('accepts signed provider callbacks and deduplicates pushed nodes', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'COLLECTED',
+        waybillNo: 'K100-so1',
+      },
+      tracks: [
+        {
+          id: 'tr1',
+          shipOrderId: 'so1',
+          waybillNo: 'K100-so1',
+          seq: 1,
+          nodeStatus: 'COLLECTED',
+          description: '【揽收】快件已由驿站揽收',
+          happenedAt: new Date('2026-06-18T08:00:00Z'),
+        },
+      ],
+    };
+    const provider = {
+      verifyCallback: jest.fn(() => true),
+      parseCallbackTracks: jest.fn(() => [
+        {
+          nodeStatus: 'IN_TRANSIT',
+          location: '杭州转运中心',
+          description: '【运输中】快件离开始发城市',
+          happenedAt: new Date('2026-06-18T10:00:00Z'),
+        },
+        {
+          nodeStatus: 'DELIVERED',
+          location: '深圳南山',
+          description: '【签收】快件已签收',
+          happenedAt: new Date('2026-06-18T18:00:00Z'),
+        },
+      ]),
+    };
+    const service = new LogisticsService(
+      { withTenant: jest.fn(async (fn) => fn(makeTx(state))) } as any,
+      provider as any,
+    );
+
+    await expect(
+      service.handleProviderCallback('t1', 'K100-so1', {
+        payload: '{}',
+        sign: 'valid',
+      }),
+    ).resolves.toMatchObject({ status: 'DELIVERED' });
+    await service.handleProviderCallback('t1', 'K100-so1', {
+      payload: '{}',
+      sign: 'valid',
+    });
+
+    expect(state.tracks.map((track: any) => track.nodeStatus)).toEqual([
+      'COLLECTED',
+      'IN_TRANSIT',
+      'DELIVERED',
+    ]);
+    expect(state.order.status).toBe('DELIVERED');
+    expect(provider.verifyCallback).toHaveBeenCalledWith({
+      payload: '{}',
+      sign: 'valid',
+    });
+  });
+
+  it('rejects forged provider callbacks', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        status: 'COLLECTED',
+        waybillNo: 'K100-so1',
+      },
+      tracks: [],
+    };
+    const service = new LogisticsService(
+      { withTenant: jest.fn(async (fn) => fn(makeTx(state))) } as any,
+      {
+        verifyCallback: jest.fn(() => false),
+        parseCallbackTracks: jest.fn(),
+      } as any,
+    );
+
+    await expect(
+      service.handleProviderCallback('t1', 'K100-so1', {
+        payload: '{}',
+        sign: 'bad',
+      }),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+  });
 });
 
 function makeTx(state: any) {
   return {
     shipOrder: {
       findFirst: jest.fn(async ({ where }) => {
-        if (where.id !== state.order.id) return null;
+        if (where.id && where.id !== state.order.id) return null;
+        if (where.waybillNo && where.waybillNo !== state.order.waybillNo) {
+          return null;
+        }
         if (where.tenantId && where.tenantId !== state.order.tenantId) {
           return null;
         }

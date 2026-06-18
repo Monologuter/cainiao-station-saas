@@ -69,6 +69,11 @@ export class KuaiDi100Provider implements LogisticsProvider {
     return this.safeEqual(this.sign(input.payload), input.sign);
   }
 
+  parseCallbackTracks(payload: string) {
+    const body = JSON.parse(payload) as { data?: KuaiDi100TrackItem[] };
+    return (body.data ?? []).map((item) => this.toTrackNode(item));
+  }
+
   sign(payload: string) {
     return createHash('md5')
       .update(

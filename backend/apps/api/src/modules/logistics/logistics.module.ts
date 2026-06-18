@@ -6,11 +6,13 @@ import { AdminConfigModule } from '../config/admin-config.module';
 import { KuaiDi100Provider } from './kuaidi100.provider';
 import { LOGISTICS_PROVIDER } from './logistics-provider.interface';
 import { LogisticsProviderFactory } from './logistics-provider.factory';
+import { LogisticsController } from './logistics.controller';
 import { LogisticsService } from './logistics.service';
 import { MockLogisticsProvider } from './mock-logistics.provider';
 
 @Module({
   imports: [AdminConfigModule],
+  controllers: [LogisticsController],
   providers: [
     LogisticsService,
     LogisticsProviderFactory,
