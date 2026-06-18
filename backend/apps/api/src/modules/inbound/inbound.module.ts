@@ -7,6 +7,7 @@ import { AiModule } from '../ai/ai.module';
 import { FileModule } from '../file/file.module';
 import { ParcelService } from '../parcel/parcel.service';
 import { SlotAllocatorService } from '../station/slot-allocator.service';
+import { SlotRecommenderClient } from '../station/slot-recommender.client';
 import { InboundController } from './inbound.controller';
 import { InboundOcrController } from './inbound-ocr.controller';
 import { InboundOcrService } from './inbound-ocr.service';
@@ -22,6 +23,7 @@ import { PickupCodeService } from './pickup-code.service';
     PickupCodeService,
     ParcelService,
     SlotAllocatorService,
+    SlotRecommenderClient,
     PrismaService,
     TenantPrismaService,
     RedisService,

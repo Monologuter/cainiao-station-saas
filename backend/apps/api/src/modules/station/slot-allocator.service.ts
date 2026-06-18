@@ -1,13 +1,24 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import { ApiCode, BizError } from '../../core/http/api-code';
 import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { RedisLockService } from '../../core/redis/redis-lock.service';
+import {
+  SlotRecommendation,
+  SlotRecommenderClient,
+} from './slot-recommender.client';
+
+type OrderedSlotCandidate = {
+  candidate: any;
+  source: 'AI' | 'RULE_FALLBACK';
+  recommendation?: SlotRecommendation;
+};
 
 @Injectable()
 export class SlotAllocatorService {
   constructor(
     private readonly tenantPrisma: TenantPrismaService,
     private readonly locks: RedisLockService,
+    @Optional() private readonly recommender?: SlotRecommenderClient,
   ) {}
 
   async allocate(stationId: string, parcelId: string) {
@@ -17,7 +28,14 @@ export class SlotAllocatorService {
         throw new BizError(ApiCode.NO_FREE_SLOT, '库位已满');
       }
 
-      for (const candidate of candidates) {
+      const ordered = await this.orderCandidates(
+        tx,
+        stationId,
+        parcelId,
+        candidates,
+      );
+      for (const item of ordered) {
+        const candidate = item.candidate;
         const allocated = await this.locks.withLock(
           `lock:slot:${candidate.id}`,
           5000,
@@ -38,7 +56,14 @@ export class SlotAllocatorService {
             return tx.slot.findUniqueOrThrow({ where: { id: candidate.id } });
           },
         );
-        if (allocated) return allocated;
+        if (allocated) {
+          return {
+            ...allocated,
+            source: item.source,
+            score: item.recommendation?.score,
+            reasons: item.recommendation?.reasons,
+          };
+        }
       }
 
       throw new BizError(ApiCode.NO_FREE_SLOT, '库位已满');
@@ -70,7 +95,7 @@ export class SlotAllocatorService {
         deletedAt: null,
         shelf: { status: 'ACTIVE', deletedAt: null },
       },
-      take: 5,
+      take: 20,
       orderBy: [
         { rowNo: 'asc' },
         { levelNo: 'asc' },
@@ -78,5 +103,88 @@ export class SlotAllocatorService {
         { code: 'asc' },
       ],
     });
+  }
+
+  private async orderCandidates(
+    tx: any,
+    stationId: string,
+    parcelId: string,
+    candidates: any[],
+  ) {
+    const recommendations = await this.recommend(
+      tx,
+      stationId,
+      parcelId,
+      candidates,
+    );
+    if (!recommendations?.length) {
+      return candidates.map<OrderedSlotCandidate>((candidate) => ({
+        candidate,
+        source: 'RULE_FALLBACK' as const,
+      }));
+    }
+
+    const byId = new Map(
+      candidates.map((candidate) => [candidate.id, candidate]),
+    );
+    const ordered: OrderedSlotCandidate[] = recommendations
+      .map((recommendation) => ({
+        candidate: byId.get(recommendation.slotId),
+        recommendation,
+        source: 'AI' as const,
+      }))
+      .filter((item) => item.candidate);
+    const recommendedIds = new Set(ordered.map((item) => item.candidate.id));
+    for (const candidate of candidates) {
+      if (!recommendedIds.has(candidate.id)) {
+        ordered.push({
+          candidate,
+          source: 'RULE_FALLBACK' as const,
+          recommendation: undefined,
+        });
+      }
+    }
+    return ordered;
+  }
+
+  private async recommend(
+    tx: any,
+    stationId: string,
+    parcelId: string,
+    candidates: any[],
+  ): Promise<SlotRecommendation[] | null> {
+    if (!this.recommender) {
+      return null;
+    }
+    const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
+    try {
+      return await this.recommender.recommend({
+        stationId,
+        parcel: {
+          phoneTail: parcel?.receiverPhoneTail ?? '0000',
+          sizeClass: 'M',
+          inboundHour: (parcel?.createdAt ?? new Date()).getHours(),
+        },
+        candidates: candidates.map((slot, index) => ({
+          slotId: slot.id,
+          slotCode: slot.code,
+          sizeCapacity: this.sizeCapacity(slot),
+          distanceRank: index + 1,
+          heat: {
+            pickCount7d: 0,
+            hourHistogram: Array(24).fill(0),
+          },
+        })),
+      });
+    } catch {
+      return null;
+    }
+  }
+
+  private sizeCapacity(slot: any): 'S' | 'M' | 'L' {
+    const code = String(slot.code ?? '').toUpperCase();
+    if (code.includes('L')) return 'L';
+    if (code.includes('S')) return 'S';
+    return 'M';
   }
 }

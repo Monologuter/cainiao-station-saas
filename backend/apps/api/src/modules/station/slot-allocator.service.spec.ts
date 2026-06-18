@@ -56,6 +56,131 @@ describe('SlotAllocatorService', () => {
     );
   });
 
+  it('allocates the recommended slot before the rule-ordered first slot', async () => {
+    const candidates = [
+      { id: 'slot1', code: 'A-01', version: 0, rowNo: 1, levelNo: 1, colNo: 1 },
+      { id: 'slot2', code: 'B-01', version: 0, rowNo: 2, levelNo: 1, colNo: 1 },
+    ];
+    const tx = {
+      parcel: {
+        findUnique: jest.fn().mockResolvedValue({
+          id: 'parcel1',
+          receiverPhoneTail: '1234',
+          createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        }),
+      },
+      slot: {
+        findMany: jest.fn().mockResolvedValue(candidates),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({
+          ...candidates[1],
+          status: 'OCCUPIED',
+        }),
+      },
+    };
+    const recommender = {
+      recommend: jest
+        .fn()
+        .mockResolvedValue([
+          { slotId: 'slot2', score: 0.92, reasons: ['近门动线'] },
+        ]),
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const lock = { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any;
+    const service = new SlotAllocatorService(
+      tenantPrisma,
+      lock,
+      recommender as any,
+    );
+
+    await expect(
+      service.allocate('station1', 'parcel1'),
+    ).resolves.toMatchObject({
+      id: 'slot2',
+      source: 'AI',
+      score: 0.92,
+      reasons: ['近门动线'],
+    });
+    expect(tx.slot.updateMany).toHaveBeenCalledWith(
+      expect.objectContaining({
+        where: { id: 'slot2', status: 'FREE', version: 0 },
+      }),
+    );
+  });
+
+  it('tries the next recommended slot when the first recommendation loses the race', async () => {
+    const candidates = [
+      { id: 'slot1', code: 'A-01', version: 0 },
+      { id: 'slot2', code: 'A-02', version: 0 },
+    ];
+    const tx = {
+      parcel: {
+        findUnique: jest.fn().mockResolvedValue({
+          receiverPhoneTail: '1234',
+          createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        }),
+      },
+      slot: {
+        findMany: jest.fn().mockResolvedValue(candidates),
+        updateMany: jest
+          .fn()
+          .mockResolvedValueOnce({ count: 0 })
+          .mockResolvedValueOnce({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'slot2' }),
+      },
+    };
+    const recommender = {
+      recommend: jest.fn().mockResolvedValue([
+        { slotId: 'slot1', score: 0.9, reasons: [] },
+        { slotId: 'slot2', score: 0.8, reasons: [] },
+      ]),
+    };
+    const service = new SlotAllocatorService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any,
+      recommender as any,
+    );
+
+    await expect(
+      service.allocate('station1', 'parcel1'),
+    ).resolves.toMatchObject({
+      id: 'slot2',
+      source: 'AI',
+      score: 0.8,
+    });
+    expect(tx.slot.updateMany).toHaveBeenCalledTimes(2);
+  });
+
+  it('falls back to rule allocation when the recommender is unavailable', async () => {
+    const candidate = { id: 'slot1', code: 'A-01', version: 0 };
+    const tx = {
+      parcel: {
+        findUnique: jest.fn().mockResolvedValue({
+          receiverPhoneTail: '1234',
+          createdAt: new Date('2026-06-18T10:00:00.000Z'),
+        }),
+      },
+      slot: {
+        findMany: jest.fn().mockResolvedValue([candidate]),
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'slot1' }),
+      },
+    };
+    const recommender = { recommend: jest.fn().mockResolvedValue(null) };
+    const service = new SlotAllocatorService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      { withLock: jest.fn((_key, _ttl, fn) => fn()) } as any,
+      recommender as any,
+    );
+
+    await expect(
+      service.allocate('station1', 'parcel1'),
+    ).resolves.toMatchObject({
+      id: 'slot1',
+      source: 'RULE_FALLBACK',
+    });
+  });
+
   it('retries the next candidate when optimistic update loses the race', async () => {
     const candidates = [
       { id: 'slot1', version: 0 },
