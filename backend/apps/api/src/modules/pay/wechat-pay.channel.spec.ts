@@ -87,6 +87,81 @@ describe('WechatPayChannel', () => {
       }),
     ).toMatchObject({ status: 'FAILED' });
   });
+
+  it('refunds through WeChat Pay without exceeding the original amount', async () => {
+    const client = {
+      createTransaction: jest.fn(),
+      refund: jest.fn().mockResolvedValue({ refund_id: 'wx-refund-1' }),
+    };
+    const channel = new WechatPayChannel(client as any, {
+      appId: 'wx-app',
+      mchId: 'mch-1',
+      apiV3Key: 'secret',
+    });
+
+    await expect(
+      channel.refund({
+        outTradeNo: 'pay-key-1',
+        refundNo: 'refund-1',
+        amount: 1300,
+        refundAmount: 500,
+        reason: '用户取消',
+      }),
+    ).resolves.toMatchObject({
+      status: 'SUCCESS',
+      refundNo: 'refund-1',
+      raw: expect.objectContaining({ refundId: 'wx-refund-1' }),
+    });
+    expect(client.refund).toHaveBeenCalledWith({
+      out_trade_no: 'pay-key-1',
+      out_refund_no: 'refund-1',
+      reason: '用户取消',
+      amount: {
+        refund: 500,
+        total: 1300,
+        currency: 'CNY',
+      },
+    });
+
+    await expect(
+      channel.refund({
+        outTradeNo: 'pay-key-1',
+        refundNo: 'refund-2',
+        amount: 1300,
+        refundAmount: 1301,
+        reason: '超额退款',
+      }),
+    ).rejects.toThrow('退款金额不能超过原支付金额');
+  });
+
+  it('finds statement reconciliation differences', () => {
+    const channel = new WechatPayChannel({
+      createTransaction: jest.fn(),
+    } as any);
+
+    expect(
+      channel.reconcile(
+        [
+          { outTradeNo: 'pay-1', amount: 1300, status: 'SUCCESS' },
+          { outTradeNo: 'pay-2', amount: 900, status: 'SUCCESS' },
+          { outTradeNo: 'pay-3', amount: 500, status: 'SUCCESS' },
+        ],
+        [
+          { outTradeNo: 'pay-1', amount: 1300, status: 'SUCCESS' },
+          { outTradeNo: 'pay-2', amount: 800, status: 'SUCCESS' },
+          { outTradeNo: 'pay-3', amount: 500, status: 'REFUNDED' },
+          { outTradeNo: 'pay-4', amount: 100, status: 'SUCCESS' },
+        ],
+      ),
+    ).toEqual([
+      expect.objectContaining({ outTradeNo: 'pay-2', type: 'AMOUNT_MISMATCH' }),
+      expect.objectContaining({ outTradeNo: 'pay-3', type: 'STATUS_MISMATCH' }),
+      expect.objectContaining({
+        outTradeNo: 'pay-4',
+        type: 'MISSING_IN_SYSTEM',
+      }),
+    ]);
+  });
 });
 
 describe('PayChannelFactory', () => {

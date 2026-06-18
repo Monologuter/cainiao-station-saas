@@ -1,6 +1,15 @@
 import { createHmac } from 'node:crypto';
 import { Inject, Injectable, Optional } from '@nestjs/common';
-import { PayChannel, PayRequest, PayResult } from './pay-channel.interface';
+import {
+  PayChannel,
+  PayRequest,
+  PayResult,
+  ReconcileDifference,
+  ReconcilePayment,
+  ReconcileStatementRow,
+  RefundRequest,
+  RefundResult,
+} from './pay-channel.interface';
 
 export interface WechatPayClient {
   createTransaction(input: {
@@ -11,6 +20,12 @@ export interface WechatPayClient {
     notify_url: string;
     amount: { total: number; currency: 'CNY' };
   }): Promise<{ prepay_id?: string; code_url?: string }>;
+  refund?(input: {
+    out_trade_no: string;
+    out_refund_no: string;
+    reason: string;
+    amount: { refund: number; total: number; currency: 'CNY' };
+  }): Promise<{ refund_id?: string }>;
 }
 
 interface WechatPayOptions {
@@ -112,6 +127,83 @@ export class WechatPayChannel implements PayChannel {
         transactionId: body.transaction_id,
       },
     };
+  }
+
+  async refund(req: RefundRequest): Promise<RefundResult> {
+    if (req.refundAmount > req.amount) {
+      throw new Error('退款金额不能超过原支付金额');
+    }
+    const response = await this.client.refund?.({
+      out_trade_no: req.outTradeNo,
+      out_refund_no: req.refundNo,
+      reason: req.reason,
+      amount: {
+        refund: req.refundAmount,
+        total: req.amount,
+        currency: 'CNY',
+      },
+    });
+    return {
+      status: 'SUCCESS',
+      refundNo: req.refundNo,
+      raw: {
+        provider: this.code,
+        refundId: response?.refund_id,
+      },
+    };
+  }
+
+  reconcile(
+    systemPayments: ReconcilePayment[],
+    providerRows: ReconcileStatementRow[],
+  ): ReconcileDifference[] {
+    const differences: ReconcileDifference[] = [];
+    const providerByTradeNo = new Map(
+      providerRows.map((row) => [row.outTradeNo, row]),
+    );
+    const systemByTradeNo = new Map(
+      systemPayments.map((payment) => [payment.outTradeNo, payment]),
+    );
+
+    for (const payment of systemPayments) {
+      const provider = providerByTradeNo.get(payment.outTradeNo);
+      if (!provider) {
+        differences.push({
+          outTradeNo: payment.outTradeNo,
+          type: 'MISSING_IN_PROVIDER',
+          system: payment,
+        });
+        continue;
+      }
+      if (provider.amount !== payment.amount) {
+        differences.push({
+          outTradeNo: payment.outTradeNo,
+          type: 'AMOUNT_MISMATCH',
+          system: payment,
+          provider,
+        });
+        continue;
+      }
+      if (provider.status !== payment.status) {
+        differences.push({
+          outTradeNo: payment.outTradeNo,
+          type: 'STATUS_MISMATCH',
+          system: payment,
+          provider,
+        });
+      }
+    }
+
+    for (const row of providerRows) {
+      if (!systemByTradeNo.has(row.outTradeNo)) {
+        differences.push({
+          outTradeNo: row.outTradeNo,
+          type: 'MISSING_IN_SYSTEM',
+          provider: row,
+        });
+      }
+    }
+    return differences;
   }
 
   signCallback(payload: string, timestamp: string, nonce: string) {
