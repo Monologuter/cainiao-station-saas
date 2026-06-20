@@ -1,7 +1,7 @@
 import { createRouter, createWebHistory } from 'vue-router';
 import DefaultLayout from '@/layouts/DefaultLayout.vue';
 import { getStoredToken } from '@/api/http';
-import { availableRoutes } from '@/constants/routes';
+import { availableRoutes, stationRouteDefs } from '@/constants/routes';
 import { useAuthStore } from '@/stores/auth';
 import LoginView from '@/views/LoginView.vue';
 import OnboardingApplyView from '@/views/OnboardingApplyView.vue';
@@ -32,14 +32,16 @@ export const router = createRouter({
       name: 'Root',
       component: DefaultLayout,
       redirect: '/workbench',
-      children: [
-        {
-          path: 'workbench',
-          name: 'Workbench',
-          component: () => import('@/views/WorkbenchView.vue'),
-          meta: { title: '工作台' },
-        },
-      ],
+      children: stationRouteDefs.map((route) => ({
+        path: route.path,
+        name: route.name,
+        component: route.component,
+        meta: { title: route.title, perm: route.perm },
+      })),
+    },
+    {
+      path: '/:pathMatch(.*)*',
+      redirect: '/workbench',
     },
   ],
 });
@@ -70,6 +72,9 @@ export function resetDynamicRoutes() {
 
 router.beforeEach(async (to) => {
   const token = getStoredToken();
+  const matchedFallback = to.matched.some(
+    (record) => record.path === '/:pathMatch(.*)*',
+  );
   if (to.path === '/login') {
     return token ? '/workbench' : true;
   }
@@ -84,12 +89,16 @@ router.beforeEach(async (to) => {
   }
 
   const auth = useAuthStore();
-  if (!auth.routesReady) {
+  if (!auth.routesReady || matchedFallback) {
     try {
       await auth.loadProfile();
       addDynamicRoutes(auth.perms);
       auth.routesReady = true;
-      return { ...to, replace: true };
+      const resolved = router.resolve(to.fullPath);
+      const stillFallback = resolved.matched.some(
+        (record) => record.path === '/:pathMatch(.*)*',
+      );
+      return stillFallback ? '/workbench' : { ...to, replace: true };
     } catch {
       auth.logout();
       resetDynamicRoutes();

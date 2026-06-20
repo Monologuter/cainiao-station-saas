@@ -15,6 +15,8 @@ export interface TenantRow {
 export interface TenantListResult {
   list: TenantRow[];
   total: number;
+  page?: number;
+  size?: number;
 }
 
 export interface CreateTenantInput {
@@ -24,7 +26,12 @@ export interface CreateTenantInput {
   ownerPassword: string;
 }
 
-export function tenantsApi(query: { status?: string } = {}) {
+export function tenantsApi(query: {
+  status?: string;
+  keyword?: string;
+  page?: number;
+  size?: number;
+} = {}) {
   return http.get<never, TenantListResult>("/platform/tenants", {
     params: toAdminAnalyticsQueryParams(query),
   });

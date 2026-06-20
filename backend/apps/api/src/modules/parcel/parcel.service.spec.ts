@@ -637,6 +637,22 @@ describe('ParcelService.list 门店数据范围', () => {
     expect(lastWhere.value.stationId).toBeUndefined();
   });
 
+  it('支持按运单号模糊查询包裹', async () => {
+    const { service, lastWhere } = makeService();
+    await runAs(
+      {
+        userId: 'boss',
+        tenantId: 't1',
+        roles: ['店长'],
+        isPlatform: false,
+        allStations: true,
+        stations: [],
+      },
+      () => service.list({ waybillNo: 'BR1781' }),
+    );
+    expect(lastWhere.value.waybillNo).toEqual({ contains: 'BR1781' });
+  });
+
   it('未分配门店的店员被拒绝列全租户包裹（FORBIDDEN）', async () => {
     const { service } = makeService();
     await expect(

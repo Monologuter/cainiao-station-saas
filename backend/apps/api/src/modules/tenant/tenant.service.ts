@@ -78,20 +78,38 @@ const ZONES = [
 export class TenantService {
   constructor(private readonly prisma: PrismaService) {}
 
-  async listTenants(query: { status?: string } = {}) {
+  async listTenants(query: { status?: string; keyword?: string; page?: string; size?: string } = {}) {
     return this.prisma.$transaction(async (tx) => {
       await tx.$executeRawUnsafe(
         `SELECT set_config('app.bypass_rls', 'on', true)`,
       );
-      const where = query.status ? { status: query.status as any } : {};
-      const list = await tx.tenant.findMany({
-        where,
-        orderBy: { createdAt: 'desc' },
-        include: {
-          stations: { select: { id: true } },
-          users: { select: { id: true } },
-        },
-      });
+      const keyword = query.keyword?.trim();
+      const where: any = {};
+      if (query.status) {
+        where.status = query.status as any;
+      }
+      if (keyword) {
+        where.OR = [
+          { name: { contains: keyword, mode: 'insensitive' } },
+          { ownerName: { contains: keyword, mode: 'insensitive' } },
+          { contactPhone: { contains: keyword } },
+        ];
+      }
+      const page = Math.max(1, Number(query.page ?? 1) || 1);
+      const size = Math.min(100, Math.max(1, Number(query.size ?? 20) || 20));
+      const [list, total] = await Promise.all([
+        tx.tenant.findMany({
+          where,
+          orderBy: { createdAt: 'desc' },
+          skip: (page - 1) * size,
+          take: size,
+          include: {
+            stations: { select: { id: true } },
+            users: { select: { id: true } },
+          },
+        }),
+        tx.tenant.count({ where }),
+      ]);
       return {
         list: list.map((tenant) => ({
           id: tenant.id,
@@ -103,7 +121,9 @@ export class TenantService {
           userCount: tenant.users.length,
           createdAt: tenant.createdAt,
         })),
-        total: list.length,
+        total,
+        page,
+        size,
       };
     });
   }

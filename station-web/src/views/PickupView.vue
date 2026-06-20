@@ -1,7 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
-import { BadgeCheck, RotateCcw, ScanLine } from 'lucide-vue-next';
+import { BadgeCheck, ChevronLeft, ChevronRight, RotateCcw, ScanLine } from 'lucide-vue-next';
 import { listParcelsApi, parcelStatusMeta, type ParcelItem } from '@/api/parcel';
 import { canSubmitPickup, pickupApi, pickupResultText, type PickupResult } from '@/api/pickup';
 import { useScanGun } from '@/composables/use-scan-gun';
@@ -14,7 +14,11 @@ const form = reactive({
 const loading = ref(false);
 const listLoading = ref(false);
 const pending = ref<ParcelItem[]>([]);
+const page = ref(1);
+const size = ref(10);
+const total = ref(0);
 const lastResult = ref<PickupResult | null>(null);
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / size.value)));
 
 useScanGun({
   onScan(code) {
@@ -29,11 +33,27 @@ onMounted(() => {
 async function loadPending() {
   listLoading.value = true;
   try {
-    const result = await listParcelsApi({ status: 'STORED', page: 1, size: 8 });
+    const result = await listParcelsApi({ status: 'STORED', page: page.value, size: size.value });
     pending.value = result.list;
+    total.value = result.total;
+    page.value = result.page;
+    size.value = result.size;
   } finally {
     listLoading.value = false;
   }
+}
+
+async function refreshPending() {
+  page.value = 1;
+  await loadPending();
+}
+
+function changePage(next: number) {
+  if (next < 1 || next > pageCount.value || next === page.value || listLoading.value) {
+    return;
+  }
+  page.value = next;
+  loadPending();
 }
 
 async function submit(parcel?: ParcelItem) {
@@ -58,6 +78,10 @@ async function submit(parcel?: ParcelItem) {
     form.pickupCode = '';
     form.phoneTail = '';
     await loadPending();
+    if (pending.value.length === 0 && page.value > 1) {
+      page.value -= 1;
+      await loadPending();
+    }
   } catch (error) {
     ElMessage.error(error instanceof Error ? error.message : '核销失败');
   } finally {
@@ -111,7 +135,7 @@ async function submit(parcel?: ParcelItem) {
       </div>
       <div class="bd">
         <div v-if="lastResult" class="result-card">
-          <span class="tag green"><span class="d"></span>{{ lastResult.status }}</span>
+          <span class="tag green"><span class="d"></span>{{ parcelStatusMeta(lastResult.status).label }}</span>
           <div class="pickup-result-title">{{ pickupResultText(lastResult) }}</div>
           <p class="tnum">包裹 {{ lastResult.parcelId.slice(0, 8) }}</p>
         </div>
@@ -125,7 +149,7 @@ async function submit(parcel?: ParcelItem) {
   <section class="table-card">
     <div class="card-hd">
       <h2>待核销包裹</h2>
-      <button class="btn btn-ghost btn-sm" type="button" @click="loadPending">
+      <button class="btn btn-ghost btn-sm" type="button" :disabled="listLoading" @click="refreshPending">
         <RotateCcw />
         刷新
       </button>
@@ -163,6 +187,21 @@ async function submit(parcel?: ParcelItem) {
     </table>
     <div v-if="!listLoading && pending.length === 0" class="empty compact-empty">
       <p>暂无待核销包裹。</p>
+    </div>
+    <div class="pager" aria-label="待核销包裹分页">
+      <span class="total">共 {{ total }} 条 · 第 {{ page }} / {{ pageCount }} 页</span>
+      <button class="pg nav-pg" type="button" :disabled="page <= 1 || listLoading" @click="changePage(page - 1)">
+        <ChevronLeft />
+      </button>
+      <button class="pg on" type="button">{{ page }}</button>
+      <button
+        class="pg nav-pg"
+        type="button"
+        :disabled="page >= pageCount || listLoading"
+        @click="changePage(page + 1)"
+      >
+        <ChevronRight />
+      </button>
     </div>
   </section>
 </template>

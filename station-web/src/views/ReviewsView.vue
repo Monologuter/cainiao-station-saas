@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElMessageBox } from 'element-plus/es/components/message-box/index';
 import { ElEmpty } from 'element-plus/es/components/empty/index';
@@ -24,6 +24,7 @@ const filters = reactive({
   page: 1,
   size: 20,
 });
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / filters.size)));
 
 onMounted(load);
 
@@ -39,9 +40,21 @@ async function load() {
     ]);
     rows.value = page.list;
     total.value = page.total;
+    normalizePage();
     summary.value = stats;
   } finally {
     loading.value = false;
+  }
+}
+
+async function changePage(next: number) {
+  filters.page = Math.min(Math.max(1, next), pageCount.value);
+  await load();
+}
+
+function normalizePage() {
+  if (filters.page > pageCount.value) {
+    filters.page = pageCount.value;
   }
 }
 
@@ -129,5 +142,15 @@ async function reply(row: ReviewItem) {
         </tr>
       </tbody>
     </table>
+    <div class="pager">
+      <span class="total">共 {{ total }} 条 · 第 {{ filters.page }} / {{ pageCount }} 页</span>
+      <button class="pg nav-pg" type="button" :disabled="filters.page <= 1 || loading" @click="changePage(filters.page - 1)">
+        ‹
+      </button>
+      <button class="pg on" type="button">{{ filters.page }}</button>
+      <button class="pg nav-pg" type="button" :disabled="filters.page >= pageCount || loading" @click="changePage(filters.page + 1)">
+        ›
+      </button>
+    </div>
   </article>
 </template>

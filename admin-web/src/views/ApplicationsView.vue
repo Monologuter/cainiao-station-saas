@@ -25,6 +25,8 @@ const tab = ref<"PENDING" | "APPROVED" | "REJECTED" | "ALL">("PENDING");
 const keyword = ref("");
 const applications = ref<TenantApplication[]>([]);
 const total = ref(0);
+const page = ref(1);
+const pageSize = 20;
 const plans = ref<BillingPlan[]>([]);
 const selected = ref<TenantApplication | null>(null);
 const review = reactive({
@@ -36,6 +38,7 @@ const review = reactive({
 const pendingCount = computed(
   () => applications.value.filter((item) => item.status === "PENDING").length,
 );
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 
 onMounted(load);
 
@@ -46,18 +49,41 @@ async function load() {
       applicationsApi({
         status: tab.value === "ALL" ? "" : tab.value,
         keyword: keyword.value,
-        page: 1,
-        pageSize: 50,
+        page: page.value,
+        pageSize,
       }),
       billingPlansApi(),
     ]);
     applications.value = list.items;
     total.value = list.total;
+    normalizePage();
     plans.value = planRows.filter((plan) => plan.status === "ACTIVE");
   } catch (error) {
     ElMessage.error(errorText(error, "加载入驻申请失败"));
   } finally {
     loading.value = false;
+  }
+}
+
+async function switchTab(next: typeof tab.value) {
+  tab.value = next;
+  page.value = 1;
+  await load();
+}
+
+async function applyFilters() {
+  page.value = 1;
+  await load();
+}
+
+async function changePage(next: number) {
+  page.value = Math.min(Math.max(1, next), totalPages.value);
+  await load();
+}
+
+function normalizePage() {
+  if (page.value > totalPages.value) {
+    page.value = totalPages.value;
   }
 }
 
@@ -164,21 +190,21 @@ function dateText(value: string) {
 
   <section class="table-card applications-panel">
     <div class="tabs">
-      <button class="tab" :class="{ on: tab === 'PENDING' }" @click="tab = 'PENDING'; load()">
+      <button class="tab" :class="{ on: tab === 'PENDING' }" @click="switchTab('PENDING')">
         待审核 <span class="tnum">({{ pendingCount }})</span>
       </button>
-      <button class="tab" :class="{ on: tab === 'APPROVED' }" @click="tab = 'APPROVED'; load()">已通过</button>
-      <button class="tab" :class="{ on: tab === 'REJECTED' }" @click="tab = 'REJECTED'; load()">已驳回</button>
-      <button class="tab" :class="{ on: tab === 'ALL' }" @click="tab = 'ALL'; load()">全部</button>
+      <button class="tab" :class="{ on: tab === 'APPROVED' }" @click="switchTab('APPROVED')">已通过</button>
+      <button class="tab" :class="{ on: tab === 'REJECTED' }" @click="switchTab('REJECTED')">已驳回</button>
+      <button class="tab" :class="{ on: tab === 'ALL' }" @click="switchTab('ALL')">全部</button>
     </div>
 
     <div class="applications-toolbar">
       <label class="search-input">
         <Search />
-        <input v-model.trim="keyword" placeholder="申请编号 / 主体 / 手机号" @keyup.enter="load" />
+        <input v-model.trim="keyword" placeholder="申请编号 / 主体 / 手机号" @keyup.enter="applyFilters" />
       </label>
       <span class="muted">共 <b class="tnum">{{ total }}</b> 条申请</span>
-      <button class="btn btn-primary" type="button" @click="load">筛选</button>
+      <button class="btn btn-primary" type="button" @click="applyFilters">筛选</button>
     </div>
 
     <table>
@@ -217,6 +243,15 @@ function dateText(value: string) {
       </tbody>
     </table>
     <el-empty v-if="!loading && applications.length === 0" description="暂无入驻申请" />
+    <div class="pager" aria-label="入驻申请分页">
+      <span>共 {{ total }} 条申请，第 {{ page }} / {{ totalPages }} 页</span>
+      <button class="btn" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+        上一页
+      </button>
+      <button class="btn" type="button" :disabled="page >= totalPages || loading" @click="changePage(page + 1)">
+        下一页
+      </button>
+    </div>
   </section>
 
   <div v-if="selected" class="mask" @click.self="closeReview">

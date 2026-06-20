@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed } from "vue";
+import { computed, ref } from "vue";
 import { useRoute, useRouter } from "vue-router";
 import {
   Bell,
@@ -20,6 +20,26 @@ import { useAuthStore } from "@/stores/auth";
 const route = useRoute();
 const router = useRouter();
 const auth = useAuthStore();
+const noticesOpen = ref(false);
+const globalSearch = ref("");
+const notices = ref([
+  {
+    id: "application",
+    title: "入驻申请待审核",
+    body: "有新的租户入驻资料等待平台运营审核。",
+    time: "刚刚",
+    unread: true,
+    routeName: "applications",
+  },
+  {
+    id: "audit",
+    title: "审计日志已记录",
+    body: "平台关键操作已进入审计留痕。",
+    time: "15 分钟前",
+    unread: true,
+    routeName: "audit",
+  },
+]);
 
 const navGroups = [
   {
@@ -55,11 +75,34 @@ const sub = computed(
 );
 const username = computed(() => auth.username);
 const userInitial = computed(() => username.value.slice(0, 1) || "运");
+const unreadNoticeCount = computed(() => notices.value.filter((item) => item.unread).length);
 
 function go(name: string) {
   if (route.name !== name) {
     router.push({ name });
   }
+}
+
+function toggleNotices() {
+  noticesOpen.value = !noticesOpen.value;
+}
+
+function markNoticesRead() {
+  notices.value = notices.value.map((item) => ({ ...item, unread: false }));
+}
+
+function openNotice(name: string) {
+  markNoticesRead();
+  noticesOpen.value = false;
+  go(name);
+}
+
+function submitGlobalSearch() {
+  const keyword = globalSearch.value.trim();
+  if (!keyword) {
+    return;
+  }
+  router.push({ name: "tenants", query: { keyword } });
 }
 
 async function onLogout() {
@@ -110,12 +153,48 @@ async function onLogout() {
           <div class="sub">{{ sub }}</div>
         </div>
         <div class="top-r">
-          <div class="search">租户 / 门店 / 负责人</div>
-          <button class="ibtn" type="button">
-            <Bell />
-            <span class="dot"></span>
-          </button>
-          <div class="avatar" title="点击退出登录" @click="onLogout">
+          <form class="search top-search" data-testid="global-search-form" @submit.prevent="submitGlobalSearch">
+            <input
+              v-model="globalSearch"
+              data-testid="global-search-input"
+              aria-label="全局搜索"
+              placeholder="租户 / 门店 / 负责人"
+              @keydown.enter.prevent="submitGlobalSearch"
+            />
+          </form>
+          <div class="notice-wrap">
+            <button
+              class="ibtn"
+              type="button"
+              aria-label="通知"
+              :aria-expanded="noticesOpen"
+              @click="toggleNotices"
+            >
+              <Bell />
+              <span v-if="unreadNoticeCount" class="dot"></span>
+            </button>
+            <section v-if="noticesOpen" class="notice-panel" data-testid="notice-panel">
+              <div class="notice-hd">
+                <b>站内消息</b>
+                <button class="op" type="button" @click="markNoticesRead">全部已读</button>
+              </div>
+              <button
+                v-for="notice in notices"
+                :key="notice.id"
+                class="notice-item"
+                type="button"
+                @click="openNotice(notice.routeName)"
+              >
+                <span class="notice-dot" :class="{ 'is-read': !notice.unread }"></span>
+                <span>
+                  <b>{{ notice.title }}</b>
+                  <small>{{ notice.body }}</small>
+                  <em>{{ notice.time }}</em>
+                </span>
+              </button>
+            </section>
+          </div>
+          <div class="avatar identity-chip" title="当前登录账号">
             <i>{{ userInitial }}</i>
             <b>{{ username }}</b>
           </div>
@@ -138,7 +217,7 @@ async function onLogout() {
   color: var(--muted);
 }
 
-.avatar {
-  cursor: pointer;
+.avatar.identity-chip {
+  cursor: default;
 }
 </style>

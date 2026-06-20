@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from "vue";
+import { computed, onMounted, reactive, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
+import { useRoute } from "vue-router";
 import { Building2, Plus, RotateCcw } from "lucide-vue-next";
 import {
   createTenantApi,
@@ -8,10 +9,16 @@ import {
   updateTenantStatusApi,
   type TenantRow,
 } from "@/api/tenants";
+import { tenantStatusMeta } from "@/utils/status-labels";
 
 const loading = ref(false);
+const route = useRoute();
 const status = ref("");
+const keyword = ref("");
 const rows = ref<TenantRow[]>([]);
+const total = ref(0);
+const page = ref(1);
+const size = ref(20);
 
 const modalOpen = ref(false);
 const saving = ref(false);
@@ -22,18 +29,59 @@ const form = reactive({
   ownerPassword: "",
 });
 
-onMounted(load);
+onMounted(() => {
+  applyRouteKeyword(route.query.keyword);
+  load();
+});
+
+watch(
+  () => route.query.keyword,
+  async (value) => {
+    if (applyRouteKeyword(value)) {
+      page.value = 1;
+      await load();
+    }
+  },
+);
 
 async function load() {
   loading.value = true;
   try {
-    const data = await tenantsApi({ status: status.value });
+    const data = await tenantsApi({
+      status: status.value,
+      keyword: keyword.value,
+      page: page.value,
+      size: size.value,
+    });
     rows.value = data.list;
+    total.value = data.total;
   } catch (error) {
     ElMessage.error(errorText(error, "加载租户列表失败"));
   } finally {
     loading.value = false;
   }
+}
+
+async function filterByStatus() {
+  page.value = 1;
+  await load();
+}
+
+function applyRouteKeyword(value: unknown) {
+  const next = typeof value === "string" ? value.trim() : "";
+  if (keyword.value === next) {
+    return false;
+  }
+  keyword.value = next;
+  return true;
+}
+
+async function changePage(nextPage: number) {
+  if (nextPage < 1 || nextPage > totalPages.value || nextPage === page.value) {
+    return;
+  }
+  page.value = nextPage;
+  await load();
 }
 
 async function setStatus(row: TenantRow, next: TenantRow["status"]) {
@@ -90,13 +138,17 @@ function errorText(error: unknown, fallback: string) {
   }
   return fallback;
 }
+
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(total.value / size.value)),
+);
 </script>
 
 <template>
   <section>
     <div class="toolbar">
       <div class="search-input">
-        <select v-model="status" @change="load">
+        <select v-model="status" @change="filterByStatus">
           <option value="">全部状态</option>
           <option value="ACTIVE">正常</option>
           <option value="SUSPENDED">停用</option>
@@ -130,7 +182,11 @@ function errorText(error: unknown, fallback: string) {
             <td><b>{{ row.name }}</b><span class="muted">{{ row.id.slice(0, 8) }}</span></td>
             <td>{{ row.ownerName }} · {{ row.contactPhone }}</td>
             <td>{{ row.stationCount }} / {{ row.userCount }}</td>
-            <td><span class="tag" :class="row.status === 'ACTIVE' ? 'green' : 'amber'">{{ row.status }}</span></td>
+            <td>
+              <span class="tag" :class="tenantStatusMeta(row.status).tag">
+                {{ tenantStatusMeta(row.status).label }}
+              </span>
+            </td>
             <td>
               <button
                 class="btn"
@@ -144,6 +200,20 @@ function errorText(error: unknown, fallback: string) {
         </tbody>
       </table>
       <el-empty v-if="!loading && rows.length === 0" description="暂无租户" />
+      <div class="pager" aria-label="租户分页">
+        <span>共 {{ total }} 个租户，第 {{ page }} / {{ totalPages }} 页</span>
+        <button class="btn" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+          上一页
+        </button>
+        <button
+          class="btn"
+          type="button"
+          :disabled="page >= totalPages || loading"
+          @click="changePage(page + 1)"
+        >
+          下一页
+        </button>
+      </div>
     </div>
 
     <div v-if="modalOpen" class="mask" @click.self="modalOpen = false">
@@ -186,5 +256,20 @@ function errorText(error: unknown, fallback: string) {
 .btn[disabled] {
   cursor: not-allowed;
   opacity: 0.6;
+}
+
+.pager {
+  align-items: center;
+  border-top: 1px solid var(--line);
+  display: flex;
+  gap: 10px;
+  justify-content: flex-end;
+  padding: 12px 14px;
+}
+
+.pager span {
+  color: var(--muted);
+  font-size: 13px;
+  margin-right: auto;
 }
 </style>

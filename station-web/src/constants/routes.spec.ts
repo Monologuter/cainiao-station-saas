@@ -5,7 +5,7 @@ import CouponsView from "@/views/CouponsView.vue";
 import BillingSettingsView from "@/views/BillingSettingsView.vue";
 import ReviewsView from "@/views/ReviewsView.vue";
 import StatisticsView from "@/views/StatisticsView.vue";
-import { isPublicRoutePath } from "@/router";
+import { isPublicRoutePath, router } from "@/router";
 import {
   availableRoutes,
   stationRouteDefs,
@@ -122,5 +122,17 @@ describe("station route definitions", () => {
   it("treats onboarding application as a public route", () => {
     expect(isPublicRoutePath("/onboarding/apply")).toBe(true);
     expect(isPublicRoutePath("/workbench")).toBe(false);
+  });
+
+  it("registers station pages statically so direct browser entry works", () => {
+    const resolved = router.resolve("/inbound");
+
+    expect(resolved.matched.map((record) => record.name)).toContain("Inbound");
+  });
+
+  it("redirects unknown legacy paths back to the workbench", () => {
+    const resolved = router.resolve("/platform/tenants");
+
+    expect(resolved.matched.at(-1)?.redirect).toBe("/workbench");
   });
 });

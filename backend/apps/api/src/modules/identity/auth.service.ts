@@ -85,8 +85,7 @@ const MENU_GROUPS: MenuGroup[] = [
         title: '经营统计',
         path: '/statistics',
         icon: 'ChartNoAxesColumn',
-        disabled: true,
-        badge: 'P2',
+        perm: 'analytics:read',
       },
       {
         code: 'staff-roles',
@@ -101,25 +100,6 @@ const MENU_GROUPS: MenuGroup[] = [
         path: '/settings',
         icon: 'Settings',
         perm: 'station:manage',
-      },
-    ],
-  },
-  {
-    group: '平台运营',
-    items: [
-      {
-        code: 'tenant-open',
-        title: '开店入驻',
-        path: '/platform/tenants/new',
-        icon: 'Store',
-        perm: 'tenant:create',
-      },
-      {
-        code: 'tenant-list',
-        title: '租户查看',
-        path: '/platform/tenants',
-        icon: 'Building2',
-        perm: 'tenant:read',
       },
     ],
   },
@@ -162,13 +142,18 @@ export class AuthService {
       roles,
       assignedStationIds: await this.assignedStationIds(user.id),
     });
+    const visibleStations = await this.visibleStationIds({
+      tenantId: user.tenantId,
+      isPlatform,
+      scope,
+    });
     const accessToken = await this.signAccessToken({
       userId: user.id,
       username: user.username,
       tenantId: user.tenantId,
       roles,
       isPlatform,
-      scope,
+      scope: { ...scope, stations: visibleStations },
       tokenVersion: user.tokenVersion,
     });
     const refreshToken = await this.issueRefreshToken(user.id);
@@ -184,7 +169,7 @@ export class AuthService {
         isPlatform,
         tenantStatus: user.tenant?.status ?? null,
         allStations: scope.allStations,
-        stations: scope.stations,
+        stations: visibleStations,
       },
     };
   }
@@ -210,6 +195,11 @@ export class AuthService {
       roles,
       assignedStationIds: await this.assignedStationIds(user.id),
     });
+    const visibleStations = await this.visibleStationIds({
+      tenantId: user.tenantId,
+      isPlatform,
+      scope,
+    });
     return {
       accessToken: await this.signAccessToken({
         userId: user.id,
@@ -217,7 +207,7 @@ export class AuthService {
         tenantId: user.tenantId,
         roles,
         isPlatform,
-        scope,
+        scope: { ...scope, stations: visibleStations },
         tokenVersion: user.tokenVersion,
       }),
       refreshToken: await this.issueRefreshToken(user.id),
@@ -229,7 +219,7 @@ export class AuthService {
         isPlatform,
         tenantStatus: user.tenant?.status ?? null,
         allStations: scope.allStations,
-        stations: scope.stations,
+        stations: visibleStations,
       },
     };
   }
@@ -304,6 +294,27 @@ export class AuthService {
       });
     });
     return rows.map((row) => row.stationId);
+  }
+
+  private async visibleStationIds(input: {
+    tenantId: string | null;
+    isPlatform: boolean;
+    scope: { allStations: boolean; stations: string[] };
+  }): Promise<string[]> {
+    if (input.isPlatform || !input.scope.allStations || !input.tenantId) {
+      return input.scope.stations;
+    }
+    const rows = await this.prisma.$transaction(async (tx) => {
+      await tx.$executeRawUnsafe(
+        `SELECT set_config('app.bypass_rls', 'on', true)`,
+      );
+      return tx.station.findMany({
+        where: { tenantId: input.tenantId },
+        orderBy: { createdAt: 'asc' },
+        select: { id: true },
+      });
+    });
+    return rows.map((row) => row.id);
   }
 
   private signAccessToken(input: {

@@ -37,6 +37,7 @@ import {
   type StationCompare,
   type VolumeForecastItem,
 } from "@/api/analytics";
+import { forecastMethodLabel, reportStatusMeta } from "@/utils/status-labels";
 
 const today = new Date().toISOString().slice(0, 10);
 const tomorrow = offsetDate(today, 1);
@@ -345,7 +346,7 @@ function offsetDate(date: string, days: number) {
       <div class="card-hd">
         <h2>包裹量预测</h2>
         <span class="tag" :class="forecastInfo.coldStart ? 'amber' : 'green'">
-          <span class="d"></span>{{ forecastInfo.method }}
+          <span class="d"></span>{{ forecastMethodLabel(forecastInfo.method) }}
         </span>
       </div>
       <div class="forecast-summary">
@@ -412,9 +413,9 @@ function offsetDate(date: string, days: number) {
       </div>
       <div class="report-body">
         <div>
-          <span class="tag green"
-            ><span class="d"></span>{{ report?.status ?? "READY" }}</span
-          >
+          <span class="tag" :class="reportStatusMeta(report?.status).tag">
+            <span class="d"></span>{{ reportStatusMeta(report?.status).label }}
+          </span>
           <p>{{ report?.downloadUrl ?? "daily_summary.csv" }}</p>
         </div>
         <a

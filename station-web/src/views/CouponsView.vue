@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
 import { ElEmpty } from 'element-plus/es/components/empty/index';
 import { Gift, Plus, RotateCcw } from 'lucide-vue-next';
@@ -15,6 +15,9 @@ import {
 const rows = ref<CouponTemplate[]>([]);
 const total = ref(0);
 const loading = ref(false);
+const page = ref(1);
+const size = 20;
+const pageCount = computed(() => Math.max(1, Math.ceil(total.value / size)));
 const form = reactive({
   name: '',
   type: 'DISCOUNT' as const,
@@ -31,11 +34,23 @@ onMounted(load);
 async function load() {
   loading.value = true;
   try {
-    const page = await listCouponTemplatesApi({});
-    rows.value = page.list;
-    total.value = page.total;
+    const result = await listCouponTemplatesApi({ page: page.value, size });
+    rows.value = result.list;
+    total.value = result.total;
+    normalizePage();
   } finally {
     loading.value = false;
+  }
+}
+
+async function changePage(next: number) {
+  page.value = Math.min(Math.max(1, next), pageCount.value);
+  await load();
+}
+
+function normalizePage() {
+  if (page.value > pageCount.value) {
+    page.value = pageCount.value;
   }
 }
 
@@ -123,6 +138,16 @@ async function issue(template: CouponTemplate) {
           </tr>
         </tbody>
       </table>
+      <div class="pager">
+        <span class="total">共 {{ total }} 条 · 第 {{ page }} / {{ pageCount }} 页</span>
+        <button class="pg nav-pg" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+          ‹
+        </button>
+        <button class="pg on" type="button">{{ page }}</button>
+        <button class="pg nav-pg" type="button" :disabled="page >= pageCount || loading" @click="changePage(page + 1)">
+          ›
+        </button>
+      </div>
     </article>
   </section>
 </template>

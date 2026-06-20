@@ -32,6 +32,18 @@ class ListTenantQuery {
   @IsOptional()
   @IsString()
   status?: string;
+
+  @IsOptional()
+  @IsString()
+  keyword?: string;
+
+  @IsOptional()
+  @IsString()
+  page?: string;
+
+  @IsOptional()
+  @IsString()
+  size?: string;
 }
 
 class UpdateTenantStatusDto {

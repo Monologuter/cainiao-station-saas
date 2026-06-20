@@ -8,6 +8,7 @@ import {
   platformUsersApi,
   type PlatformUser,
 } from "@/api/platform-users";
+import { platformUserStatusMeta } from "@/utils/status-labels";
 
 const loading = ref(false);
 const rows = ref<PlatformUser[]>([]);
@@ -148,7 +149,11 @@ function errorText(error: unknown, fallback: string) {
                 >{{ r }}</span
               >
             </td>
-            <td><span class="tag" :class="row.status === 'active' ? 'green' : 'amber'">{{ row.status }}</span></td>
+            <td>
+              <span class="tag" :class="platformUserStatusMeta(row.status).tag">
+                {{ platformUserStatusMeta(row.status).label }}
+              </span>
+            </td>
             <td><button class="btn" type="button" @click="deactivate(row)">停用</button></td>
           </tr>
         </tbody>

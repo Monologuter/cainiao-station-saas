@@ -7,11 +7,11 @@ describe("admin tenants api", () => {
     const get = vi.spyOn(http, "get").mockResolvedValue({ list: [], total: 0 });
     const patch = vi.spyOn(http, "patch").mockResolvedValue({});
 
-    await tenantsApi({ status: "ACTIVE" });
+    await tenantsApi({ status: "ACTIVE", keyword: "城南", page: 2, size: 20 });
     await updateTenantStatusApi("tenant-1", "SUSPENDED");
 
     expect(get).toHaveBeenCalledWith("/platform/tenants", {
-      params: { status: "ACTIVE" },
+      params: { status: "ACTIVE", keyword: "城南", page: 2, size: 20 },
     });
     expect(patch).toHaveBeenCalledWith("/platform/tenants/tenant-1/status", {
       status: "SUSPENDED",

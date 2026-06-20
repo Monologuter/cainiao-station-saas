@@ -10,6 +10,8 @@ export interface AuthStation {
   name: string;
 }
 
+export type AuthStationRef = string | AuthStation;
+
 export interface AuthUser {
   id: string;
   username: string;
@@ -17,7 +19,7 @@ export interface AuthUser {
   roles: string[];
   isPlatform: boolean;
   perms?: string[];
-  stations?: AuthStation[];
+  stations?: AuthStationRef[];
   allStations?: boolean;
 }
 

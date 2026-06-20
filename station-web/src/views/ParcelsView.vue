@@ -1,6 +1,7 @@
 <script setup lang="ts">
-import { computed, onMounted, reactive, ref } from 'vue';
+import { computed, onMounted, reactive, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
+import { useRoute } from 'vue-router';
 import {
   AlertTriangle,
   ChevronLeft,
@@ -27,6 +28,7 @@ const filters = reactive<Required<Pick<ParcelQuery, 'status' | 'phoneTail' | 'pi
   pickupCode: '',
   slot: '',
 });
+const route = useRoute();
 const page = ref(1);
 const size = ref(10);
 const total = ref(0);
@@ -45,8 +47,19 @@ const tabs: Array<{ label: string; status: ParcelStatus | '' }> = [
 const pageCount = computed(() => Math.max(1, Math.ceil(total.value / size.value)));
 
 onMounted(() => {
+  applyKeyword(route.query.keyword);
   load();
 });
+
+watch(
+  () => route.query.keyword,
+  (keyword) => {
+    if (applyKeyword(keyword)) {
+      page.value = 1;
+      load();
+    }
+  },
+);
 
 async function load() {
   loading.value = true;
@@ -70,8 +83,28 @@ function resetFilters() {
   filters.pickupCode = '';
   filters.slot = '';
   filters.status = '';
+  (filters as ParcelQuery).waybillNo = '';
   page.value = 1;
   load();
+}
+
+function applyKeyword(raw: unknown) {
+  const keyword = typeof raw === 'string' ? raw.trim() : '';
+  if (!keyword) {
+    return false;
+  }
+  filters.phoneTail = '';
+  filters.pickupCode = '';
+  filters.slot = '';
+  (filters as ParcelQuery).waybillNo = '';
+  if (/^1\d{10}$/.test(keyword)) {
+    filters.phoneTail = keyword.slice(-4);
+  } else if (/^\d{4,8}$/.test(keyword)) {
+    filters.pickupCode = keyword;
+  } else {
+    (filters as ParcelQuery).waybillNo = keyword;
+  }
+  return true;
 }
 
 function switchStatus(status: ParcelStatus | '') {
@@ -128,6 +161,10 @@ function formatTime(value?: string | null) {
     hour: '2-digit',
     minute: '2-digit',
   });
+}
+
+function statusText(status?: ParcelStatus | null) {
+  return status ? parcelStatusMeta(status).label : '-';
 }
 </script>
 
@@ -277,7 +314,7 @@ function formatTime(value?: string | null) {
             <span class="timeline-dot"></span>
             <div>
               <b>{{ eventTypeLabel(event.eventType) }}</b>
-              <p>{{ event.fromStatus ?? '-' }} → {{ event.toStatus }} · {{ formatTime(event.createdAt) }}</p>
+              <p>{{ statusText(event.fromStatus) }} → {{ statusText(event.toStatus) }} · {{ formatTime(event.createdAt) }}</p>
             </div>
           </div>
         </div>

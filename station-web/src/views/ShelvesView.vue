@@ -14,6 +14,7 @@ import {
   type SlotHeatmapItem,
   type SlotItem,
 } from '@/api/station';
+import { slotStatusLabel } from '@/utils/status-labels';
 
 const today = new Date().toISOString().slice(0, 10);
 const stationId = ref(localStorage.getItem('cn_station_id') ?? '');
@@ -281,7 +282,7 @@ function slotHeatStyle(slot: SlotItem) {
               :title="`取件 ${slotHeat(slot)?.pickCount ?? 0} 次`"
             >
               <b>{{ slot.code }}</b>
-              <small>{{ slot.status }} · {{ slotHeat(slot)?.pickCount ?? 0 }}</small>
+              <small>{{ slotStatusLabel(slot.status) }} · {{ slotHeat(slot)?.pickCount ?? 0 }}</small>
             </div>
           </div>
           <div v-else class="empty compact-empty">

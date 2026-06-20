@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from 'vue';
+import { computed, onMounted, ref, watch } from 'vue';
 import { ElMessage } from 'element-plus/es/components/message/index';
 import {
   CreditCard,
@@ -25,6 +25,8 @@ import {
 const loading = ref(false);
 const payingId = ref('');
 const tab = ref<'overview' | 'invoices' | 'usage'>('overview');
+const page = ref(1);
+const pageSize = 20;
 const plans = ref<BillingPlan[]>([]);
 const subscriptions = ref<Subscription[]>([]);
 const invoices = ref<Invoice[]>([]);
@@ -60,8 +62,19 @@ const smsRate = computed(() => {
   if (smsQuota.value === -1) return 0;
   return Math.min(100, Math.round((smsUsage.value / Math.max(1, smsQuota.value)) * 100));
 });
+const currentTotal = computed(() => {
+  if (tab.value === 'invoices') return invoices.value.length;
+  if (tab.value === 'usage') return usage.value.length;
+  return 0;
+});
+const pageCount = computed(() => Math.max(1, Math.ceil(currentTotal.value / pageSize)));
+const pagedInvoices = computed(() => paginate(invoices.value));
+const pagedUsage = computed(() => paginate(usage.value));
 
 onMounted(load);
+watch(tab, () => {
+  page.value = 1;
+});
 
 async function load() {
   loading.value = true;
@@ -76,8 +89,24 @@ async function load() {
     subscriptions.value = subRes;
     invoices.value = invoiceRes;
     usage.value = usageRes;
+    normalizePage();
   } finally {
     loading.value = false;
+  }
+}
+
+function paginate<T>(rows: T[]) {
+  const start = (page.value - 1) * pageSize;
+  return rows.slice(start, start + pageSize);
+}
+
+function changePage(next: number) {
+  page.value = Math.min(Math.max(1, next), pageCount.value);
+}
+
+function normalizePage() {
+  if (page.value > pageCount.value) {
+    page.value = pageCount.value;
   }
 }
 
@@ -148,7 +177,7 @@ function quotaText(value: number) {
     <article class="kpi">
       <div class="lab"><i><ReceiptText /></i>待付金额</div>
       <div class="num tnum">{{ money(dueAmount) }}</div>
-      <div class="delta">OPEN / OVERDUE</div>
+      <div class="delta">待支付 / 已逾期</div>
     </article>
     <article class="kpi">
       <div class="lab"><i><CreditCard /></i>已支付</div>
@@ -204,7 +233,7 @@ function quotaText(value: number) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="invoice in invoices" :key="invoice.id">
+        <tr v-for="invoice in pagedInvoices" :key="invoice.id">
           <td class="code">{{ invoice.code }}</td>
           <td>{{ dateText(invoice.periodStart) }} 至 {{ dateText(invoice.periodEnd) }}</td>
           <td class="tnum">{{ money(invoice.totalAmount) }}</td>
@@ -239,7 +268,7 @@ function quotaText(value: number) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in usage" :key="row.id">
+        <tr v-for="row in pagedUsage" :key="row.id">
           <td>{{ row.metric }}</td>
           <td class="tnum">{{ row.quantity }}</td>
           <td>{{ dateText(row.periodStart) }}</td>
@@ -247,5 +276,15 @@ function quotaText(value: number) {
         </tr>
       </tbody>
     </table>
+    <div v-if="tab !== 'overview'" class="pager">
+      <span class="total">共 {{ currentTotal }} 条 · 第 {{ page }} / {{ pageCount }} 页</span>
+      <button class="pg nav-pg" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+        ‹
+      </button>
+      <button class="pg on" type="button">{{ page }}</button>
+      <button class="pg nav-pg" type="button" :disabled="page >= pageCount || loading" @click="changePage(page + 1)">
+        ›
+      </button>
+    </div>
   </section>
 </template>

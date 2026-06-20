@@ -28,6 +28,11 @@ describe('AuthService.validate', () => {
           roles: [{ role: { code: '店长' } }],
         }),
       },
+      station: {
+        findMany: jest
+          .fn()
+          .mockResolvedValue([{ id: 's-main' }, { id: 's-branch' }]),
+      },
       staffStation: { findMany: jest.fn().mockResolvedValue([]) },
     };
     const prisma = { $transaction: async (fn: any) => fn(tx) } as any;
@@ -51,7 +56,12 @@ describe('AuthService.validate', () => {
     });
     // #6：店长可见全租户门店
     expect(out.user.allStations).toBe(true);
-    expect(out.user.stations).toEqual([]);
+    expect(out.user.stations).toEqual(['s-main', 's-branch']);
+    expect(tx.station.findMany).toHaveBeenCalledWith({
+      where: { tenantId: 't1' },
+      orderBy: { createdAt: 'asc' },
+      select: { id: true },
+    });
     expect(tx.$executeRawUnsafe).toHaveBeenCalledWith(
       `SELECT set_config('app.bypass_rls', 'on', true)`,
     );
@@ -74,6 +84,7 @@ describe('AuthService.validate', () => {
           roles: [{ role: { code: '店员' } }],
         }),
       },
+      station: { findMany: jest.fn() },
       staffStation: {
         findMany: jest
           .fn()
@@ -90,6 +101,7 @@ describe('AuthService.validate', () => {
     expect(out.user).toMatchObject({ id: 'u2', username: 'clerk' });
     expect(out.user.allStations).toBe(false);
     expect(out.user.stations).toEqual(['s1', 's2']);
+    expect(tx.station.findMany).not.toHaveBeenCalled();
     expect(tx.staffStation.findMany).toHaveBeenCalledWith({
       where: { userId: 'u2' },
       select: { stationId: true },

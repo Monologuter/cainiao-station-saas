@@ -16,7 +16,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
   }
 
   async validate(payload: any) {
-    const { perms, user, assignedStationIds } = await this.prisma.$transaction(
+    const { perms, user, assignedStationIds, tenantStationIds } = await this.prisma.$transaction(
       async (tx) => {
         await tx.$executeRawUnsafe(
           `SELECT set_config('app.bypass_rls', 'on', true)`,
@@ -43,10 +43,19 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
           where: { userId: payload.sub },
           select: { stationId: true },
         });
+        const tenantStations =
+          !payload.isPlatform && payload.tenantId
+            ? await tx.station.findMany({
+                where: { tenantId: payload.tenantId },
+                orderBy: { createdAt: 'asc' },
+                select: { id: true },
+              })
+            : [];
         return {
           perms: [...new Set(rows.map((item) => item.permission.code))],
           user: found,
           assignedStationIds: assignments.map((item) => item.stationId),
+          tenantStationIds: tenantStations.map((station) => station.id),
         };
       },
     );
@@ -64,6 +73,10 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       perms,
       assignedStationIds,
     });
+    const visibleStations =
+      !payload.isPlatform && scope.allStations
+        ? tenantStationIds
+        : scope.stations;
 
     return {
       id: payload.sub,
@@ -75,7 +88,7 @@ export class JwtStrategy extends PassportStrategy(Strategy) {
       tenantStatus: user.tenant?.status ?? null,
       perms,
       allStations: scope.allStations,
-      stations: scope.stations,
+      stations: visibleStations,
     };
   }
 }

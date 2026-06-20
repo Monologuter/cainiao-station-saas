@@ -6,6 +6,7 @@ export interface ParcelQuery {
   status?: ParcelStatus | '';
   phoneTail?: string;
   pickupCode?: string;
+  waybillNo?: string;
   slot?: string;
   page?: number;
   size?: number;
@@ -92,5 +93,5 @@ export function eventTypeLabel(eventType: string) {
     EXCEPTION: '标记异常',
     RETURNED: '退回处理',
   };
-  return labels[eventType] ?? eventType;
+  return labels[eventType] ?? '操作记录';
 }

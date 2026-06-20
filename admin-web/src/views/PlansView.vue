@@ -21,11 +21,14 @@ import {
   type BillingPlan,
   type PlanInput,
 } from "@/api/billing";
+import { planStatusMeta } from "@/utils/status-labels";
 
 const loading = ref(false);
 const modalOpen = ref(false);
 const editingId = ref<string | null>(null);
 const plans = ref<BillingPlan[]>([]);
+const page = ref(1);
+const pageSize = 20;
 const form = reactive<PlanInput>({
   code: "",
   name: "",
@@ -42,6 +45,14 @@ const sortedPlans = computed(() =>
 const activePlans = computed(() =>
   sortedPlans.value.filter((plan) => plan.status === "ACTIVE"),
 );
+const visibleActivePlans = computed(() => activePlans.value.slice(0, 3));
+const totalPages = computed(() =>
+  Math.max(1, Math.ceil(sortedPlans.value.length / pageSize)),
+);
+const pagedPlans = computed(() => {
+  const start = (page.value - 1) * pageSize;
+  return sortedPlans.value.slice(start, start + pageSize);
+});
 
 onMounted(load);
 
@@ -49,10 +60,21 @@ async function load() {
   loading.value = true;
   try {
     plans.value = await billingPlansApi();
+    normalizePage();
   } catch (error) {
     ElMessage.error(errorText(error, "加载套餐失败"));
   } finally {
     loading.value = false;
+  }
+}
+
+function changePage(next: number) {
+  page.value = Math.min(Math.max(1, next), totalPages.value);
+}
+
+function normalizePage() {
+  if (page.value > totalPages.value) {
+    page.value = totalPages.value;
   }
 }
 
@@ -165,7 +187,7 @@ function planIcon(index: number) {
 
   <section class="plan-grid">
     <article
-      v-for="(plan, index) in activePlans"
+      v-for="(plan, index) in visibleActivePlans"
       :key="plan.id"
       class="plan"
       :class="{ hot: index === 1, [`tier-${index + 1}`]: true }"
@@ -183,7 +205,7 @@ function planIcon(index: number) {
           <span class="per">/ 月</span>
         </div>
         <div class="plan-sub">
-          <span class="pill"><Check /> ACTIVE</span>
+          <span class="pill"><Check /> {{ planStatusMeta(plan.status).label }}</span>
           <b>{{ plan.code }}</b>
         </div>
       </div>
@@ -218,7 +240,7 @@ function planIcon(index: number) {
   <section class="table-card fee-rule">
     <div class="card-hd">
       <h2>用量加费规则</h2>
-      <span class="tag blue"><span class="d"></span>{{ activePlans.length }} 个在售</span>
+        <span class="tag blue"><span class="d"></span>{{ activePlans.length }} 个在售</span>
     </div>
     <table>
       <thead>
@@ -233,7 +255,7 @@ function planIcon(index: number) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="plan in sortedPlans" :key="plan.id">
+        <tr v-for="plan in pagedPlans" :key="plan.id">
           <td>
             <div class="rk">
               <i><ShieldCheck /></i>
@@ -248,8 +270,8 @@ function planIcon(index: number) {
           <td>{{ quotaText(plan.quotas.stations) }}</td>
           <td class="price-cell"><b>{{ money(plan.overagePrices.stations ?? 0) }}</b> / 店</td>
           <td>
-            <span class="tag" :class="plan.status === 'ACTIVE' ? 'green' : 'gray'">
-              <span class="d"></span>{{ plan.status }}
+            <span class="tag" :class="planStatusMeta(plan.status).tag">
+              <span class="d"></span>{{ planStatusMeta(plan.status).label }}
             </span>
           </td>
           <td>
@@ -267,6 +289,15 @@ function planIcon(index: number) {
       </tbody>
     </table>
     <el-empty v-if="!loading && sortedPlans.length === 0" description="暂无套餐" />
+    <div class="pager" aria-label="套餐分页">
+      <span>共 {{ sortedPlans.length }} 个套餐，第 {{ page }} / {{ totalPages }} 页</span>
+      <button class="btn" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+        上一页
+      </button>
+      <button class="btn" type="button" :disabled="page >= totalPages || loading" @click="changePage(page + 1)">
+        下一页
+      </button>
+    </div>
   </section>
 
   <div v-if="modalOpen" class="mask">

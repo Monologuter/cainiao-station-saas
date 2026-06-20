@@ -50,6 +50,7 @@ describe('Foundation e2e', () => {
     expect(me.body.data.username).toBe(phone);
     // #6：店长门店作用域为「全门店」
     expect(me.body.data.allStations).toBe(true);
+    expect(me.body.data.stations).toContain(open.body.data.stationId);
   });
 
   it('店长无 tenant:create 权限 → 开店被拒(403 业务码)', async () => {
@@ -104,14 +105,13 @@ describe('Foundation e2e', () => {
       .get('/api/auth/menus')
       .set('Authorization', `Bearer ${adminToken}`)
       .expect(200);
-    expect(adminMenus.body.data).toEqual(
+    const adminFlattened = adminMenus.body.data.flatMap(
+      (group: any) => group.items,
+    );
+    expect(adminFlattened).not.toEqual(
       expect.arrayContaining([
-        expect.objectContaining({
-          group: '平台运营',
-          items: expect.arrayContaining([
-            expect.objectContaining({ code: 'tenant-open' }),
-          ]),
-        }),
+        expect.objectContaining({ path: '/platform/tenants/new' }),
+        expect.objectContaining({ path: '/platform/tenants' }),
       ]),
     );
 

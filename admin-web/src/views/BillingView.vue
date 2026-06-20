@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onMounted, ref } from "vue";
+import { computed, onMounted, ref, watch } from "vue";
 import { ElMessage } from "element-plus";
 import {
   AlertTriangle,
@@ -19,12 +19,15 @@ import {
   type Subscription,
   type UsageRecord,
 } from "@/api/billing";
+import { billingStatusMeta } from "@/utils/status-labels";
 
 const loading = ref(false);
 const tab = ref<"subscriptions" | "invoices" | "usage">("subscriptions");
 const subscriptions = ref<Subscription[]>([]);
 const invoices = ref<Invoice[]>([]);
 const usage = ref<UsageRecord[]>([]);
+const page = ref(1);
+const pageSize = 20;
 
 const openInvoices = computed(() =>
   invoices.value.filter((invoice) => invoice.status === "OPEN"),
@@ -46,8 +49,20 @@ const dueAmount = computed(() =>
 const totalUsage = computed(() =>
   usage.value.reduce((sum, row) => sum + Number(row.quantity), 0),
 );
+const currentTotal = computed(() => {
+  if (tab.value === "subscriptions") return subscriptions.value.length;
+  if (tab.value === "invoices") return invoices.value.length;
+  return usage.value.length;
+});
+const totalPages = computed(() => Math.max(1, Math.ceil(currentTotal.value / pageSize)));
+const pagedSubscriptions = computed(() => paginate(subscriptions.value));
+const pagedInvoices = computed(() => paginate(invoices.value));
+const pagedUsage = computed(() => paginate(usage.value));
 
 onMounted(load);
+watch(tab, () => {
+  page.value = 1;
+});
 
 async function load() {
   loading.value = true;
@@ -60,6 +75,7 @@ async function load() {
     subscriptions.value = subRes;
     invoices.value = invoiceRes;
     usage.value = usageRes;
+    normalizePage();
   } catch (error) {
     ElMessage.error(errorText(error, "加载订阅与账单失败"));
   } finally {
@@ -95,6 +111,21 @@ function money(value: number) {
 function dateText(value?: string | null) {
   if (!value) return "-";
   return value.slice(0, 10);
+}
+
+function paginate<T>(rows: T[]) {
+  const start = (page.value - 1) * pageSize;
+  return rows.slice(start, start + pageSize);
+}
+
+function changePage(next: number) {
+  page.value = Math.min(Math.max(1, next), totalPages.value);
+}
+
+function normalizePage() {
+  if (page.value > totalPages.value) {
+    page.value = totalPages.value;
+  }
 }
 
 function statusClass(status: string) {
@@ -157,7 +188,7 @@ function statusClass(status: string) {
         待收款
       </div>
       <div class="num tnum">{{ money(dueAmount) }}</div>
-      <div class="delta warn">OPEN / OVERDUE</div>
+      <div class="delta warn">待支付 / 已逾期</div>
     </article>
     <article class="kpi">
       <div class="lab">
@@ -209,7 +240,7 @@ function statusClass(status: string) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="item in subscriptions" :key="item.id">
+        <tr v-for="item in pagedSubscriptions" :key="item.id">
           <td class="code">{{ item.id.slice(0, 8) }}</td>
           <td>{{ item.tenantId.slice(0, 8) }}</td>
           <td>{{ money(item.planSnapshot.monthlyPrice) }}</td>
@@ -218,7 +249,7 @@ function statusClass(status: string) {
           </td>
           <td>
             <span class="tag" :class="statusClass(item.status)">
-              <span class="d"></span>{{ item.status }}
+              <span class="d"></span>{{ billingStatusMeta(item.status).label }}
             </span>
           </td>
           <td>
@@ -240,7 +271,7 @@ function statusClass(status: string) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="invoice in invoices" :key="invoice.id">
+        <tr v-for="invoice in pagedInvoices" :key="invoice.id">
           <td class="code">{{ invoice.code }}</td>
           <td>{{ invoice.tenantId.slice(0, 8) }}</td>
           <td>{{ dateText(invoice.periodStart) }} 至 {{ dateText(invoice.periodEnd) }}</td>
@@ -251,7 +282,7 @@ function statusClass(status: string) {
           <td>{{ dateText(invoice.dueAt) }}</td>
           <td>
             <span class="tag" :class="statusClass(invoice.status)">
-              <span class="d"></span>{{ invoice.status }}
+              <span class="d"></span>{{ billingStatusMeta(invoice.status).label }}
             </span>
           </td>
         </tr>
@@ -270,7 +301,7 @@ function statusClass(status: string) {
         </tr>
       </thead>
       <tbody>
-        <tr v-for="row in usage" :key="row.id">
+        <tr v-for="row in pagedUsage" :key="row.id">
           <td class="code">{{ row.id.slice(0, 8) }}</td>
           <td>{{ row.tenantId.slice(0, 8) }}</td>
           <td>{{ row.subscriptionId.slice(0, 8) }}</td>
@@ -292,6 +323,15 @@ function statusClass(status: string) {
       "
       description="暂无数据"
     />
+    <div class="pager" aria-label="账单分页">
+      <span>共 {{ currentTotal }} 条，第 {{ page }} / {{ totalPages }} 页</span>
+      <button class="btn" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+        上一页
+      </button>
+      <button class="btn" type="button" :disabled="page >= totalPages || loading" @click="changePage(page + 1)">
+        下一页
+      </button>
+    </div>
   </section>
 
   <section v-if="overdueInvoices.length > 0" class="note overdue-note">

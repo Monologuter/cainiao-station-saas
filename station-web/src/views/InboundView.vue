@@ -18,6 +18,7 @@ import {
   type InboundOcrRecognition,
   type InboundResult,
 } from '@/api/inbound';
+import { parcelStatusMeta } from '@/api/parcel';
 import { useScanGun } from '@/composables/use-scan-gun';
 
 const form = reactive({
@@ -348,7 +349,7 @@ async function submit() {
       </div>
       <div class="bd">
         <div v-if="lastResult" class="result-card">
-          <span class="tag green"><span class="d"></span>{{ lastResult.status }}</span>
+          <span class="tag green"><span class="d"></span>{{ parcelStatusMeta(lastResult.status).label }}</span>
           <div class="pickup-code tnum">{{ lastResult.pickupCode }}</div>
           <p>库位 {{ lastResult.slotCode }}</p>
           <div v-if="lastResult.slotSource" class="slot-recommend-meta">

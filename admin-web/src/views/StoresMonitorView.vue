@@ -16,28 +16,44 @@ import {
   monitorStoresApi,
   type StoreMonitorRow,
 } from "@/api/monitor";
+import { billingStatusMeta } from "@/utils/status-labels";
 
 const loading = ref(false);
 const total = ref(0);
+const page = ref(1);
+const pageSize = 20;
 const stores = ref<StoreMonitorRow[]>([]);
 const selected = ref<StoreMonitorRow | null>(null);
 
 const warningCount = computed(
   () => stores.value.filter((item) => item.health.status !== "healthy").length,
 );
+const totalPages = computed(() => Math.max(1, Math.ceil(total.value / pageSize)));
 
 onMounted(load);
 
 async function load() {
   loading.value = true;
   try {
-    const result = await monitorStoresApi({ page: 1, pageSize: 50 });
+    const result = await monitorStoresApi({ page: page.value, pageSize });
     stores.value = result.items;
     total.value = result.total;
+    normalizePage();
   } catch (error) {
     ElMessage.error(errorText(error, "加载门店监控失败"));
   } finally {
     loading.value = false;
+  }
+}
+
+async function changePage(next: number) {
+  page.value = Math.min(Math.max(1, next), totalPages.value);
+  await load();
+}
+
+function normalizePage() {
+  if (page.value > totalPages.value) {
+    page.value = totalPages.value;
   }
 }
 
@@ -165,6 +181,15 @@ function subscriptionClass(status?: string) {
       </tbody>
     </table>
     <el-empty v-if="!loading && stores.length === 0" description="暂无门店数据" />
+    <div class="pager" aria-label="门店监控分页">
+      <span>共 {{ total }} 个门店，第 {{ page }} / {{ totalPages }} 页</span>
+      <button class="btn" type="button" :disabled="page <= 1 || loading" @click="changePage(page - 1)">
+        上一页
+      </button>
+      <button class="btn" type="button" :disabled="page >= totalPages || loading" @click="changePage(page + 1)">
+        下一页
+      </button>
+    </div>
   </section>
 
   <div v-if="selected" class="mask" @click.self="closeDetail">
@@ -183,7 +208,7 @@ function subscriptionClass(status?: string) {
         <dl class="review-dl">
           <dt>门店 ID</dt><dd>{{ selected.stationId }}</dd>
           <dt>租户 ID</dt><dd>{{ selected.tenantId }}</dd>
-          <dt>订阅</dt><dd>{{ selected.subscription?.status || "未订阅" }}</dd>
+          <dt>订阅</dt><dd>{{ selected.subscription ? billingStatusMeta(selected.subscription.status).label : "未订阅" }}</dd>
           <dt>健康原因</dt><dd>{{ selected.health.reasons.join(" / ") || "无" }}</dd>
         </dl>
       </div>

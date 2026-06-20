@@ -56,6 +56,7 @@ interface ListParcelInput {
   status?: string;
   phoneTail?: string;
   pickupCode?: string;
+  waybillNo?: string;
   slot?: string;
   page?: string;
   size?: string;
@@ -616,6 +617,9 @@ export class ParcelService {
     }
     if (input.pickupCode) {
       where.pickupCode = input.pickupCode;
+    }
+    if (input.waybillNo) {
+      where.waybillNo = { contains: input.waybillNo };
     }
     if (input.slot) {
       where.slot = { is: { code: input.slot } };

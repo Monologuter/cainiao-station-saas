@@ -61,14 +61,19 @@ describe('TenantService.createTenant', () => {
             createdAt: new Date('2026-06-18T00:00:00.000Z'),
           },
         ]),
+        count: jest.fn().mockResolvedValue(42),
       },
     };
     const svc = new TenantService({
       $transaction: (fn: any) => fn(tx),
     } as any);
 
-    await expect(svc.listTenants({ status: 'ACTIVE' })).resolves.toMatchObject({
-      total: 1,
+    await expect(
+      svc.listTenants({ status: 'ACTIVE', page: '2', size: '10' }),
+    ).resolves.toMatchObject({
+      total: 42,
+      page: 2,
+      size: 10,
       list: [
         {
           id: 't1',
@@ -78,8 +83,42 @@ describe('TenantService.createTenant', () => {
       ],
     });
     expect(tx.tenant.findMany).toHaveBeenCalledWith(
-      expect.objectContaining({ where: { status: 'ACTIVE' } }),
+      expect.objectContaining({
+        where: { status: 'ACTIVE' },
+        skip: 10,
+        take: 10,
+      }),
     );
+    expect(tx.tenant.count).toHaveBeenCalledWith({
+      where: { status: 'ACTIVE' },
+    });
+  });
+
+  it('lists tenants with keyword search', async () => {
+    const tx = {
+      $executeRawUnsafe: jest.fn(),
+      tenant: {
+        findMany: jest.fn().mockResolvedValue([]),
+        count: jest.fn().mockResolvedValue(0),
+      },
+    };
+    const svc = new TenantService({
+      $transaction: (fn: any) => fn(tx),
+    } as any);
+
+    await svc.listTenants({ keyword: '城南', page: '1', size: '20' });
+
+    const expectedWhere = {
+      OR: [
+        { name: { contains: '城南', mode: 'insensitive' } },
+        { ownerName: { contains: '城南', mode: 'insensitive' } },
+        { contactPhone: { contains: '城南' } },
+      ],
+    };
+    expect(tx.tenant.findMany).toHaveBeenCalledWith(
+      expect.objectContaining({ where: expectedWhere }),
+    );
+    expect(tx.tenant.count).toHaveBeenCalledWith({ where: expectedWhere });
   });
 
   it('updates tenant status from platform admin flow', async () => {
