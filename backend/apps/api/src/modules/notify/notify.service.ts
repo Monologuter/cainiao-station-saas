@@ -72,6 +72,10 @@ export class NotifyService {
 
   async notifyParcelStored(payload: ParcelStoredNotification) {
     for (const channel of this.channelsFor(payload)) {
+      const dedupKey = `${payload.parcelId}:ParcelStored:${channel}`;
+      if (await this.notificationExists(payload.tenantId, dedupKey)) {
+        continue;
+      }
       await this.ensureChannelReady(channel);
       const variables = [
         payload.pickupCode,
@@ -85,35 +89,25 @@ export class NotifyService {
         station: variables[2],
         tail: variables[3],
       });
-      const dedupKey = `${payload.parcelId}:ParcelStored:${channel}`;
-
-      const notification = await this.tenantPrisma.withTenant<any>((tx) =>
-        tx.notification.upsert({
-          where: {
-            tenantId_dedupKey: {
-              tenantId: payload.tenantId,
-              dedupKey,
-            },
-          },
-          update: {},
-          create: {
-            tenantId: payload.tenantId,
-            parcelId: payload.parcelId,
-            receiverPhone: payload.receiverPhone,
-            channel,
-            templateCode: 'PARCEL_STORED',
-            content: rendered.content,
-            status: 'SENT',
-            dedupKey,
-            sentAt: new Date(),
-          },
-        }),
-      );
+      const notification = await this.createNotificationOnce({
+        tenantId: payload.tenantId,
+        parcelId: payload.parcelId,
+        receiverPhone: payload.receiverPhone,
+        channel,
+        templateCode: 'PARCEL_STORED',
+        content: rendered.content,
+        status: 'SENT',
+        dedupKey,
+        sentAt: new Date(),
+      });
+      if (!notification.created) {
+        continue;
+      }
       await this.publishSmsSent(
         channel,
         payload,
         dedupKey,
-        notification.sentAt,
+        notification.row.sentAt,
         await this.sendChannelIfNeeded(
           channel,
           rendered.content,
@@ -129,6 +123,10 @@ export class NotifyService {
   async notifyParcelOverdue(payload: ParcelOverdueNotification) {
     const templateCode = OVERDUE_TEMPLATE_BY_LEVEL[payload.level];
     for (const channel of this.channelsFor(payload)) {
+      const dedupKey = `${payload.parcelId}:ParcelOverdue:${payload.level}:${channel}`;
+      if (await this.notificationExists(payload.tenantId, dedupKey)) {
+        continue;
+      }
       await this.ensureChannelReady(channel);
       const variables = [
         payload.pickupCode ?? '',
@@ -142,35 +140,25 @@ export class NotifyService {
         station: variables[2],
         daysOverdue: variables[3],
       });
-      const dedupKey = `${payload.parcelId}:ParcelOverdue:${payload.level}:${channel}`;
-
-      const notification = await this.tenantPrisma.withTenant<any>((tx) =>
-        tx.notification.upsert({
-          where: {
-            tenantId_dedupKey: {
-              tenantId: payload.tenantId,
-              dedupKey,
-            },
-          },
-          update: {},
-          create: {
-            tenantId: payload.tenantId,
-            parcelId: payload.parcelId,
-            receiverPhone: payload.receiverPhone,
-            channel,
-            templateCode,
-            content: rendered.content,
-            status: 'SENT',
-            dedupKey,
-            sentAt: new Date(),
-          },
-        }),
-      );
+      const notification = await this.createNotificationOnce({
+        tenantId: payload.tenantId,
+        parcelId: payload.parcelId,
+        receiverPhone: payload.receiverPhone,
+        channel,
+        templateCode,
+        content: rendered.content,
+        status: 'SENT',
+        dedupKey,
+        sentAt: new Date(),
+      });
+      if (!notification.created) {
+        continue;
+      }
       await this.publishSmsSent(
         channel,
         payload,
         dedupKey,
-        notification.sentAt,
+        notification.row.sentAt,
         await this.sendChannelIfNeeded(
           channel,
           rendered.content,
@@ -185,36 +173,30 @@ export class NotifyService {
 
   async notifyTenantApproved(payload: TenantApprovedNotification) {
     for (const channel of ['IN_APP', 'SMS'] as NotifyChannelType[]) {
+      const dedupKey = `${payload.applicationId}:TenantApproved:${channel}`;
+      if (await this.notificationExists(payload.tenantId, dedupKey)) {
+        continue;
+      }
       await this.ensureChannelReady(channel);
       const rendered = await this.renderer.render('TENANT_APPROVED', channel, {
         username: payload.ownerUsername,
         tempPassword: payload.tempPassword ?? '',
         planCode: payload.planCode,
       });
-      const dedupKey = `${payload.applicationId}:TenantApproved:${channel}`;
-
-      const notification = await this.tenantPrisma.withTenant<any>((tx) =>
-        tx.notification.upsert({
-          where: {
-            tenantId_dedupKey: {
-              tenantId: payload.tenantId,
-              dedupKey,
-            },
-          },
-          update: {},
-          create: {
-            tenantId: payload.tenantId,
-            parcelId: null,
-            receiverPhone: payload.ownerUsername,
-            channel,
-            templateCode: 'TENANT_APPROVED',
-            content: rendered.content,
-            status: 'SENT',
-            dedupKey,
-            sentAt: new Date(),
-          },
-        }),
-      );
+      const notification = await this.createNotificationOnce({
+        tenantId: payload.tenantId,
+        parcelId: null,
+        receiverPhone: payload.ownerUsername,
+        channel,
+        templateCode: 'TENANT_APPROVED',
+        content: rendered.content,
+        status: 'SENT',
+        dedupKey,
+        sentAt: new Date(),
+      });
+      if (!notification.created) {
+        continue;
+      }
       await this.publishSmsSent(
         channel,
         {
@@ -222,7 +204,7 @@ export class NotifyService {
           stationId: payload.stationId ?? '',
         },
         dedupKey,
-        notification.sentAt,
+        notification.row.sentAt,
         await this.sendChannelIfNeeded(
           channel,
           rendered.content,
@@ -308,6 +290,58 @@ export class NotifyService {
     }
     channels.push('SMS');
     return channels;
+  }
+
+  private async notificationExists(tenantId: string, dedupKey: string) {
+    return this.tenantPrisma.withTenant<boolean>(async (tx) => {
+      if (!tx.notification.findUnique) {
+        return false;
+      }
+      const existing = await tx.notification.findUnique({
+        where: {
+          tenantId_dedupKey: { tenantId, dedupKey },
+        },
+      });
+      return !!existing;
+    });
+  }
+
+  private async createNotificationOnce(create: any) {
+    return this.tenantPrisma.withTenant<{
+      created: boolean;
+      row: any;
+    }>(async (tx) => {
+      if (!tx.notification.create) {
+        const row = await tx.notification.upsert({
+          where: {
+            tenantId_dedupKey: {
+              tenantId: create.tenantId,
+              dedupKey: create.dedupKey,
+            },
+          },
+          update: {},
+          create,
+        });
+        return { created: true, row };
+      }
+      try {
+        const row = await tx.notification.create({ data: create });
+        return { created: true, row };
+      } catch (error: any) {
+        if (error?.code !== 'P2002') {
+          throw error;
+        }
+        const row = await tx.notification.findUnique({
+          where: {
+            tenantId_dedupKey: {
+              tenantId: create.tenantId,
+              dedupKey: create.dedupKey,
+            },
+          },
+        });
+        return { created: false, row };
+      }
+    });
   }
 
   private async sendChannelIfNeeded(

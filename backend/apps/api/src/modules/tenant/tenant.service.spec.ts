@@ -45,6 +45,48 @@ describe('TenantService.createTenant', () => {
     );
   });
 
+  it('publishes StationCreated after direct tenant creation commits', async () => {
+    const tx = {
+      tenant: {
+        create: async ({ data }: any) => ({ id: 't1', ...data }),
+      },
+      station: {
+        create: async ({ data }: any) => ({ id: 's1', ...data }),
+      },
+      role: { create: async ({ data }: any) => ({ id: 'r1', ...data }) },
+      permission: {
+        upsert: async ({ create }: any) => create,
+        findMany: async () => [{ id: 'p1' }],
+      },
+      rolePermission: { createMany: async () => ({ count: 1 }) },
+      user: {
+        create: async ({ data }: any) => ({ id: 'u1', ...data }),
+      },
+      userRole: { create: async () => ({}) },
+      priceRule: {
+        createMany: async ({ data }: any) => ({ count: data.length }),
+      },
+      $executeRawUnsafe: jest.fn(),
+    };
+    const prisma = { $transaction: async (fn: any) => fn(tx) } as any;
+    const eventBus = { publish: jest.fn() };
+    const svc = new TenantService(prisma, eventBus as any);
+
+    await svc.createTenant({
+      name: '城南驿站',
+      ownerName: '张三',
+      ownerPhone: '13800000000',
+      ownerPassword: 'pw123456',
+    });
+
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'StationCreated',
+        payload: { tenantId: 't1', stationId: 's1' },
+      }),
+    );
+  });
+
   it('lists tenants with station and user counts', async () => {
     const tx = {
       $executeRawUnsafe: jest.fn(),

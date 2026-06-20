@@ -237,6 +237,47 @@ describe('NotifyService', () => {
     expect(upserts[0].update).toEqual({});
   });
 
+  it('skips channel send and SMS metering when a notification dedup key already exists', async () => {
+    const tx = {
+      notification: {
+        findUnique: jest.fn(async () => ({
+          id: 'notice-existing',
+          sentAt: new Date('2026-06-18T00:00:00.000Z'),
+        })),
+        create: jest.fn(),
+      },
+    };
+    const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
+    const renderer = {
+      render: jest.fn(async () => ({ content: 'ok' })),
+    } as any;
+    const eventBus = { publish: jest.fn() };
+    const smsChannel = {
+      send: jest.fn().mockResolvedValue({ ok: true, billingUnits: 1 }),
+    };
+    const service = new NotifyService(
+      tenantPrisma,
+      renderer,
+      eventBus as any,
+      channelResolver as any,
+      undefined,
+      { get: jest.fn().mockResolvedValue(smsChannel) } as any,
+    );
+
+    await service.notifyParcelStored({
+      parcelId: 'p1',
+      tenantId: 't1',
+      stationId: 's1',
+      receiverPhone: '13800000000',
+      pickupCode: '1234',
+      slotCode: 'A-01',
+    });
+
+    expect(tx.notification.create).not.toHaveBeenCalled();
+    expect(smsChannel.send).not.toHaveBeenCalled();
+    expect(eventBus.publish).not.toHaveBeenCalled();
+  });
+
   it('creates level-specific overdue notifications with parcel-level dedup', async () => {
     const upserts: any[] = [];
     const tx = {

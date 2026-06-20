@@ -39,6 +39,7 @@ export class UsageService {
       if (!subscription) {
         throw new BizError(ApiCode.NOT_FOUND, '未找到有效订阅');
       }
+      await this.lockSubscription(tx, subscription.id);
 
       const dedup = await tx.usageDedup.createMany({
         data: [
@@ -110,5 +111,15 @@ export class UsageService {
       ...row,
       quantity: Number(row.quantity),
     }));
+  }
+
+  private async lockSubscription(tx: any, subscriptionId: string) {
+    if (!tx.$queryRawUnsafe) {
+      return;
+    }
+    await tx.$queryRawUnsafe(
+      'SELECT id FROM "subscriptions" WHERE id = $1 FOR UPDATE',
+      subscriptionId,
+    );
   }
 }

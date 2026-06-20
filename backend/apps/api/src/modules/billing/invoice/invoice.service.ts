@@ -33,6 +33,7 @@ export class InvoiceService {
       if (!subscription) {
         throw new BizError(ApiCode.NOT_FOUND, '订阅不存在');
       }
+      await this.lockSubscription(tx, subscription.id);
 
       const periodStart = input.periodStart ?? subscription.currentPeriodStart;
       const existing = await tx.invoice.findUnique({
@@ -270,6 +271,16 @@ export class InvoiceService {
     const y = periodStart.getUTCFullYear();
     const m = String(periodStart.getUTCMonth() + 1).padStart(2, '0');
     return `INV-${y}${m}-${subscriptionId.slice(0, 8)}`;
+  }
+
+  private async lockSubscription(tx: any, subscriptionId: string) {
+    if (!tx.$queryRawUnsafe) {
+      return;
+    }
+    await tx.$queryRawUnsafe(
+      'SELECT id FROM "subscriptions" WHERE id = $1 FOR UPDATE',
+      subscriptionId,
+    );
   }
 
   private addMonths(date: Date, months: number) {

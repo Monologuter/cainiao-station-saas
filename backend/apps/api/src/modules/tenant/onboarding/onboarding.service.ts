@@ -103,6 +103,12 @@ export class OnboardingService {
           reason: 'ONBOARDING',
         }),
       );
+      await this.eventBus.publish(
+        EventBus.createEvent('StationCreated', {
+          tenantId: result.tenantId,
+          stationId: result.stationId,
+        }),
+      );
     }
 
     const { shouldPublish, ...payload } = result;

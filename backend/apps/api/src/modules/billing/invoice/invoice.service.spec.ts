@@ -33,6 +33,7 @@ function createInvoiceService() {
     lineItems: [],
   };
   const tx = {
+    $queryRawUnsafe: jest.fn().mockResolvedValue([]),
     subscription: {
       findFirst: jest.fn().mockResolvedValue(subscription),
       update: jest.fn().mockResolvedValue({
@@ -76,6 +77,10 @@ describe('InvoiceService', () => {
         deletedAt: null,
       },
     });
+    expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT id FROM "subscriptions" WHERE id = $1 FOR UPDATE',
+      'sub-1',
+    );
     expect(tx.invoice.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({

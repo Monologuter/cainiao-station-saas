@@ -15,6 +15,8 @@ import { PlanController } from './plan/plan.controller';
 import { PlanService } from './plan/plan.service';
 import { SubscriptionController } from './subscription/subscription.controller';
 import { SubscriptionService } from './subscription/subscription.service';
+import { ParcelUsageSubscriber } from './usage/subscribers/parcel-usage.subscriber';
+import { StationUsageSubscriber } from './usage/subscribers/station-usage.subscriber';
 import { SmsUsageSubscriber } from './usage/subscribers/sms-usage.subscriber';
 import { UsageController } from './usage/usage.controller';
 import { UsageService } from './usage/usage.service';
@@ -34,7 +36,9 @@ import { UsageService } from './usage/usage.service';
     UsageService,
     InvoiceService,
     SubscriptionPayService,
+    ParcelUsageSubscriber,
     SmsUsageSubscriber,
+    StationUsageSubscriber,
     InvoiceRunProcessor,
     ExpiryCheckProcessor,
     PrismaService,

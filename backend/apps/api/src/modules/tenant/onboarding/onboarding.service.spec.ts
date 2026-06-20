@@ -66,6 +66,15 @@ describe('OnboardingService', () => {
         },
       }),
     );
+    expect(eventBus.publish).toHaveBeenCalledWith(
+      expect.objectContaining({
+        name: 'StationCreated',
+        payload: {
+          tenantId: 'tenant-1',
+          stationId: 'station-1',
+        },
+      }),
+    );
   });
 
   it('returns existing tenant for an already provisioned application without duplicate side effects', async () => {

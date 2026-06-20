@@ -19,6 +19,7 @@ function createUsageService() {
     quantity: BigInt(3),
   };
   const tx = {
+    $queryRawUnsafe: jest.fn().mockResolvedValue([]),
     subscription: {
       findFirst: jest.fn().mockResolvedValue(subscription),
     },
@@ -70,6 +71,10 @@ describe('UsageService', () => {
       ],
       skipDuplicates: true,
     });
+    expect(tx.$queryRawUnsafe).toHaveBeenCalledWith(
+      'SELECT id FROM "subscriptions" WHERE id = $1 FOR UPDATE',
+      subscription.id,
+    );
     expect(tx.usageRecord.upsert).toHaveBeenCalledWith(
       expect.objectContaining({
         where: {

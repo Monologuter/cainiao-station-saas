@@ -1,5 +1,6 @@
-import { Injectable } from '@nestjs/common';
+import { Injectable, Optional } from '@nestjs/common';
 import * as argon2 from 'argon2';
+import { EventBus } from '../../core/event-bus/event-bus';
 import { PrismaService } from '../../core/prisma/prisma.service';
 
 interface CreateTenantInput {
@@ -76,7 +77,10 @@ const ZONES = [
 
 @Injectable()
 export class TenantService {
-  constructor(private readonly prisma: PrismaService) {}
+  constructor(
+    private readonly prisma: PrismaService,
+    @Optional() private readonly eventBus?: EventBus,
+  ) {}
 
   async listTenants(query: { status?: string; keyword?: string; page?: string; size?: string } = {}) {
     return this.prisma.$transaction(async (tx) => {
@@ -226,7 +230,21 @@ export class TenantService {
     if (externalTx) {
       return createWithTx(externalTx);
     }
-    return this.prisma.$transaction(createWithTx);
+    const result = await this.prisma.$transaction(createWithTx);
+    await this.publishStationCreated(result.tenantId, result.stationId);
+    return result;
+  }
+
+  private async publishStationCreated(tenantId: string, stationId: string) {
+    if (!this.eventBus) {
+      return;
+    }
+    await this.eventBus.publish(
+      EventBus.createEvent('StationCreated', {
+        tenantId,
+        stationId,
+      }),
+    );
   }
 
   private defaultPriceRules(tenantId: string) {
