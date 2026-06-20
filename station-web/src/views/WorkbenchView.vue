@@ -7,9 +7,11 @@ import {
   PackageCheck,
   ScanLine,
 } from 'lucide-vue-next';
+import { useRouter } from 'vue-router';
 import { overviewApi, overviewToKpis, type DashboardKpi } from '@/api/analytics';
 import { listParcelsApi, parcelStatusMeta, type ParcelItem } from '@/api/parcel';
 
+const router = useRouter();
 const iconMap = [ScanLine, PackageCheck, Box, BadgeCheck, ClockAlert];
 const kpis = ref<DashboardKpi[]>(overviewToKpis({
   inboundToday: 0,
@@ -48,6 +50,10 @@ function formatTime(value?: string | null) {
     minute: '2-digit',
   });
 }
+
+function go(path: string) {
+  router.push(path);
+}
 </script>
 
 <template>
@@ -66,7 +72,7 @@ function formatTime(value?: string | null) {
     <div class="table-card">
       <div class="card-hd">
         <h2>最近入库</h2>
-        <span class="link">查看全部</span>
+        <button class="link link-button" type="button" @click="go('/parcels')">查看全部</button>
       </div>
       <table>
         <thead>
@@ -103,14 +109,14 @@ function formatTime(value?: string | null) {
     </div>
 
     <aside class="quick-panel">
-      <button class="qbtn qbtn-primary" type="button">
+      <button class="qbtn qbtn-primary" type="button" data-testid="quick-inbound" @click="go('/inbound')">
         <ScanLine />
         <span>
           <b>扫码入库</b>
           <small>扫码枪 / 手动录入</small>
         </span>
       </button>
-      <button class="qbtn qbtn-accent" type="button">
+      <button class="qbtn qbtn-accent" type="button" data-testid="quick-pickup" @click="go('/pickup')">
         <BadgeCheck />
         <span>
           <b>取件核销</b>

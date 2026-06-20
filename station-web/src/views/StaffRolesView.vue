@@ -1,5 +1,6 @@
 <script setup lang="ts">
-import { computed } from 'vue';
+import { computed, reactive, ref } from 'vue';
+import { ElMessage } from 'element-plus/es/components/message/index';
 import { LockKeyhole, UserRoundPlus } from 'lucide-vue-next';
 import { groupPermissions } from '@/constants/perms';
 import { useAuthStore } from '@/stores/auth';
@@ -7,6 +8,32 @@ import { useAuthStore } from '@/stores/auth';
 const auth = useAuthStore();
 const groups = computed(() => groupPermissions(auth.perms));
 const roleNames = computed(() => auth.user?.roles ?? []);
+const createStaffOpen = ref(false);
+const staffForm = reactive({
+  username: '',
+  phone: '',
+  role: '店员',
+});
+
+function openCreateStaff() {
+  createStaffOpen.value = true;
+}
+
+function closeCreateStaff() {
+  createStaffOpen.value = false;
+}
+
+function submitCreateStaff() {
+  if (!staffForm.username.trim()) {
+    ElMessage.error('请填写员工登录账号');
+    return;
+  }
+  if (!/^1\d{10}$/.test(staffForm.phone)) {
+    ElMessage.error('请输入 11 位手机号');
+    return;
+  }
+  ElMessage.info('员工创建接口待接入，表单入口已可用');
+}
 </script>
 
 <template>
@@ -15,7 +42,7 @@ const roleNames = computed(() => auth.user?.roles ?? []);
       <div class="crumb">网点管理 / 员工权限</div>
       <h1>员工权限</h1>
     </div>
-    <button class="btn btn-primary" type="button" disabled>
+    <button class="btn btn-primary" type="button" data-testid="create-staff" @click="openCreateStaff">
       <UserRoundPlus />
       新增员工
     </button>
@@ -72,4 +99,48 @@ const roleNames = computed(() => auth.user?.roles ?? []);
       </div>
     </article>
   </section>
+
+  <div v-if="createStaffOpen" class="mask" data-testid="staff-modal" @click.self="closeCreateStaff">
+    <section class="modal" role="dialog" aria-modal="true" aria-labelledby="staff-create-title">
+      <div class="hd">
+        <h3 id="staff-create-title">新增员工</h3>
+        <button class="btn btn-ghost" type="button" @click="closeCreateStaff">关闭</button>
+      </div>
+      <form @submit.prevent="submitCreateStaff">
+        <div class="bd form-grid">
+          <label class="field">
+            <span>账号</span>
+            <input
+              v-model.trim="staffForm.username"
+              class="input"
+              autocomplete="off"
+              placeholder="员工登录账号"
+            />
+          </label>
+          <label class="field">
+            <span>手机号</span>
+            <input
+              v-model.trim="staffForm.phone"
+              class="input"
+              autocomplete="off"
+              inputmode="numeric"
+              maxlength="11"
+              placeholder="11 位手机号"
+            />
+          </label>
+          <label class="field span-2">
+            <span>角色</span>
+            <select v-model="staffForm.role" class="input">
+              <option value="店员">店员</option>
+              <option value="店长">店长</option>
+            </select>
+          </label>
+        </div>
+        <div class="ft">
+          <button class="btn btn-ghost" type="button" @click="closeCreateStaff">取消</button>
+          <button class="btn btn-primary" type="submit">保存员工</button>
+        </div>
+      </form>
+    </section>
+  </div>
 </template>
