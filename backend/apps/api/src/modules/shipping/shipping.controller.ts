@@ -174,8 +174,12 @@ export class ShippingController {
 
   @RequirePermission('shipping:cancel')
   @Post('orders/:id/cancel')
-  cancelOrder(@Param('id') id: string, @CurrentUser() user: any) {
-    return this.shipping.cancelOrder(id, user);
+  cancelOrder(
+    @Param('id') id: string,
+    @Headers('Idempotency-Key') idempotencyKey: string | undefined,
+    @CurrentUser() user: any,
+  ) {
+    return this.shipping.cancelOrder(id, user, idempotencyKey);
   }
 
   @RequirePermission('shipping:cancel')

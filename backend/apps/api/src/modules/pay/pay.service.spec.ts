@@ -380,6 +380,134 @@ describe('PayService', () => {
     // 已取消订单：短路返回，绝不重复发起外部退款。
     expect(channel.refund).not.toHaveBeenCalled();
   });
+
+  it('does not mark payment refunded when the order was collected before refund writeback', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        orderNo: 'SO1',
+        status: 'PAID',
+        quoteAmount: 800,
+        collectedAt: null,
+      },
+      payments: [
+        {
+          id: 'pay1',
+          tenantId: 't1',
+          bizType: 'SHIP_ORDER',
+          bizId: 'so1',
+          amount: 800,
+          status: 'SUCCESS',
+          outTradeNo: 'out-1',
+          rawJson: {},
+        },
+      ],
+    };
+    const tx = makeTx(state);
+    tx.shipOrder.updateMany.mockImplementationOnce(async ({ where }) => {
+      expect(where).toMatchObject({
+        id: 'so1',
+        status: 'PAID',
+        collectedAt: null,
+      });
+      state.order.status = 'COLLECTED';
+      state.order.collectedAt = new Date('2026-06-18T10:00:00.000Z');
+      return { count: 0 };
+    });
+    const channel = {
+      code: 'mock',
+      refund: jest.fn().mockResolvedValue({
+        status: 'SUCCESS',
+        refundNo: 'refund:refund-key-race',
+        raw: { refundId: 'r1' },
+      }),
+    };
+    const service = new PayService(
+      { withTenant: jest.fn(async (fn) => fn(tx)) } as any,
+      channel as any,
+      {} as any,
+    );
+
+    await expect(
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () => service.refundShipOrder('so1', 'refund-key-race'),
+      ),
+    ).rejects.toMatchObject({ code: ApiCode.SHIPPING_ILLEGAL_TRANSITION });
+
+    expect(channel.refund).toHaveBeenCalledTimes(1);
+    expect(state.order.status).toBe('COLLECTED');
+    expect(state.payments[0].status).toBe('SUCCESS');
+  });
+
+  it('reverts a used shipping coupon after a successful refund cancellation', async () => {
+    const state: any = {
+      order: {
+        id: 'so1',
+        tenantId: 't1',
+        orderNo: 'SO1',
+        status: 'PAID',
+        quoteAmount: 800,
+        collectedAt: null,
+        quoteSnapshotJson: {
+          coupon: {
+            couponId: 'coupon-1',
+            originalAmount: 1300,
+            discountAmount: 500,
+            payableAmount: 800,
+          },
+        },
+      },
+      payments: [
+        {
+          id: 'pay1',
+          tenantId: 't1',
+          bizType: 'SHIP_ORDER',
+          bizId: 'so1',
+          amount: 800,
+          status: 'SUCCESS',
+          outTradeNo: 'out-1',
+          rawJson: {},
+        },
+      ],
+      coupons: [
+        {
+          id: 'coupon-1',
+          status: 'USED',
+          usedRefType: 'ship_order',
+          usedRefId: 'so1',
+          usedAt: new Date(),
+        },
+      ],
+    };
+    const service = new PayService(
+      { withTenant: jest.fn(async (fn) => fn(makeTx(state))) } as any,
+      {
+        code: 'mock',
+        refund: jest.fn().mockResolvedValue({
+          status: 'SUCCESS',
+          refundNo: 'refund:refund-key-coupon',
+          raw: { refundId: 'r1' },
+        }),
+      } as any,
+      {} as any,
+    );
+
+    await expect(
+      TenantContext.run(
+        { userId: 'u1', tenantId: 't1', roles: ['店长'], isPlatform: false },
+        () => service.refundShipOrder('so1', 'refund-key-coupon'),
+      ),
+    ).resolves.toMatchObject({ status: 'CANCELLED' });
+
+    expect(state.coupons[0]).toMatchObject({
+      status: 'UNUSED',
+      usedRefType: null,
+      usedRefId: null,
+      usedAt: null,
+    });
+  });
 });
 
 function makeTx(state: any) {
@@ -463,6 +591,24 @@ function makeTx(state: any) {
             (state.order.version ?? 0) +
             (version?.increment ? version.increment : 0),
         };
+        return { count: 1 };
+      }),
+    },
+    coupon: {
+      updateMany: jest.fn(async ({ where, data }) => {
+        const coupon = (state.coupons ?? []).find((item: any) => {
+          if (where.id && item.id !== where.id) return false;
+          if (where.status && item.status !== where.status) return false;
+          if (where.usedRefType && item.usedRefType !== where.usedRefType) {
+            return false;
+          }
+          if (where.usedRefId && item.usedRefId !== where.usedRefId) {
+            return false;
+          }
+          return true;
+        });
+        if (!coupon) return { count: 0 };
+        Object.assign(coupon, data);
         return { count: 1 };
       }),
     },

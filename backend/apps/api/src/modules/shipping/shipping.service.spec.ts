@@ -230,6 +230,47 @@ describe('ShippingService', () => {
       service.cancelOrder('so1', { userId: 'u1', tenantId: 't1' }),
     ).resolves.toMatchObject({ id: 'so1', status: 'CANCELLED' });
   });
+
+  it('routes PAID uncollected cancellation through the safe refund flow', async () => {
+    const pay = {
+      refundShipOrder: jest.fn().mockResolvedValue({
+        id: 'so1',
+        tenantId: 't1',
+        status: 'CANCELLED',
+      }),
+    };
+    const service = new ShippingService(
+      {} as any,
+      {} as any,
+      {
+        withTenant: jest.fn((fn) =>
+          fn({
+            shipOrder: {
+              findFirst: jest.fn().mockResolvedValue({
+                id: 'so1',
+                tenantId: 't1',
+                status: 'PAID',
+                collectedAt: null,
+              }),
+            },
+          }),
+        ),
+      } as any,
+      {} as any,
+      undefined,
+      undefined,
+      pay as any,
+    );
+
+    await expect(
+      service.cancelOrder('so1', { userId: 'u1', tenantId: 't1' }),
+    ).resolves.toMatchObject({ id: 'so1', status: 'CANCELLED' });
+    expect(pay.refundShipOrder).toHaveBeenCalledWith(
+      'so1',
+      'cancel:so1',
+      { userId: 'u1', tenantId: 't1' },
+    );
+  });
 });
 
 describe('ShippingService.listOrders 门店数据范围', () => {

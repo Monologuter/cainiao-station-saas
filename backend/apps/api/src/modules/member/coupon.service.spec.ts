@@ -203,4 +203,37 @@ describe('CouponService', () => {
 
     await expect(service.expireScan()).resolves.toBe(3);
   });
+
+  it('reverts a used coupon only when the used ref matches the cancelled order', async () => {
+    const tx = {
+      $executeRawUnsafe: jest.fn(),
+      coupon: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
+    };
+    const service = new CouponService(
+      { withTenant: jest.fn() } as any,
+      { $transaction: jest.fn((fn) => fn(tx)) } as any,
+      {} as any,
+    );
+
+    await expect(
+      service.revertToUnused('coupon-1', 'ship_order', 'so1'),
+    ).resolves.toBe(true);
+
+    expect(tx.coupon.updateMany).toHaveBeenCalledWith({
+      where: {
+        id: 'coupon-1',
+        status: 'USED',
+        usedRefType: 'ship_order',
+        usedRefId: 'so1',
+      },
+      data: {
+        status: 'UNUSED',
+        usedAt: null,
+        usedRefType: null,
+        usedRefId: null,
+      },
+    });
+  });
 });

@@ -208,6 +208,35 @@ export class CouponService {
     });
   }
 
+  async revertToUnused(id: string, usedRefType: string, usedRefId: string) {
+    return this.withBypass(async (tx) =>
+      this.revertToUnusedInTx(tx, id, usedRefType, usedRefId),
+    );
+  }
+
+  async revertToUnusedInTx(
+    tx: any,
+    id: string,
+    usedRefType: string,
+    usedRefId: string,
+  ) {
+    const result = await tx.coupon.updateMany({
+      where: {
+        id,
+        status: 'USED',
+        usedRefType,
+        usedRefId,
+      },
+      data: {
+        status: 'UNUSED',
+        usedAt: null,
+        usedRefType: null,
+        usedRefId: null,
+      },
+    });
+    return result.count === 1;
+  }
+
   async issue(tenantId: string, templateId: string, memberIds: string[]) {
     const template: any = await this.withBypass((tx) =>
       tx.couponTemplate.findFirstOrThrow({

@@ -328,10 +328,29 @@ export class PayService {
       throw new BizError(ApiCode.BAD_REQUEST, '退款失败，请重试');
     }
 
-    // 阶段三（短写事务）：落库退款结果与订单取消态。用 status 守护做并发幂等：
-    // 仅当支付单仍为 SUCCESS、订单仍为 PAID 时推进，避免并发退款重复落库。
+    // 阶段三（短写事务）：先抢订单 PAID→CANCELLED，再落 payment=REFUNDED。
+    // collectedAt:null 是退款/揽收互斥闸门；若并发揽收已赢，不能把 payment 脏置为 REFUNDED。
     return this.tenantPrisma.withTenant(async (tx) => {
-      // status 守护使重复落库成为 no-op（count=0），并发退款下幂等。
+      const cancelled = await tx.shipOrder.updateMany({
+        where: {
+          id: payment.bizId,
+          status: 'PAID',
+          collectedAt: null,
+          deletedAt: null,
+        },
+        data: {
+          status: 'CANCELLED',
+          cancelledAt: new Date(),
+          version: { increment: 1 },
+        },
+      });
+      if (cancelled.count !== 1) {
+        throw new BizError(
+          ApiCode.SHIPPING_ILLEGAL_TRANSITION,
+          '订单已揽收，退款落库被拒绝',
+        );
+      }
+
       await tx.payment.updateMany({
         where: { id: payment.id, status: 'SUCCESS' },
         data: {
@@ -343,18 +362,45 @@ export class PayService {
           },
         },
       });
-      await tx.shipOrder.updateMany({
-        where: { id: payment.bizId, status: 'PAID', deletedAt: null },
-        data: {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-          version: { increment: 1 },
-        },
+      const order = await tx.shipOrder.findFirst({
+        where: { id: payment.bizId, tenantId: ctx.tenantId, deletedAt: null },
       });
+      await this.revertShippingCouponInTx(tx, order);
       return tx.shipOrder.findFirst({
         where: { id: payment.bizId, tenantId: ctx.tenantId, deletedAt: null },
       });
     });
+  }
+
+  private async revertShippingCouponInTx(tx: any, order: any) {
+    const coupon = this.shippingCouponSnapshot(order);
+    if (!coupon?.couponId) {
+      return false;
+    }
+    const result = await tx.coupon.updateMany({
+      where: {
+        id: coupon.couponId,
+        status: 'USED',
+        usedRefType: 'ship_order',
+        usedRefId: order.id,
+      },
+      data: {
+        status: 'UNUSED',
+        usedAt: null,
+        usedRefType: null,
+        usedRefId: null,
+      },
+    });
+    return result.count === 1;
+  }
+
+  private shippingCouponSnapshot(order: any) {
+    const snapshot = order?.quoteSnapshotJson;
+    if (!snapshot || typeof snapshot !== 'object') {
+      return null;
+    }
+    const coupon = (snapshot as Record<string, any>).coupon;
+    return coupon && typeof coupon === 'object' ? coupon : null;
   }
 
   private requireContext(user?: RequestUser) {

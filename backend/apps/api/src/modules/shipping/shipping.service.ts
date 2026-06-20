@@ -7,6 +7,7 @@ import { TenantPrismaService } from '../../core/prisma/tenant-prisma.service';
 import { TenantContext } from '../../core/tenant-context/tenant-context';
 import { resolveStationFilter } from '../../core/tenant-context/station-scope';
 import { CouponService } from '../member/coupon.service';
+import { PayService } from '../pay/pay.service';
 import { CourierSelectorService } from './courier-selector.service';
 import { CreateShipOrderDto } from './dto/create-ship-order.dto';
 import { QuoteDto } from './dto/quote.dto';
@@ -37,6 +38,7 @@ export class ShippingService {
     private readonly eventBus: EventBus,
     private readonly basePrisma?: PrismaService,
     @Optional() private readonly coupons?: CouponService,
+    @Optional() private readonly pay?: PayService,
   ) {}
 
   quote(input: QuoteDto) {
@@ -234,9 +236,9 @@ export class ShippingService {
     return order.tenantId;
   }
 
-  async cancelOrder(id: string, user?: RequestUser) {
+  async cancelOrder(id: string, user?: RequestUser, idempotencyKey?: string) {
     const ctx = this.requireContext(user);
-    return this.tenantPrisma.withTenant(async (tx) => {
+    const order = await this.tenantPrisma.withTenant(async (tx) => {
       const order = await tx.shipOrder.findFirst({
         where: { id, tenantId: ctx.tenantId, deletedAt: null },
       });
@@ -246,22 +248,41 @@ export class ShippingService {
       if (order.status === 'CANCELLED') {
         return this.toOrderDto(order);
       }
-      if (order.status !== 'CREATED') {
-        throw new BizError(
-          ApiCode.SHIPPING_ILLEGAL_TRANSITION,
-          '当前订单不可取消',
-        );
+      if (order.status === 'CREATED') {
+        const updated = await tx.shipOrder.update({
+          where: { id },
+          data: {
+            status: 'CANCELLED',
+            cancelledAt: new Date(),
+            version: { increment: 1 },
+          },
+        });
+        await this.revertShippingCouponInTx(tx, updated);
+        return this.toOrderDto(updated);
       }
-      const updated = await tx.shipOrder.update({
-        where: { id },
-        data: {
-          status: 'CANCELLED',
-          cancelledAt: new Date(),
-          version: { increment: 1 },
-        },
-      });
-      return this.toOrderDto(updated);
+      return order;
     });
+
+    if (order.status === 'CANCELLED') {
+      return this.toOrderDto(order);
+    }
+
+    if (order.status === 'PAID' && !order.collectedAt) {
+      if (!this.pay) {
+        throw new BizError(ApiCode.BAD_REQUEST, '退款服务不可用');
+      }
+      const refunded = await this.pay.refundShipOrder(
+        id,
+        idempotencyKey ?? `cancel:${id}`,
+        user,
+      );
+      return this.toOrderDto(refunded);
+    }
+
+    throw new BizError(
+      ApiCode.SHIPPING_ILLEGAL_TRANSITION,
+      '当前订单不可取消',
+    );
   }
 
   private requireContext(user?: RequestUser) {
@@ -380,6 +401,37 @@ export class ShippingService {
         },
       }),
     );
+  }
+
+  private async revertShippingCouponInTx(tx: any, order: any) {
+    const coupon = this.shippingCouponSnapshot(order);
+    if (!coupon?.couponId) {
+      return false;
+    }
+    const result = await tx.coupon.updateMany({
+      where: {
+        id: coupon.couponId,
+        status: 'USED',
+        usedRefType: 'ship_order',
+        usedRefId: order.id,
+      },
+      data: {
+        status: 'UNUSED',
+        usedAt: null,
+        usedRefType: null,
+        usedRefId: null,
+      },
+    });
+    return result.count === 1;
+  }
+
+  private shippingCouponSnapshot(order: any) {
+    const snapshot = order?.quoteSnapshotJson;
+    if (!snapshot || typeof snapshot !== 'object') {
+      return null;
+    }
+    const coupon = (snapshot as Record<string, any>).coupon;
+    return coupon && typeof coupon === 'object' ? coupon : null;
   }
 
   private discountAmount(template: any, amount: number) {
