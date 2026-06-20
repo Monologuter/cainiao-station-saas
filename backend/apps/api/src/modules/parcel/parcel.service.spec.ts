@@ -307,6 +307,9 @@ describe('ParcelService', () => {
           slotId: 'slot1',
         }),
       },
+      slot: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       parcelEvent: { create: jest.fn() },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
@@ -320,6 +323,14 @@ describe('ParcelService', () => {
       data: {
         status: 'PICKED_UP',
         pickedUpAt: expect.any(Date),
+        version: { increment: 1 },
+      },
+    });
+    expect(tx.slot.updateMany).toHaveBeenCalledWith({
+      where: { id: 'slot1', currentParcelId: 'p1', status: 'OCCUPIED' },
+      data: {
+        status: 'FREE',
+        currentParcelId: null,
         version: { increment: 1 },
       },
     });
@@ -378,6 +389,9 @@ describe('ParcelService', () => {
           slotId: 'slot1',
         }),
       },
+      slot: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       parcelEvent: { create: jest.fn() },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
@@ -395,6 +409,14 @@ describe('ParcelService', () => {
     expect(tx.parcel.updateMany).toHaveBeenCalledWith({
       where: { id: 'p1', status: 'STORED', version: 2 },
       data: { status: 'EXCEPTION', version: { increment: 1 } },
+    });
+    expect(tx.slot.updateMany).toHaveBeenCalledWith({
+      where: { id: 'slot1', currentParcelId: 'p1', status: 'OCCUPIED' },
+      data: {
+        status: 'FREE',
+        currentParcelId: null,
+        version: { increment: 1 },
+      },
     });
     expect(tx.parcelEvent.create).toHaveBeenCalledWith({
       data: expect.objectContaining({
@@ -500,6 +522,9 @@ describe('ParcelService', () => {
           slotId: 'slot1',
         }),
       },
+      slot: {
+        updateMany: jest.fn().mockResolvedValue({ count: 1 }),
+      },
       parcelEvent: { create: jest.fn() },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
@@ -515,6 +540,14 @@ describe('ParcelService', () => {
       data: {
         status: 'RETURNED',
         overdueReturnedAt: expect.any(Date),
+        version: { increment: 1 },
+      },
+    });
+    expect(tx.slot.updateMany).toHaveBeenCalledWith({
+      where: { id: 'slot1', currentParcelId: 'p1', status: 'OCCUPIED' },
+      data: {
+        status: 'FREE',
+        currentParcelId: null,
         version: { increment: 1 },
       },
     });

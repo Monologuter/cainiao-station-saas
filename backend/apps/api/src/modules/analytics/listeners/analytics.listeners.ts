@@ -115,6 +115,9 @@ export class ParcelLifecycleAnalyticsListener implements OnModuleInit {
     this.eventBus.subscribe('ParcelReturned', (event) =>
       this.onParcelReturned(event as DomainEvent<ParcelPayload>),
     );
+    this.eventBus.subscribe('ParcelMarkedException', (event) =>
+      this.onParcelMarkedException(event as DomainEvent<ParcelPayload>),
+    );
   }
 
   onParcelPickedUp(event: DomainEvent<ParcelPayload>) {
@@ -123,6 +126,10 @@ export class ParcelLifecycleAnalyticsListener implements OnModuleInit {
 
   onParcelReturned(event: DomainEvent<ParcelPayload>) {
     return this.handleExit(event, 'returned');
+  }
+
+  onParcelMarkedException(event: DomainEvent<ParcelPayload>) {
+    return this.handleExit(event, 'exception');
   }
 
   private async handleExit(event: DomainEvent<ParcelPayload>, metric: string) {

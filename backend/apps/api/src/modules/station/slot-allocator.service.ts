@@ -36,26 +36,24 @@ export class SlotAllocatorService {
       );
       for (const item of ordered) {
         const candidate = item.candidate;
-        const allocated = await this.locks.withLock(
-          `lock:slot:${candidate.id}`,
-          5000,
-          async () => {
-            const result = await tx.slot.updateMany({
-              where: {
-                id: candidate.id,
-                status: 'FREE',
-                version: candidate.version,
-              },
-              data: {
-                status: 'OCCUPIED',
-                currentParcelId: parcelId,
-                version: { increment: 1 },
-              },
-            });
-            if (result.count !== 1) return null;
-            return tx.slot.findUniqueOrThrow({ where: { id: candidate.id } });
+        const result = await tx.slot.updateMany({
+          where: {
+            id: candidate.id,
+            status: 'FREE',
+            version: candidate.version,
           },
-        );
+          data: {
+            status: 'OCCUPIED',
+            currentParcelId: parcelId,
+            version: { increment: 1 },
+          },
+        });
+        if (result.count !== 1) {
+          continue;
+        }
+        const allocated = await tx.slot.findUniqueOrThrow({
+          where: { id: candidate.id },
+        });
         if (allocated) {
           return {
             ...allocated,

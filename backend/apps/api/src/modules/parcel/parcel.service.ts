@@ -240,6 +240,7 @@ export class ParcelService {
       if (result.count !== 1) {
         throw new BizError(ApiCode.ALREADY_PICKED_UP, '包裹已被取走');
       }
+      await this.releaseSlotInTx(tx, before.slotId, parcelId);
 
       const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
       await tx.parcelEvent.create({
@@ -288,6 +289,7 @@ export class ParcelService {
           version: { increment: 1 },
         },
       });
+      await this.releaseSlotInTx(tx, before.slotId, parcelId);
 
       const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
       await tx.parcelEvent.create({
@@ -385,6 +387,7 @@ export class ParcelService {
           version: { increment: 1 },
         },
       });
+      await this.releaseSlotInTx(tx, before.slotId, parcelId);
 
       const parcel = await tx.parcel.findUnique({ where: { id: parcelId } });
       await tx.parcelEvent.create({
@@ -689,6 +692,24 @@ export class ParcelService {
     if (result.count !== 1) {
       throw new BizError(ApiCode.ILLEGAL_TRANSITION, '包裹状态已变化');
     }
+  }
+
+  private async releaseSlotInTx(
+    tx: any,
+    slotId: string | null | undefined,
+    parcelId: string,
+  ) {
+    if (!slotId) {
+      return;
+    }
+    await tx.slot.updateMany({
+      where: { id: slotId, currentParcelId: parcelId, status: 'OCCUPIED' },
+      data: {
+        status: 'FREE',
+        currentParcelId: null,
+        version: { increment: 1 },
+      },
+    });
   }
 
   private toParcelDto(parcel: any) {

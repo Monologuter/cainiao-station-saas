@@ -15,9 +15,7 @@ describe('SlotAllocatorService', () => {
       },
     };
     const tenantPrisma = { withTenant: async (fn: any) => fn(tx) } as any;
-    const lock = {
-      withLock: jest.fn((_key, _ttl, fn) => fn()),
-    } as any;
+    const lock = { withLock: jest.fn() } as any;
     const service = new SlotAllocatorService(tenantPrisma, lock);
 
     await expect(
@@ -49,11 +47,38 @@ describe('SlotAllocatorService', () => {
         version: { increment: 1 },
       },
     });
-    expect(lock.withLock).toHaveBeenCalledWith(
-      'lock:slot:slot1',
-      5000,
-      expect.any(Function),
+    expect(lock.withLock).not.toHaveBeenCalled();
+  });
+
+  it('does not abort allocation when the legacy Redis lock would be busy', async () => {
+    const candidates = [
+      { id: 'slot1', version: 0 },
+      { id: 'slot2', version: 0 },
+    ];
+    const tx = {
+      slot: {
+        findMany: jest.fn().mockResolvedValue(candidates),
+        updateMany: jest
+          .fn()
+          .mockResolvedValueOnce({ count: 0 })
+          .mockResolvedValueOnce({ count: 1 }),
+        findUniqueOrThrow: jest.fn().mockResolvedValue({ id: 'slot2' }),
+      },
+    };
+    const lock = {
+      withLock: jest.fn(() => {
+        throw new Error('LOCK_BUSY');
+      }),
+    } as any;
+    const service = new SlotAllocatorService(
+      { withTenant: async (fn: any) => fn(tx) } as any,
+      lock,
     );
+
+    await expect(
+      service.allocate('station1', 'parcel1'),
+    ).resolves.toMatchObject({ id: 'slot2' });
+    expect(lock.withLock).not.toHaveBeenCalled();
   });
 
   it('allocates the recommended slot before the rule-ordered first slot', async () => {

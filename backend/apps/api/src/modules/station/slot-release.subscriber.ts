@@ -21,6 +21,9 @@ export class SlotReleaseSubscriber implements OnModuleInit {
     this.eventBus.subscribe('ParcelReturned', (event) =>
       this.onParcelReturned(event as DomainEvent<SlotReleasePayload>),
     );
+    this.eventBus.subscribe('ParcelMarkedException', (event) =>
+      this.onParcelMarkedException(event as DomainEvent<SlotReleasePayload>),
+    );
   }
 
   async onParcelPickedUp(event: DomainEvent<SlotReleasePayload>) {
@@ -28,6 +31,10 @@ export class SlotReleaseSubscriber implements OnModuleInit {
   }
 
   async onParcelReturned(event: DomainEvent<SlotReleasePayload>) {
+    await this.releaseFromEvent(event);
+  }
+
+  async onParcelMarkedException(event: DomainEvent<SlotReleasePayload>) {
     await this.releaseFromEvent(event);
   }
 

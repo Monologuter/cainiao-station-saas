@@ -100,6 +100,14 @@ describe('analytics event listeners', () => {
         slotId: 'slot-2',
       }),
     );
+    await listener.onParcelMarkedException(
+      event('ParcelMarkedException', {
+        tenantId: 't1',
+        stationId: 's1',
+        parcelId: 'p3',
+        slotId: 'slot-3',
+      }),
+    );
 
     expect(metrics.incr).toHaveBeenCalledWith(
       expect.objectContaining({
@@ -113,7 +121,13 @@ describe('analytics event listeners', () => {
         eventId: expect.any(String),
       }),
     );
-    expect(metrics.adjustStored).toHaveBeenCalledTimes(2);
+    expect(metrics.incr).toHaveBeenCalledWith(
+      expect.objectContaining({
+        metric: 'exception',
+        eventId: expect.any(String),
+      }),
+    );
+    expect(metrics.adjustStored).toHaveBeenCalledTimes(3);
     expect(metrics.removeOverdueCandidate).toHaveBeenCalledWith({
       tenantId: 't1',
       stationId: 's1',

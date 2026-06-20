@@ -6,11 +6,22 @@ function createService() {
     sadd: jest.fn(),
     expire: jest.fn(),
     hincrby: jest.fn(),
+    hset: jest.fn(),
     zincrby: jest.fn(),
     incrby: jest.fn(),
+    set: jest.fn(),
   };
+  const tx = {
+    slot: {
+      findFirst: jest.fn().mockResolvedValue({
+        id: 'slot-1',
+        code: 'A-01-01',
+      }),
+    },
+  };
+  const tenantPrisma = { withTenant: jest.fn((fn) => fn(tx)) } as any;
   const redis = { getClient: () => client } as any;
-  return { service: new MetricsService(redis), client };
+  return { service: new MetricsService(redis, tenantPrisma), client, tx };
 }
 
 describe('analytics keys', () => {
@@ -87,5 +98,37 @@ describe('MetricsService', () => {
     ).resolves.toBe(8);
 
     expect(client.incrby).toHaveBeenCalledWith('an:stored:t1:s1', -1);
+  });
+
+  it('clamps stored snapshot at zero when decrement would go negative', async () => {
+    const { service, client } = createService();
+    client.incrby.mockResolvedValue(-1);
+
+    await expect(
+      service.adjustStored({ tenantId: 't1', stationId: 's1', delta: -1 }),
+    ).resolves.toBe(0);
+
+    expect(client.set).toHaveBeenCalledWith('an:stored:t1:s1', 0);
+  });
+
+  it('adjusts heat by slot id through slot code and clamps at zero', async () => {
+    const { service, client, tx } = createService();
+    client.hincrby.mockResolvedValue(-1);
+
+    await expect(
+      service.adjustHeatBySlotId({
+        tenantId: 't1',
+        stationId: 's1',
+        slotId: 'slot-1',
+        delta: -1,
+      }),
+    ).resolves.toBe(0);
+
+    expect(tx.slot.findFirst).toHaveBeenCalledWith({
+      where: { id: 'slot-1', tenantId: 't1', stationId: 's1' },
+      select: { code: true },
+    });
+    expect(client.hincrby).toHaveBeenCalledWith('an:heat:t1:s1', 'A', -1);
+    expect(client.hset).toHaveBeenCalledWith('an:heat:t1:s1', 'A', 0);
   });
 });

@@ -18,6 +18,23 @@ describe('SlotReleaseSubscriber', () => {
     expect(allocator.release).toHaveBeenCalledWith('slot1', 'p1');
   });
 
+  it('releases slot on ParcelMarkedException event as an idempotent fallback', async () => {
+    const allocator = { release: jest.fn() };
+    const subscriber = new SlotReleaseSubscriber(
+      { subscribe: jest.fn() } as any,
+      allocator as any,
+    );
+
+    await subscriber.onParcelMarkedException({
+      name: 'ParcelMarkedException',
+      eventId: 'e1',
+      occurredAt: new Date(),
+      payload: { parcelId: 'p1', slotId: 'slot1' },
+    });
+
+    expect(allocator.release).toHaveBeenCalledWith('slot1', 'p1');
+  });
+
   it('ignores event without slot id', async () => {
     const allocator = { release: jest.fn() };
     const subscriber = new SlotReleaseSubscriber(
@@ -35,7 +52,7 @@ describe('SlotReleaseSubscriber', () => {
     expect(allocator.release).not.toHaveBeenCalled();
   });
 
-  it('subscribes to picked up and returned events on module init', () => {
+  it('subscribes to picked up, returned and exception events on module init', () => {
     const eventBus = { subscribe: jest.fn() };
     const subscriber = new SlotReleaseSubscriber(
       eventBus as any,
@@ -50,6 +67,10 @@ describe('SlotReleaseSubscriber', () => {
     );
     expect(eventBus.subscribe).toHaveBeenCalledWith(
       'ParcelReturned',
+      expect.any(Function),
+    );
+    expect(eventBus.subscribe).toHaveBeenCalledWith(
+      'ParcelMarkedException',
       expect.any(Function),
     );
   });
