@@ -49,6 +49,7 @@ function createInvoiceService() {
       findFirst: jest.fn().mockResolvedValue(invoice),
       create: jest.fn().mockResolvedValue(invoice),
       update: jest.fn().mockResolvedValue({ ...invoice, status: 'VOID' }),
+      updateMany: jest.fn().mockResolvedValue({ count: 1 }),
       findMany: jest.fn().mockResolvedValue([invoice]),
     },
   };
@@ -179,6 +180,92 @@ describe('InvoiceService', () => {
         String(li.type).startsWith('PRORATION'),
       ),
     ).toBe(false);
+  });
+
+  it('bills the changed period at the original base amount so upgrade proration is not double charged', async () => {
+    const { service, tx } = createInvoiceService();
+    tx.subscription.findFirst.mockResolvedValue({
+      id: 'sub-1',
+      tenantId: 'tenant-1',
+      stationId: 'station-1',
+      currentPeriodStart: new Date('2026-06-01T00:00:00.000Z'),
+      currentPeriodEnd: new Date('2026-07-01T00:00:00.000Z'),
+      planSnapshot: {
+        monthlyPrice: 19900,
+        quotas: { sms: 1 },
+        overagePrices: { sms: 5 },
+      },
+    });
+    tx.usageRecord.findMany.mockResolvedValue([]);
+    tx.invoice.findMany.mockResolvedValue([
+      {
+        id: 'adj-1',
+        status: 'PAID',
+        totalAmount: BigInt(5000),
+        periodStart: new Date('2026-06-16T00:00:00.000Z'),
+        lineItems: [
+          {
+            type: 'PRORATION_CREDIT',
+            amount: -4950,
+            planMonthlyPrice: 9900,
+          },
+          {
+            type: 'PRORATION_DEBIT',
+            amount: 9950,
+            planMonthlyPrice: 19900,
+          },
+        ],
+      },
+    ]);
+
+    await service.generateInvoice({
+      tenantId: 'tenant-1',
+      subscriptionId: 'sub-1',
+      now: new Date('2026-07-01T00:00:00.000Z'),
+    });
+
+    const createArg = tx.invoice.create.mock.calls[0][0].data;
+    expect(createArg.baseAmount).toBe(BigInt(9900));
+    expect(createArg.totalAmount).toBe(BigInt(9900));
+    expect(createArg.lineItems).toEqual(
+      expect.arrayContaining([{ type: 'BASE', amount: 9900 }]),
+    );
+  });
+
+  it('automatically applies downgrade credits to the next positive invoice', async () => {
+    const { service, tx } = createInvoiceService();
+    tx.usageRecord.findMany.mockResolvedValue([]);
+    tx.invoice.findMany.mockResolvedValue([
+      {
+        id: 'credit-1',
+        status: 'CREDIT',
+        totalAmount: BigInt(-250),
+        lineItems: [],
+      },
+    ]);
+
+    await service.generateInvoice({
+      tenantId: 'tenant-1',
+      subscriptionId: 'sub-1',
+      now: new Date('2026-07-01T00:00:00.000Z'),
+    });
+
+    const createArg = tx.invoice.create.mock.calls[0][0].data;
+    expect(createArg.baseAmount).toBe(BigInt(1000));
+    expect(createArg.totalAmount).toBe(BigInt(750));
+    expect(createArg.lineItems).toEqual(
+      expect.arrayContaining([
+        expect.objectContaining({
+          type: 'CREDIT_APPLIED',
+          amount: -250,
+          sourceInvoiceId: 'credit-1',
+        }),
+      ]),
+    );
+    expect(tx.invoice.updateMany).toHaveBeenCalledWith({
+      where: { id: 'credit-1', status: 'CREDIT', totalAmount: BigInt(-250) },
+      data: { status: 'PAID', totalAmount: BigInt(0) },
+    });
   });
 
   it('voids only open or overdue invoices', async () => {

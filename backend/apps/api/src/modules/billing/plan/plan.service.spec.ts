@@ -78,4 +78,32 @@ describe('PlanService', () => {
       new BizError(ApiCode.FORBIDDEN, '无权限执行该操作'),
     );
   });
+
+  it('rejects unknown quota keys and decimal overage prices', async () => {
+    const { service, tx } = createPlanService();
+
+    await expect(
+      service.createPlan({
+        code: 'bad',
+        name: '坏套餐',
+        monthlyPrice: 1000,
+        quotas: { sms: 1, mystery: 2 },
+        overagePrices: { sms: 1, parcels: 0, stations: 0 },
+      }),
+    ).rejects.toMatchObject(
+      new BizError(ApiCode.BAD_REQUEST, '套餐配额包含未知键'),
+    );
+    await expect(
+      service.createPlan({
+        code: 'bad2',
+        name: '坏套餐2',
+        monthlyPrice: 1000,
+        quotas: { sms: 1, parcels: 0, stations: 1 },
+        overagePrices: { sms: 0.05, parcels: 0, stations: 0 },
+      }),
+    ).rejects.toMatchObject(
+      new BizError(ApiCode.BAD_REQUEST, '套餐超额单价必须是整数分'),
+    );
+    expect(tx.billingPlan.create).not.toHaveBeenCalled();
+  });
 });

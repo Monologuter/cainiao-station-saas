@@ -50,11 +50,15 @@ export class SubscriptionPayService {
       if (!PAYABLE_INVOICE_STATUSES.includes(invoice.status)) {
         throw new BizError(ApiCode.ILLEGAL_TRANSITION, '账单状态不允许支付');
       }
+      const amount = Number(invoice.totalAmount);
+      if (!Number.isInteger(amount) || amount <= 0) {
+        throw new BizError(ApiCode.BAD_REQUEST, '账单金额必须大于 0');
+      }
 
       const result = await this.channel.pay({
         bizType: 'SUBSCRIPTION_INVOICE',
         bizId: invoice.id,
-        amount: Number(invoice.totalAmount),
+        amount,
         idempotencyKey,
         subject: `订阅账单 ${invoice.code}`,
       });
@@ -65,7 +69,7 @@ export class SubscriptionPayService {
           bizType: 'SUBSCRIPTION_INVOICE',
           bizId: invoice.id,
           channel: this.channel.code,
-          amount: Number(invoice.totalAmount),
+          amount,
           status: result.status,
           idempotencyKey,
           outTradeNo: result.outTradeNo,

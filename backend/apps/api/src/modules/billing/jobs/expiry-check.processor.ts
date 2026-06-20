@@ -38,6 +38,7 @@ export class ExpiryCheckProcessor {
         where: {
           status: 'OPEN',
           dueAt: { lt: now },
+          totalAmount: { gt: 0 },
           deletedAt: null,
         },
         select: { id: true, tenantId: true, subscriptionId: true },
@@ -61,6 +62,7 @@ export class ExpiryCheckProcessor {
         where: {
           status: 'OVERDUE',
           dueAt: { lt: suspendCutoff },
+          totalAmount: { gt: 0 },
           deletedAt: null,
         },
         select: {
@@ -124,6 +126,7 @@ export class ExpiryCheckProcessor {
         where: {
           tenantId,
           status: { in: ['OPEN', 'OVERDUE'] },
+          totalAmount: { gt: 0 },
           deletedAt: null,
         },
       });

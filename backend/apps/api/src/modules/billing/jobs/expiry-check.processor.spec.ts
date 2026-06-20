@@ -95,6 +95,7 @@ describe('ExpiryCheckProcessor', () => {
       where: {
         tenantId: 'tenant-2',
         status: { in: ['OPEN', 'OVERDUE'] },
+        totalAmount: { gt: 0 },
         deletedAt: null,
       },
     });

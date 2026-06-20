@@ -5,6 +5,9 @@ export class MockPayChannel implements PayChannel {
   readonly code = 'mock';
 
   async pay(req: PayRequest): Promise<PayResult> {
+    if (!Number.isInteger(req.amount) || req.amount <= 0) {
+      throw new Error('支付金额必须大于 0');
+    }
     const paidAt = new Date();
     return {
       status: 'SUCCESS',

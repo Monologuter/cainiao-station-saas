@@ -79,6 +79,9 @@ export class WechatPayChannel implements PayChannel {
   }
 
   async pay(req: PayRequest): Promise<PayResult> {
+    if (!Number.isInteger(req.amount) || req.amount <= 0) {
+      throw new Error('支付金额必须大于 0');
+    }
     const response = await this.client.createTransaction({
       appid: this.options.appId ?? '',
       mchid: this.options.mchId ?? '',

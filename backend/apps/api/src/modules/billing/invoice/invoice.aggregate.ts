@@ -1,6 +1,12 @@
 import { ApiCode, BizError } from '../../../core/http/api-code';
 
-export type InvoiceStatus = 'DRAFT' | 'OPEN' | 'PAID' | 'OVERDUE' | 'VOID';
+export type InvoiceStatus =
+  | 'DRAFT'
+  | 'OPEN'
+  | 'CREDIT'
+  | 'PAID'
+  | 'OVERDUE'
+  | 'VOID';
 
 const VOIDABLE: InvoiceStatus[] = ['OPEN', 'OVERDUE'];
 

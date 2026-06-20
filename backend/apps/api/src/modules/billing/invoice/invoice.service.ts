@@ -60,7 +60,19 @@ export class InvoiceService {
         },
       });
       const usage = this.toUsageByMetric(usageRecords);
-      const calculation = calcInvoice(subscription.planSnapshot, usage);
+      const billingSnapshot = await this.snapshotForChangedPeriod(tx, {
+        tenantId: subscription.tenantId,
+        subscriptionId: subscription.id,
+        periodStart,
+        periodEnd: subscription.currentPeriodEnd,
+        snapshot: subscription.planSnapshot,
+      });
+      const calculation = calcInvoice(billingSnapshot, usage);
+      const creditApplication = await this.applyAvailableCredits(tx, {
+        tenantId: subscription.tenantId,
+        subscriptionId: subscription.id,
+        grossTotal: BigInt(calculation.totalAmount),
+      });
       const now = input.now ?? new Date();
       const invoice = await tx.invoice.create({
         data: {
@@ -69,13 +81,17 @@ export class InvoiceService {
           code: this.invoiceCode(subscription.id, periodStart),
           periodStart,
           periodEnd: subscription.currentPeriodEnd,
-          status: 'OPEN',
+          status: creditApplication.netTotal === BigInt(0) ? 'PAID' : 'OPEN',
           baseAmount: BigInt(calculation.baseAmount),
           overageAmount: BigInt(calculation.overageAmount),
-          totalAmount: BigInt(calculation.totalAmount),
-          lineItems: calculation.lineItems,
+          totalAmount: creditApplication.netTotal,
+          lineItems: [
+            ...calculation.lineItems,
+            ...creditApplication.lineItems,
+          ],
           issuedAt: now,
           dueAt: this.addDays(now, 7),
+          paidAt: creditApplication.netTotal === BigInt(0) ? now : undefined,
           createdBy: TenantContext.get()?.userId,
         },
       });
@@ -156,6 +172,100 @@ export class InvoiceService {
     }, {});
   }
 
+  private async applyAvailableCredits(
+    tx: any,
+    input: { tenantId: string; subscriptionId: string; grossTotal: bigint },
+  ) {
+    let remaining = input.grossTotal;
+    const lineItems: Array<{
+      type: 'CREDIT_APPLIED';
+      amount: number;
+      sourceInvoiceId: string;
+    }> = [];
+    if (remaining <= BigInt(0)) {
+      return { netTotal: BigInt(0), lineItems };
+    }
+
+    const creditInvoices = await tx.invoice.findMany({
+      where: {
+        tenantId: input.tenantId,
+        subscriptionId: input.subscriptionId,
+        status: 'CREDIT',
+        totalAmount: { lt: BigInt(0) },
+        deletedAt: null,
+      },
+      orderBy: { issuedAt: 'asc' },
+    });
+
+    for (const credit of creditInvoices) {
+      const available = -BigInt(credit.totalAmount);
+      if (available <= BigInt(0) || remaining <= BigInt(0)) {
+        continue;
+      }
+      const applied = available > remaining ? remaining : available;
+      const leftover = available - applied;
+      const updateResult = await tx.invoice.updateMany({
+        where: {
+          id: credit.id,
+          status: 'CREDIT',
+          totalAmount: BigInt(credit.totalAmount),
+        },
+        data: leftover === BigInt(0)
+          ? { status: 'PAID', totalAmount: BigInt(0) }
+          : { totalAmount: -leftover },
+      });
+      if (updateResult.count !== 1) {
+        throw new BizError(ApiCode.BAD_REQUEST, '贷记已被并发使用，请重试');
+      }
+      remaining -= applied;
+      lineItems.push({
+        type: 'CREDIT_APPLIED',
+        amount: -this.toSafeNumber(applied),
+        sourceInvoiceId: credit.id,
+      });
+    }
+
+    return { netTotal: remaining, lineItems };
+  }
+
+  private async snapshotForChangedPeriod(
+    tx: any,
+    input: {
+      tenantId: string;
+      subscriptionId: string;
+      periodStart: Date;
+      periodEnd: Date;
+      snapshot: any;
+    },
+  ) {
+    const adjustments = await tx.invoice.findMany({
+      where: {
+        tenantId: input.tenantId,
+        subscriptionId: input.subscriptionId,
+        periodStart: { gt: input.periodStart, lt: input.periodEnd },
+        status: { in: ['OPEN', 'PAID', 'CREDIT'] },
+        deletedAt: null,
+      },
+      orderBy: { periodStart: 'asc' },
+    });
+    for (const adjustment of adjustments) {
+      const creditLine = Array.isArray(adjustment.lineItems)
+        ? adjustment.lineItems.find(
+            (item: any) =>
+              item?.type === 'PRORATION_CREDIT' &&
+              Number.isInteger(item.planMonthlyPrice),
+          )
+        : null;
+      if (creditLine) {
+        return {
+          ...input.snapshot,
+          monthlyPrice: creditLine.planMonthlyPrice,
+        };
+      }
+    }
+    return input.snapshot;
+  }
+
   private invoiceCode(subscriptionId: string, periodStart: Date) {
     const y = periodStart.getUTCFullYear();
     const m = String(periodStart.getUTCMonth() + 1).padStart(2, '0');
@@ -181,5 +291,15 @@ export class InvoiceService {
       overageAmount: Number(row.overageAmount),
       totalAmount: Number(row.totalAmount),
     };
+  }
+
+  private toSafeNumber(amount: bigint) {
+    if (
+      amount > BigInt(Number.MAX_SAFE_INTEGER) ||
+      amount < BigInt(Number.MIN_SAFE_INTEGER)
+    ) {
+      throw new BizError(ApiCode.BAD_REQUEST, '金额超出安全整数范围');
+    }
+    return Number(amount);
   }
 }

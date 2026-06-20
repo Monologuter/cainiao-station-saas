@@ -104,6 +104,36 @@ describe('calcInvoice', () => {
       ],
     });
   });
+
+  it('calculates large overage in integer cents without floating point drift', () => {
+    expect(
+      calcInvoice(
+        {
+          monthlyPrice: 1,
+          quotas: { sms: 0 },
+          overagePrices: { sms: 7 },
+        },
+        { SMS: 1_000_001 },
+      ),
+    ).toMatchObject({
+      baseAmount: 1,
+      overageAmount: 7_000_007,
+      totalAmount: 7_000_008,
+    });
+  });
+
+  it('rejects non-integer money inputs instead of reaching BigInt RangeError later', () => {
+    expect(() =>
+      calcInvoice(
+        {
+          monthlyPrice: 1,
+          quotas: { sms: 0 },
+          overagePrices: { sms: 0.05 },
+        },
+        { SMS: 1 },
+      ),
+    ).toThrow('套餐超额单价必须是整数分');
+  });
 });
 
 describe('calcProration', () => {

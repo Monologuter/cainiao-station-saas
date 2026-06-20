@@ -265,6 +265,7 @@ enum UsageMetric {
 enum InvoiceStatus {
   DRAFT
   OPEN
+  CREDIT
   PAID
   OVERDUE
   VOID

@@ -189,7 +189,7 @@ describe('SubscriptionService', () => {
     ]);
   });
 
-  it('downgrades mid-period and generates a credit (抵扣) invoice', async () => {
+  it('downgrades mid-period into a CREDIT invoice that never enters payment collection', async () => {
     const { service, tx } = createSubscriptionService();
     // 旧 9900 -> 新 4900 (降档)
     tx.billingPlan.findFirst.mockResolvedValue({
@@ -210,6 +210,7 @@ describe('SubscriptionService', () => {
     expect(tx.invoice.create).toHaveBeenCalledWith(
       expect.objectContaining({
         data: expect.objectContaining({
+          status: 'CREDIT',
           totalAmount: BigInt(-2500),
         }),
       }),

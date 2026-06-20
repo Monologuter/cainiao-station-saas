@@ -200,7 +200,7 @@ export class SubscriptionService {
         code: this.prorationInvoiceCode(subscription.id, changeAt),
         periodStart: changeAt,
         periodEnd: subscription.currentPeriodEnd,
-        status: 'OPEN',
+        status: proration.netAmount < 0 ? 'CREDIT' : 'OPEN',
         baseAmount: BigInt(0),
         overageAmount: BigInt(0),
         totalAmount: BigInt(proration.netAmount),

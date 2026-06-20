@@ -146,4 +146,35 @@ describe('SubscriptionPayService', () => {
       ),
     ).rejects.toMatchObject({ code: ApiCode.ILLEGAL_TRANSITION });
   });
+
+  it('rejects zero and negative invoices before calling the payment channel', async () => {
+    const { service, tx } = createService({ totalAmount: BigInt(0) });
+
+    await expect(
+      TenantContext.run(
+        {
+          userId: 'u1',
+          tenantId: 'tenant-1',
+          roles: ['店长'],
+          isPlatform: false,
+        },
+        () => service.payInvoice('inv-1', 'pay-key-zero'),
+      ),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+    expect(tx.payment.create).not.toHaveBeenCalled();
+
+    const negative = createService({ totalAmount: BigInt(-100) });
+    await expect(
+      TenantContext.run(
+        {
+          userId: 'u1',
+          tenantId: 'tenant-1',
+          roles: ['店长'],
+          isPlatform: false,
+        },
+        () => negative.service.payInvoice('inv-1', 'pay-key-negative'),
+      ),
+    ).rejects.toMatchObject({ code: ApiCode.BAD_REQUEST });
+    expect(negative.tx.payment.create).not.toHaveBeenCalled();
+  });
 });

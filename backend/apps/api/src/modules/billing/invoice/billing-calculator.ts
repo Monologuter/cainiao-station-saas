@@ -11,13 +11,19 @@ export interface PlanSnapshot {
 }
 
 export interface InvoiceLineItem {
-  type: 'BASE' | 'OVERAGE' | 'PRORATION_CREDIT' | 'PRORATION_DEBIT';
+  type:
+    | 'BASE'
+    | 'OVERAGE'
+    | 'PRORATION_CREDIT'
+    | 'PRORATION_DEBIT'
+    | 'CREDIT_APPLIED';
   amount: number;
   metric?: UsageMetricCode;
   quota?: number;
   used?: number;
   overage?: number;
   unitPrice?: number;
+  sourceInvoiceId?: string;
   // PRORATION_* 专用：剩余天数与基准周期天数，便于审计回溯
   remainingDays?: number;
   periodDays?: number;
@@ -129,15 +135,24 @@ export function calcInvoice(
   snapshot: PlanSnapshot,
   usage: UsageByMetric,
 ): InvoiceCalculation {
-  const baseAmount = Number(snapshot.monthlyPrice ?? 0);
+  const baseAmount = assertNonNegativeIntegerCents(
+    snapshot.monthlyPrice ?? 0,
+    '套餐月费必须是整数分',
+  );
   const lineItems: InvoiceLineItem[] = [{ type: 'BASE', amount: baseAmount }];
-  let overageAmount = 0;
+  let overageAmount = BigInt(0);
 
   for (const metric of USAGE_METRICS) {
     const planKey = PLAN_KEY_BY_METRIC[metric];
-    const quota = Number(snapshot.quotas?.[planKey] ?? 0);
-    const unitPrice = Number(snapshot.overagePrices?.[planKey] ?? 0);
-    const used = Number(usage[metric] ?? 0);
+    const quota = assertInteger(
+      snapshot.quotas?.[planKey] ?? 0,
+      '套餐配额必须是整数',
+    );
+    const unitPrice = assertNonNegativeIntegerCents(
+      snapshot.overagePrices?.[planKey] ?? 0,
+      '套餐超额单价必须是整数分',
+    );
+    const used = assertInteger(usage[metric] ?? 0, '用量必须是整数');
 
     if (quota === -1) {
       continue;
@@ -148,7 +163,7 @@ export function calcInvoice(
       continue;
     }
 
-    const amount = overage * unitPrice;
+    const amount = BigInt(overage) * BigInt(unitPrice);
     overageAmount += amount;
     lineItems.push({
       type: 'OVERAGE',
@@ -157,14 +172,44 @@ export function calcInvoice(
       used,
       overage,
       unitPrice,
-      amount,
+      amount: toSafeIntegerCents(amount, '超额费用超出安全整数范围'),
     });
   }
 
+  const totalAmount = BigInt(baseAmount) + overageAmount;
   return {
     baseAmount,
-    overageAmount,
-    totalAmount: baseAmount + overageAmount,
+    overageAmount: toSafeIntegerCents(
+      overageAmount,
+      '超额费用超出安全整数范围',
+    ),
+    totalAmount: toSafeIntegerCents(totalAmount, '账单金额超出安全整数范围'),
     lineItems,
   };
+}
+
+function assertInteger(value: unknown, message: string) {
+  const amount = Number(value);
+  if (!Number.isInteger(amount)) {
+    throw new Error(message);
+  }
+  return amount;
+}
+
+function assertNonNegativeIntegerCents(value: unknown, message: string) {
+  const amount = assertInteger(value, message);
+  if (amount < 0) {
+    throw new Error(message);
+  }
+  return amount;
+}
+
+function toSafeIntegerCents(value: bigint, message: string) {
+  if (
+    value > BigInt(Number.MAX_SAFE_INTEGER) ||
+    value < BigInt(Number.MIN_SAFE_INTEGER)
+  ) {
+    throw new Error(message);
+  }
+  return Number(value);
 }
